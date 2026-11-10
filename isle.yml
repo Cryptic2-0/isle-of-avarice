@@ -1,0 +1,32 @@
+---
+base: luau
+name: isle
+globals:
+  game:
+    any: true
+  workspace:
+    any: true
+  script:
+    any: true
+  task:
+    any: true
+  Instance:
+    any: true
+  Enum:
+    any: true
+  Vector3:
+    any: true
+  Vector2:
+    any: true
+  CFrame:
+    any: true
+  Color3:
+    any: true
+  UDim:
+    any: true
+  UDim2:
+    any: true
+  TweenInfo:
+    any: true
+  warn:
+    any: true

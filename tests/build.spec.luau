@@ -1,0 +1,10 @@
+local fs = require("@lune/fs")
+local roblox = require("@lune/roblox")
+local T = require("./harness")
+
+T.test("built place contains the expected scripts", function()
+	local game = roblox.deserializePlace(fs.readFile("build/IsleOfAvarice.rbxlx"))
+	T.eq(game:GetService("ServerScriptService").Server.Main.ClassName, "Script")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Types.ClassName, "ModuleScript")
+	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")
+end)

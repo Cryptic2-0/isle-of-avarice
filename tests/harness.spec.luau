@@ -1,0 +1,8 @@
+local T = require("./harness")
+T.test("eq compares nested tables by value", function()
+	T.eq({ a = { 1, 2 }, b = "x" }, { a = { 1, 2 }, b = "x" })
+end)
+T.test("truthy and falsy", function()
+	T.truthy(1)
+	T.falsy(nil)
+end)
