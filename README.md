@@ -8,7 +8,7 @@ Your Ledger is a book with 12 numbered slots. Each Relic you claim fills one slo
 
 You need Roblox Studio. It is the free program Roblox provides for making and testing games.
 
-1. Open the `dist` folder on the branch `feat/m0-m1-ledger` on GitHub. The file is here: https://github.com/Cryptic2-0/isle-of-avarice/blob/feat/m0-m1-ledger/dist/IsleOfAvarice.rbxlx. After the work is merged, the file is on `main` too.
+1. Open the game file on GitHub: https://github.com/Cryptic2-0/isle-of-avarice/blob/main/dist/IsleOfAvarice.rbxlx
 2. Click the "Download raw file" button. Save the file on your computer.
 3. Open Roblox Studio. Choose File, then Open from File, and pick the file you saved.
 4. Press the Play button at the top of Studio.
