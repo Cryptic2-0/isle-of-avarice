@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 3)
+**Date:** 2026-11-10 (revision 4)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -97,9 +97,11 @@ hands only two ways: **trade**, or **defeating the holder**.
 ### 3.4 Defeat and the blind claim
 
 **The Vault.** Each player marks up to 3 of their Relics as Vaulted.
-Vaulted Relics can never be taken. The Vault can be changed only in a safe
-zone. Crown-tier Relics cannot be Vaulted, so the rarest cards always stay
-in play.
+A Vaulted Relic can never be taken, whether claimed or spare, however
+many copies the player holds. A player can Vault only a Relic they hold,
+and it leaves the Vault when they no longer hold any copy. The Vault can
+be changed only in a safe zone. Crown-tier Relics cannot be Vaulted, so
+the rarest cards always stay in play.
 
 **When one player defeats another outside a safe zone,** the killer makes
 a **blind claim**:
@@ -107,9 +109,11 @@ a **blind claim**:
 1. The killer sees the victim's Ledger face-down: all 50 numbered slots,
    with nothing to show which ones the victim holds.
 2. The killer has **5 picks** and 30 seconds. Each pick names one slot.
+   A slot can be picked only once in a claim.
 3. If the victim holds that Relic (claimed or spare) and it is not
-   Vaulted, the killer takes one copy. Otherwise the pick is wasted. The
-   killer is not told why a pick missed.
+   Vaulted, the killer takes one copy: a spare if the victim has one,
+   otherwise the claimed copy. Otherwise the pick is wasted. The killer
+   is not told why a pick missed.
 4. The killer can take only a limited number per tier in one claim:
 
    | Tier | Killer takes at most |
@@ -123,6 +127,9 @@ a **blind claim**:
    Once a tier's limit is reached, its slots can no longer be picked.
 5. Taken Relics go into the killer's free slots. A pick with no free slot
    to receive it is wasted.
+6. While the claim is open the victim's Ledger is locked: they cannot
+   move, discard, Vault or collect cards. When it closes they are told
+   which Relics were taken.
 
 Slot numbers are public, so a pick is an informed guess: the killer
 chooses which Relic to bet on, not whether the victim has it. Audit and
@@ -136,6 +143,7 @@ Summons (3.6) are how a hunter learns what a target holds.
 - Keeps Path levels and abilities.
 - Loses one third (rounded down) of their non-Relic cards, such as
   Edicts, chosen at random. These are destroyed, not given to the killer.
+  (Built in M5 with Edicts; before then there are no non-Relic cards.)
 - Respawns in Tallyport.
 
 All numbers above are starting values to be tuned in play tests.
@@ -148,15 +156,21 @@ rules address them:
 
 - **Safe zone.** No damage in Tallyport.
 - **New-player shield.** A player cannot be attacked, or attack, until
-  they have claimed 3 Relics or chosen to drop the shield.
+  they hold 3 Relics (claimed or spare) or choose to drop the shield.
+  Once it ends it never returns.
 - **Repeat-kill limit.** A killer gets no blind claim against the same
   victim more than once per hour.
-- **Respawn shield.** 60 seconds of immunity after respawning.
+- **Respawn shield.** 60 seconds of immunity after respawning. It ends
+  early if the player attacks.
 - **Combat logging.** Leaving the game within 30 seconds of taking or
-  dealing player damage counts as a defeat by the last attacker.
-- **Marked.** A player who starts a fight is Marked for 5 minutes: shown
-  on everyone's map, and unable to enter the safe zone. Fighting back does
-  not Mark you.
+  dealing player damage counts as a defeat by the last attacker, who
+  makes a blind claim as usual.
+- **Marked.** A player who starts a fight is Marked for 5 minutes: a red
+  marker above them is visible to everyone, and the safe zone does not
+  protect them. Fighting back does not Mark you.
+- **Basic combat (until the Six Paths arrive in M3).** Every player has
+  100 health and one Strike: 20 damage, 0.8 seconds between Strikes,
+  8 studs reach, aimed by facing the target.
 - **Tone.** Cartoon knock-outs. No blood, no gore. This keeps the game
   inside Roblox's lower maturity labels.
 
