@@ -3,7 +3,6 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
-local Tiers = require(ReplicatedStorage.Shared.Catalog.Tiers)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 local Sources = require(ReplicatedStorage.Shared.Rules.Sources)
 local LedgerService = require(script.Parent.LedgerService)
@@ -53,25 +52,29 @@ function SourceService.start()
 			end
 
 			-- No yielding call between tryCollect and storing the new state.
-			local newState, newLedger, code = Sources.tryCollect(
+			local now = os.clock()
+			local newState, newLedger, code, availableAt = Sources.tryCollect(
 				state,
 				LedgerService.get(player),
 				cache,
-				os.clock(),
+				now,
 				distanceToPlayer(player, part)
 			)
-			if newLedger == nil then
+			if newLedger == nil or availableAt == nil then
 				LedgerService.notify(player, code)
 				return
 			end
+			if not LedgerService.set(player, newLedger) then
+				-- The data went away; the cache stays as it was.
+				LedgerService.notify(player, "DATA_NOT_LOADED")
+				return
+			end
 			state = newState
-			LedgerService.set(player, newLedger)
 			local relic = Relics.byId[cache.relicId]
 			LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
 
 			setVisible(part, false)
-			local respawn = if relic ~= nil then Tiers.info[relic.tier].cacheRespawnSeconds else 0
-			task.delay(respawn, setVisible, part, true)
+			task.delay(availableAt - now, setVisible, part, true)
 		end)
 	end
 

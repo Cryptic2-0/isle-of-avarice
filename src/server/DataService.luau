@@ -22,6 +22,8 @@ local store = ProfileStore.New("PlayerData_v1", TEMPLATE)
 local profiles: { [Player]: any } = {}
 -- Players whose load is in flight, so a player is never loaded twice.
 local loading: { [Player]: boolean } = {}
+-- Players whose session is being ended because they are leaving, so they are not kicked.
+local leaving: { [Player]: boolean } = {}
 local loadedCallbacks: { (player: Player, data: PlayerData) -> () } = {}
 
 local function fireLoaded(player: Player, data: PlayerData)
@@ -61,7 +63,7 @@ local function loadProfile(player: Player)
 	profile:Reconcile()
 	profile.Data.ledger = Ledger.sanitize(profile.Data.ledger)
 	local coin = profile.Data.coin
-	if type(coin) ~= "number" or coin ~= coin or coin < 0 then
+	if type(coin) ~= "number" or coin ~= coin or coin == math.huge or coin < 0 then
 		profile.Data.coin = 0
 	end
 
@@ -69,7 +71,9 @@ local function loadProfile(player: Player)
 		if profiles[player] == profile then
 			profiles[player] = nil
 		end
-		if player.Parent == Players then
+		local isLeaving = leaving[player]
+		leaving[player] = nil
+		if player.Parent == Players and not isLeaving then
 			player:Kick("Your data was loaded elsewhere. Please rejoin.")
 		end
 	end)
@@ -82,6 +86,7 @@ local function releaseProfile(player: Player)
 	local profile = profiles[player]
 	profiles[player] = nil
 	if profile ~= nil then
+		leaving[player] = true
 		profile:EndSession()
 	end
 end

@@ -14,6 +14,7 @@ type Ledger = Types.Ledger
 
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
+local SLOW_DOWN_INTERVAL = 1
 
 local LedgerService = {}
 
@@ -24,6 +25,7 @@ local notifyRemote: RemoteEvent
 
 local buckets: { [Player]: RateLimiter.Bucket } = {}
 local completed: { [Player]: boolean } = {}
+local lastSlowDown: { [Player]: number } = {}
 
 -- The player's Ledger, or nil until their data has loaded and after they left.
 function LedgerService.get(player: Player): Ledger?
@@ -34,14 +36,16 @@ function LedgerService.get(player: Player): Ledger?
 	return data.ledger
 end
 
--- Writes the Ledger to saved data and tells that player's client. Ignored if no data is loaded.
-function LedgerService.set(player: Player, ledger: Ledger)
+-- Writes the Ledger to saved data and tells that player's client.
+-- Returns false, changing nothing, if no data is loaded.
+function LedgerService.set(player: Player, ledger: Ledger): boolean
 	local data = DataService.get(player)
 	if data == nil then
-		return
+		return false
 	end
 	data.ledger = ledger
 	ledgerSync:FireClient(player, ledger)
+	return true
 end
 
 function LedgerService.notify(player: Player, code: string, args: { [string]: string }?)
@@ -60,6 +64,9 @@ local function allowed(player: Player): boolean
 end
 
 local function handleRequest(player: Player)
+	if player.Parent ~= Players then
+		return
+	end
 	if not allowed(player) then
 		return
 	end
@@ -70,8 +77,16 @@ local function handleRequest(player: Player)
 end
 
 local function handleAction(player: Player, request: any)
+	if player.Parent ~= Players then
+		return
+	end
 	if not allowed(player) then
-		LedgerService.notify(player, "SLOW_DOWN")
+		local now = os.clock()
+		local last = lastSlowDown[player]
+		if last == nil or now - last >= SLOW_DOWN_INTERVAL then
+			lastSlowDown[player] = now
+			LedgerService.notify(player, "SLOW_DOWN")
+		end
 		return
 	end
 
@@ -81,7 +96,10 @@ local function handleAction(player: Player, request: any)
 		LedgerService.notify(player, code)
 		return
 	end
-	LedgerService.set(player, newLedger)
+	if not LedgerService.set(player, newLedger) then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
 	local relic = if cardId ~= nil then Relics.byId[cardId] else nil
 	LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
 
@@ -112,6 +130,7 @@ function LedgerService.start()
 	Players.PlayerRemoving:Connect(function(player)
 		buckets[player] = nil
 		completed[player] = nil
+		lastSlowDown[player] = nil
 	end)
 
 	DataService.onLoaded(function(player, data)
