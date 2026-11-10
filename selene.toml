@@ -1,1 +1,2 @@
+exclude = ["src/server/Vendor/*"]
 std = "isle"

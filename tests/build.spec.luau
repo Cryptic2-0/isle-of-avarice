@@ -7,6 +7,11 @@ T.test("built place contains the expected scripts", function()
 	T.eq(game:GetService("ServerScriptService").Server.Main.ClassName, "Script")
 	T.eq(game:GetService("ReplicatedStorage").Shared.Types.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.WorldBuilder.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.DataService.ClassName, "ModuleScript")
+	T.eq(
+		game:GetService("ServerScriptService").Server.Vendor.ProfileStore.ClassName,
+		"ModuleScript"
+	)
 	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.World.ClassName, "ModuleScript")
 	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")
 end)
