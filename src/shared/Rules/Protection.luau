@@ -28,7 +28,9 @@ local function claimKey(killerId: number, victimId: number): string
 end
 
 function Protection.inSafeZone(position: Vec3): boolean
-	return math.sqrt(position.x * position.x + position.z * position.z) <= World.townRadius
+	local distance = math.sqrt(position.x * position.x + position.z * position.z)
+	-- Written as a negation so a NaN position counts as inside (protected), not outside.
+	return not (distance > World.townRadius)
 end
 
 -- Claimed Relics plus spare ones.
@@ -41,11 +43,13 @@ function Protection.shouldEndShield(ledger: Ledger): boolean
 end
 
 function Protection.isMarked(status: Status, now: number): boolean
+	-- NaN compares false, so a NaN time reads as NOT Marked, which keeps safe-zone protection.
 	return now < status.markedUntil
 end
 
 function Protection.isShielded(status: Status, now: number): boolean
-	return status.newShield or now < status.respawnShieldUntil
+	-- Written as a negation so a NaN time counts as still shielded (fails closed).
+	return status.newShield or not (now >= status.respawnShieldUntil)
 end
 
 function Protection.canDamage(attacker: Status, victim: Status, now: number): (boolean, string?)

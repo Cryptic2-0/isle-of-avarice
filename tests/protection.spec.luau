@@ -83,3 +83,54 @@ T.test("claim cooldown", function()
 	T.truthy(Protection.canClaim(h, 1, 3, 1001))
 	T.truthy(Protection.canClaim({}, 1, 2, 0))
 end)
+
+T.test("inSafeZone fails closed on NaN and treats infinity as outside", function()
+	T.truthy(Protection.inSafeZone({ x = 0 / 0, y = 0, z = 0 }))
+	T.truthy(Protection.inSafeZone({ x = 0, y = 0, z = 0 / 0 }))
+	T.falsy(Protection.inSafeZone({ x = math.huge, y = 0, z = 0 }))
+end)
+
+T.test("NaN time keeps a shielded victim shielded and a safe-zone victim protected", function()
+	T.eq(
+		{ Protection.canDamage(st(), st({ respawnShieldUntil = 100 }), 0 / 0) },
+		{ false, "TARGET_SHIELDED" }
+	)
+	T.eq(
+		{ Protection.canDamage(st(), st({ inSafeZone = true, markedUntil = 0 / 0 }), 100) },
+		{ false, "SAFE_ZONE" }
+	)
+end)
+
+T.test("isMarked and isShielded boundaries", function()
+	T.truthy(Protection.isMarked(st({ markedUntil = 101 }), 100))
+	T.falsy(Protection.isMarked(st({ markedUntil = 100 }), 100))
+	T.falsy(Protection.isMarked(st(), 100))
+	T.truthy(Protection.isShielded(st({ respawnShieldUntil = 101 }), 100))
+	T.falsy(Protection.isShielded(st({ respawnShieldUntil = 100 }), 100))
+	T.truthy(Protection.isShielded(st({ newShield = true }), 100))
+	T.falsy(Protection.isShielded(st(), 100))
+end)
+
+T.test("expired Marked status gives no exposure in the safe zone", function()
+	T.eq(
+		{ Protection.canDamage(st(), st({ inSafeZone = true, markedUntil = 100 }), 100) },
+		{ false, "SAFE_ZONE" }
+	)
+	T.eq(
+		{ Protection.canDamage(st(), st({ inSafeZone = true, markedUntil = 50 }), 100) },
+		{ false, "SAFE_ZONE" }
+	)
+end)
+
+T.test("isAggressor retaliation window boundary", function()
+	local log = Combat.recordHit({}, 1, 2, 100)
+	T.falsy(Protection.isAggressor(log, 1, 2, false, 130), "exactly 30 s after being hit")
+	T.truthy(Protection.isAggressor(log, 1, 2, false, 130.1))
+end)
+
+T.test("recordClaim does not mutate its input", function()
+	local h = Protection.recordClaim({}, 1, 2, 1000)
+	local h2 = Protection.recordClaim(h, 3, 4, 2000)
+	T.eq(h, { ["1:2"] = 1000 })
+	T.eq(h2, { ["1:2"] = 1000, ["3:4"] = 2000 })
+end)
