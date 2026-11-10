@@ -1,0 +1,11 @@
+--!strict
+-- Names of the remotes the server creates under ReplicatedStorage.
+return {
+	FOLDER = "Remotes",
+	-- server -> one client: (ledger: Ledger)
+	LedgerSync = "LedgerSync",
+	-- client -> server: (request: table)
+	LedgerAction = "LedgerAction",
+	-- server -> client(s): (code: string, args: { [string]: string }?)
+	Notify = "Notify",
+}
