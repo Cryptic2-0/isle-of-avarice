@@ -51,8 +51,13 @@ function SourceService.start()
 			end
 
 			-- No yielding call between tryCollect and storing the new state.
-			local newState, newLedger, code =
-				Sources.tryCollect(state, LedgerService.get(player), cache, os.clock(), distanceToPlayer(player, part))
+			local newState, newLedger, code = Sources.tryCollect(
+				state,
+				LedgerService.get(player),
+				cache,
+				os.clock(),
+				distanceToPlayer(player, part)
+			)
 			if newLedger == nil then
 				LedgerService.notify(player, code)
 				return

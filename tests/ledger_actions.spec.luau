@@ -11,10 +11,12 @@ T.test("claim, unclaim and discard report the affected card", function()
 		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 1 }) },
 		{ { claimed = { R001 = true }, free = { "R002" } }, "CLAIMED", "R001" }
 	)
-	T.eq(
-		{ LedgerActions.apply({ claimed = { R001 = true }, free = {} }, { kind = "unclaim", cardId = "R001" }) },
-		{ { claimed = {}, free = { "R001" } }, "UNCLAIMED", "R001" }
-	)
+	T.eq({
+		LedgerActions.apply(
+			{ claimed = { R001 = true }, free = {} },
+			{ kind = "unclaim", cardId = "R001" }
+		),
+	}, { { claimed = {}, free = { "R001" } }, "UNCLAIMED", "R001" })
 	T.eq(
 		{ LedgerActions.apply(base(), { kind = "discard", freeIndex = 2 }) },
 		{ { claimed = {}, free = { "R001" } }, "DISCARDED", "R002" }
@@ -29,7 +31,10 @@ T.test("apply does not mutate the input ledger", function()
 end)
 
 T.test("nil ledger is DATA_NOT_LOADED", function()
-	T.eq({ LedgerActions.apply(nil, { kind = "claim", freeIndex = 1 }) }, { nil, "DATA_NOT_LOADED" })
+	T.eq(
+		{ LedgerActions.apply(nil, { kind = "claim", freeIndex = 1 }) },
+		{ nil, "DATA_NOT_LOADED" }
+	)
 end)
 
 T.test("hostile payloads are BAD_REQUEST", function()
@@ -54,7 +59,13 @@ end)
 
 T.test("ledger errors pass through", function()
 	T.eq({ LedgerActions.apply(base(), { kind = "claim", freeIndex = 21 }) }, { nil, "BAD_INDEX" })
-	T.eq({ LedgerActions.apply(base(), { kind = "claim", freeIndex = 0 / 0 }) }, { nil, "BAD_INDEX" })
+	T.eq(
+		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 0 / 0 }) },
+		{ nil, "BAD_INDEX" }
+	)
 	T.eq({ LedgerActions.apply(base(), { kind = "discard", freeIndex = 0 }) }, { nil, "BAD_INDEX" })
-	T.eq({ LedgerActions.apply(base(), { kind = "unclaim", cardId = "R005" }) }, { nil, "NOT_CLAIMED" })
+	T.eq(
+		{ LedgerActions.apply(base(), { kind = "unclaim", cardId = "R005" }) },
+		{ nil, "NOT_CLAIMED" }
+	)
 end)

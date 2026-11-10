@@ -193,12 +193,14 @@ function LedgerUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: an
 	closeButton.Activated:Connect(LedgerUI.toggle)
 	closeButton.Parent = book
 
-	local progress = makeLabel("Progress", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.02, 0.11), 20)
+	local progress =
+		makeLabel("Progress", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.02, 0.11), 20)
 	progress.TextXAlignment = Enum.TextXAlignment.Left
 	progress.Parent = book
 	progressLabel = progress
 
-	local free = makeLabel("FreeCount", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.52, 0.11), 20)
+	local free =
+		makeLabel("FreeCount", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.52, 0.11), 20)
 	free.TextXAlignment = Enum.TextXAlignment.Left
 	free.Parent = book
 	freeLabel = free
@@ -256,7 +258,9 @@ function LedgerUI.render(view: View)
 		return
 	end
 	if progressLabel ~= nil then
-		progressLabel.Text = "Relics: " .. view.progressText .. (if view.complete then " (complete!)" else "")
+		progressLabel.Text = "Relics: "
+			.. view.progressText
+			.. (if view.complete then " (complete!)" else "")
 	end
 	if freeLabel ~= nil then
 		freeLabel.Text = "Free slots: " .. view.freeText

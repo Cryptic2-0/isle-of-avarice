@@ -485,7 +485,8 @@ export type SlotView = {
 	claimed: boolean,
 	spares: number,
 }
-export type FreeView = { index: number, cardId: CardId, name: string, tier: Tier, canClaim: boolean }
+export type FreeView =
+	{ index: number, cardId: CardId, name: string, tier: Tier, canClaim: boolean }
 export type View = {
 	progressText: string,
 	freeText: string,
@@ -558,7 +559,12 @@ function RateLimiter.new(capacity: number, now: number): Bucket
 	return { tokens = capacity, last = now }
 end
 
-function RateLimiter.allow(bucket: Bucket, now: number, capacity: number, refillPerSecond: number): boolean
+function RateLimiter.allow(
+	bucket: Bucket,
+	now: number,
+	capacity: number,
+	refillPerSecond: number
+): boolean
 	local elapsed = math.max(0, now - bucket.last)
 	bucket.tokens = math.min(capacity, bucket.tokens + elapsed * refillPerSecond)
 	bucket.last = math.max(bucket.last, now)
@@ -999,8 +1005,13 @@ function SourceService.start()
 			end
 
 			-- No yielding call between tryCollect and storing the new state.
-			local newState, newLedger, code =
-				Sources.tryCollect(state, LedgerService.get(player), cache, os.clock(), distanceToPlayer(player, part))
+			local newState, newLedger, code = Sources.tryCollect(
+				state,
+				LedgerService.get(player),
+				cache,
+				os.clock(),
+				distanceToPlayer(player, part)
+			)
 			if newLedger == nil then
 				LedgerService.notify(player, code)
 				return
@@ -3528,12 +3539,14 @@ function LedgerUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: an
 	closeButton.Activated:Connect(LedgerUI.toggle)
 	closeButton.Parent = book
 
-	local progress = makeLabel("Progress", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.02, 0.11), 20)
+	local progress =
+		makeLabel("Progress", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.02, 0.11), 20)
 	progress.TextXAlignment = Enum.TextXAlignment.Left
 	progress.Parent = book
 	progressLabel = progress
 
-	local free = makeLabel("FreeCount", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.52, 0.11), 20)
+	local free =
+		makeLabel("FreeCount", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.52, 0.11), 20)
 	free.TextXAlignment = Enum.TextXAlignment.Left
 	free.Parent = book
 	freeLabel = free
@@ -3591,7 +3604,9 @@ function LedgerUI.render(view: View)
 		return
 	end
 	if progressLabel ~= nil then
-		progressLabel.Text = "Relics: " .. view.progressText .. (if view.complete then " (complete!)" else "")
+		progressLabel.Text = "Relics: "
+			.. view.progressText
+			.. (if view.complete then " (complete!)" else "")
 	end
 	if freeLabel ~= nil then
 		freeLabel.Text = "Free slots: " .. view.freeText

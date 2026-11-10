@@ -21,7 +21,10 @@ end)
 
 T.test("add appends and rejects unknown cards", function()
 	T.eq(Ledger.add(Ledger.new(), "R001"), { claimed = {}, free = { "R001" } })
-	T.eq(Ledger.add({ claimed = {}, free = { "R002" } }, "R001"), { claimed = {}, free = { "R002", "R001" } })
+	T.eq(
+		Ledger.add({ claimed = {}, free = { "R002" } }, "R001"),
+		{ claimed = {}, free = { "R002", "R001" } }
+	)
 	T.eq({ Ledger.add(Ledger.new(), "R999") }, { nil, "UNKNOWN_CARD" })
 end)
 
@@ -46,7 +49,10 @@ T.test("claim moves a free card to claimed and shifts the rest", function()
 		Ledger.claim({ claimed = {}, free = { "R001", "R002", "R003" } }, 2),
 		{ claimed = { R002 = true }, free = { "R001", "R003" } }
 	)
-	T.eq({ Ledger.claim({ claimed = { R002 = true }, free = { "R002" } }, 1) }, { nil, "ALREADY_CLAIMED" })
+	T.eq(
+		{ Ledger.claim({ claimed = { R002 = true }, free = { "R002" } }, 1) },
+		{ nil, "ALREADY_CLAIMED" }
+	)
 end)
 
 T.test("claim does not mutate its input", function()
@@ -57,12 +63,19 @@ end)
 
 T.test("claim rejects bad indexes", function()
 	for _, bad in { 0, 2, -1, 1.5, 0 / 0, math.huge, -math.huge } do
-		T.eq({ Ledger.claim({ claimed = {}, free = { "R001" } }, bad) }, { nil, "BAD_INDEX" }, tostring(bad))
+		T.eq(
+			{ Ledger.claim({ claimed = {}, free = { "R001" } }, bad) },
+			{ nil, "BAD_INDEX" },
+			tostring(bad)
+		)
 	end
 end)
 
 T.test("unclaim returns the card to free", function()
-	T.eq(Ledger.unclaim({ claimed = { R002 = true }, free = {} }, "R002"), { claimed = {}, free = { "R002" } })
+	T.eq(
+		Ledger.unclaim({ claimed = { R002 = true }, free = {} }, "R002"),
+		{ claimed = {}, free = { "R002" } }
+	)
 	T.eq({ Ledger.unclaim(Ledger.new(), "R002") }, { nil, "NOT_CLAIMED" })
 	local full = fullFree()
 	full.claimed.R002 = true
@@ -70,9 +83,16 @@ T.test("unclaim returns the card to free", function()
 end)
 
 T.test("discard removes and shifts", function()
-	T.eq(Ledger.discard({ claimed = {}, free = { "R001", "R002" } }, 1), { claimed = {}, free = { "R002" } })
+	T.eq(
+		Ledger.discard({ claimed = {}, free = { "R001", "R002" } }, 1),
+		{ claimed = {}, free = { "R002" } }
+	)
 	for _, bad in { 0, 3, -1, 1.5, 0 / 0, math.huge } do
-		T.eq({ Ledger.discard({ claimed = {}, free = { "R001", "R002" } }, bad) }, { nil, "BAD_INDEX" }, tostring(bad))
+		T.eq(
+			{ Ledger.discard({ claimed = {}, free = { "R001", "R002" } }, bad) },
+			{ nil, "BAD_INDEX" },
+			tostring(bad)
+		)
 	end
 	local input: LedgerT = { claimed = {}, free = { "R001", "R002" } }
 	Ledger.discard(input, 1)
@@ -93,7 +113,10 @@ T.test("isComplete needs every relic claimed", function()
 			claimed[relic.id] = true
 		end
 	end
-	T.falsy(Ledger.isComplete({ claimed = claimed, free = { "R012", "R012" } }), "11 claimed plus spares")
+	T.falsy(
+		Ledger.isComplete({ claimed = claimed, free = { "R012", "R012" } }),
+		"11 claimed plus spares"
+	)
 	claimed.R012 = true
 	T.truthy(Ledger.isComplete({ claimed = claimed, free = {} }), "all 12")
 	T.falsy(Ledger.isComplete(Ledger.new()))

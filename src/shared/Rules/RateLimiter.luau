@@ -10,7 +10,12 @@ function RateLimiter.new(capacity: number, now: number): Bucket
 	return { tokens = capacity, last = now }
 end
 
-function RateLimiter.allow(bucket: Bucket, now: number, capacity: number, refillPerSecond: number): boolean
+function RateLimiter.allow(
+	bucket: Bucket,
+	now: number,
+	capacity: number,
+	refillPerSecond: number
+): boolean
 	local elapsed = math.max(0, now - bucket.last)
 	bucket.tokens = math.min(capacity, bucket.tokens + elapsed * refillPerSecond)
 	bucket.last = math.max(bucket.last, now)

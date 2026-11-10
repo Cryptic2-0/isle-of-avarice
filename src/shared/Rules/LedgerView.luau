@@ -16,7 +16,8 @@ export type SlotView = {
 	claimed: boolean,
 	spares: number,
 }
-export type FreeView = { index: number, cardId: CardId, name: string, tier: Tier, canClaim: boolean }
+export type FreeView =
+	{ index: number, cardId: CardId, name: string, tier: Tier, canClaim: boolean }
 export type View = {
 	progressText: string,
 	freeText: string,

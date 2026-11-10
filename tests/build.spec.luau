@@ -17,7 +17,13 @@ T.test("built place contains the expected scripts", function()
 	)
 	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.World.ClassName, "ModuleScript")
 	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.LedgerView.ClassName, "ModuleScript")
-	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.LedgerUI.ClassName, "ModuleScript")
-	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Toast.ClassName, "ModuleScript")
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.LedgerUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.Toast.ClassName,
+		"ModuleScript"
+	)
 	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")
 end)
