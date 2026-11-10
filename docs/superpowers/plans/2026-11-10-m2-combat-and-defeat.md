@@ -597,7 +597,7 @@ ClaimUI.isOpen(): boolean
 ```
 
 - [ ] **Step 1: Implement `ClaimUI`** — a centred panel above everything else (`DisplayOrder` higher than the Ledger book), with the title, picks left, a seconds countdown that ticks locally from `secondsLeft`, and a grid of every numbered slot. Each cell shows the slot label, the Relic name and the tier colour, face-down style: nothing shows whether the victim holds it. States: `open` — clickable, calls `onPick(slot)`; `taken` — bright, text "Taken!"; `miss` — dark, text "Nothing"; `locked` — greyed out, not clickable. A line under the title reads "Pick the Relics you think they hold. You are not told why a pick misses." A "Done" button hides the screen locally (the server closes the claim on its timer).
-- [ ] **Step 2: Wire `Main.client.luau`** — `ClaimUpdate(payload)` → `ClaimUI.show(...)` or, for nil, `ClaimUI.hide()`; `onPick` fires `ClaimPick`. The Strike `isBlocked` check includes `ClaimUI.isOpen()`.
+- [ ] **Step 2: Wire `Main.client.luau`** — `ClaimUpdate(payload)` → `ClaimUI.show(...)` or, for nil, `ClaimUI.hide()`; `onPick` fires `ClaimPick`. The server's `claim.expiresAt` is on the server's clock, so the client never compares it with its own time: `ClaimUI` counts down from `secondsLeft` and calls `ClaimView.build(victimName, claim, claim.expiresAt - secondsRemaining)`. The Strike `isBlocked` check includes `ClaimUI.isOpen()`.
 - [ ] **Step 3: Add `Client.ClaimUI` to `tests/build.spec.luau`. Run** `bash scripts/check.sh` — Expected: exit 0.
 - [ ] **Step 4: Commit** — `feat: blind-claim screen`
 
