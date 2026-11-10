@@ -2,6 +2,11 @@ local fs = require("@lune/fs")
 local roblox = require("@lune/roblox")
 local T = require("./harness")
 
+T.test("built place sets the fall-destroy height", function()
+	local game = roblox.deserializePlace(fs.readFile("build/IsleOfAvarice.rbxlx"))
+	T.eq(game:GetService("Workspace").FallenPartsDestroyHeight, -60)
+end)
+
 T.test("built place contains the expected scripts", function()
 	local game = roblox.deserializePlace(fs.readFile("build/IsleOfAvarice.rbxlx"))
 	T.eq(game:GetService("ServerScriptService").Server.Main.ClassName, "Script")

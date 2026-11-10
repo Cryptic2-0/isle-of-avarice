@@ -46,14 +46,13 @@ local function buildTerrain(island: Folder)
 	local sea = makePart(
 		island,
 		"Sea",
-		Vector3.new(4000, 2, 4000),
+		Vector3.new(2048, 2, 2048),
 		Vector3.new(0, -3 - 1, 0),
 		SEA,
-		Enum.Material.Water
+		Enum.Material.Glass
 	)
 	sea.Transparency = 0.3
 	sea.CanCollide = false
-	workspace.FallenPartsDestroyHeight = -60
 end
 
 local function buildTallyport(island: Folder)

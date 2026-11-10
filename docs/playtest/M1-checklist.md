@@ -4,7 +4,7 @@ Do the steps in order. For each one, "What to do" is your action and "What shoul
 
 Words used here:
 - The Output window is the log inside Studio. Open it with View, then Output.
-- A cache is a small glowing box on the ground with a tall glowing pillar next to it. You open it to get a Relic card.
+- A cache is a small box on the ground with a tall glowing pillar beside it. The box and the pillar share the Relic's rarity colour. You open it to get a Relic card.
 - Spares are extra cards you hold but have not placed in a slot. The game calls them free slots.
 
 Messages appear at the top of the screen and disappear after about 3 seconds.
@@ -33,7 +33,7 @@ Pillar colours show how rare a Relic is: copper (brown-orange) is common, silver
 
 6. **Claim a Relic**
    - What to do: click the "Claim" button next to your card.
-   - What should happen: its slot lights up in the tier colour and shows the Relic's name. The top of the book now says "Relics: 1 / 12". The card leaves the free list.
+   - What should happen: its slot lights up in the tier colour and the Relic's name becomes bright (before, the slot was dark grey with the name dimmed). The top of the book now says "Relics: 1 / 12". The card leaves the free list.
 
 7. **Try to claim a spare**
    - What to do: wait for the same cache to return and open it again. A cache always gives the same Relic, so you get the one you already claimed. Open the book.

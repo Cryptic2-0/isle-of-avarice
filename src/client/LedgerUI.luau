@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Tiers = require(Shared:WaitForChild("Catalog"):WaitForChild("Tiers"))
 local LedgerView = require(Shared:WaitForChild("Rules"):WaitForChild("LedgerView"))
+local Types = require(Shared:WaitForChild("Types"))
 
 type View = LedgerView.View
 
@@ -23,7 +24,7 @@ local progressLabel: TextLabel? = nil
 local freeLabel: TextLabel? = nil
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 
-local function tierColor(tier: string): Color3
+local function tierColor(tier: Types.Tier): Color3
 	local color = Tiers.info[tier].color
 	return Color3.fromRGB(color.r, color.g, color.b)
 end
@@ -138,7 +139,7 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	discard.AnchorPoint = Vector2.new(1, 0.5)
 	discard.Position = UDim2.new(0.99, 0, 0.5, 0)
 	discard.Activated:Connect(function()
-		actionHandler({ kind = "discard", freeIndex = card.index })
+		actionHandler({ kind = "discard", freeIndex = card.index, cardId = card.cardId })
 	end)
 	discard.Parent = row
 
@@ -147,7 +148,7 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 		claim.AnchorPoint = Vector2.new(1, 0.5)
 		claim.Position = UDim2.new(0.75, 0, 0.5, 0)
 		claim.Activated:Connect(function()
-			actionHandler({ kind = "claim", freeIndex = card.index })
+			actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
 		end)
 		claim.Parent = row
 	end

@@ -5,7 +5,7 @@ type Cache = Types.Cache
 
 local islandHalfSize = 400
 local groundY = 0
-local spawn: Types.Vec3 = { x = 0, y = 3, z = 0 }
+local spawn: Types.Vec3 = { x = 0, y = 0.7, z = 0 }
 local townRadius = 40
 
 -- Cache C0NN holds Relic R0NN.
@@ -30,7 +30,7 @@ for i, xz in layout do
 	local cache: Cache = {
 		id = string.format("C%03d", i),
 		relicId = string.format("R%03d", i),
-		position = { x = xz[1], y = 1.5, z = xz[2] },
+		position = { x = xz[1], y = 1, z = xz[2] },
 	}
 	table.insert(caches, cache)
 	cacheById[cache.id] = cache

@@ -13,9 +13,11 @@ local SourceService = {}
 local function setVisible(part: BasePart, visible: boolean)
 	local transparency = if visible then 0 else 1
 	part.Transparency = transparency
+	part.CanCollide = visible
 	local pillar = part:FindFirstChild("Pillar")
 	if pillar ~= nil and pillar:IsA("BasePart") then
 		pillar.Transparency = transparency
+		pillar.CanCollide = visible
 	end
 	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
 	if prompt ~= nil then

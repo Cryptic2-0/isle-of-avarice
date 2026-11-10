@@ -8,7 +8,7 @@ end
 
 T.test("claim, unclaim and discard report the affected card", function()
 	T.eq(
-		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 1 }) },
+		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 1, cardId = "R001" }) },
 		{ { claimed = { R001 = true }, free = { "R002" } }, "CLAIMED", "R001" }
 	)
 	T.eq({
@@ -18,15 +18,15 @@ T.test("claim, unclaim and discard report the affected card", function()
 		),
 	}, { { claimed = {}, free = { "R001" } }, "UNCLAIMED", "R001" })
 	T.eq(
-		{ LedgerActions.apply(base(), { kind = "discard", freeIndex = 2 }) },
+		{ LedgerActions.apply(base(), { kind = "discard", freeIndex = 2, cardId = "R002" }) },
 		{ { claimed = {}, free = { "R001" } }, "DISCARDED", "R002" }
 	)
 end)
 
 T.test("apply does not mutate the input ledger", function()
 	local input = base()
-	LedgerActions.apply(input, { kind = "claim", freeIndex = 1 })
-	LedgerActions.apply(input, { kind = "discard", freeIndex = 1 })
+	LedgerActions.apply(input, { kind = "claim", freeIndex = 1, cardId = "R001" })
+	LedgerActions.apply(input, { kind = "discard", freeIndex = 1, cardId = "R001" })
 	T.eq(input, base())
 end)
 
@@ -47,6 +47,10 @@ T.test("hostile payloads are BAD_REQUEST", function()
 		{ kind = "claim" },
 		{ kind = "claim", freeIndex = "1" },
 		{ kind = "discard" },
+		{ kind = "claim", freeIndex = 1 },
+		{ kind = "discard", freeIndex = 1 },
+		{ kind = "claim", freeIndex = 1, cardId = 7 },
+		{ kind = "discard", freeIndex = 1, cardId = string.rep("R", 17) },
 		{ kind = "unclaim" },
 		{ kind = "unclaim", cardId = 7 },
 		{ kind = "unclaim", cardId = string.rep("R", 17) },
@@ -58,14 +62,45 @@ T.test("hostile payloads are BAD_REQUEST", function()
 end)
 
 T.test("ledger errors pass through", function()
-	T.eq({ LedgerActions.apply(base(), { kind = "claim", freeIndex = 21 }) }, { nil, "BAD_INDEX" })
 	T.eq(
-		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 0 / 0 }) },
+		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 21, cardId = "R001" }) },
 		{ nil, "BAD_INDEX" }
 	)
-	T.eq({ LedgerActions.apply(base(), { kind = "discard", freeIndex = 0 }) }, { nil, "BAD_INDEX" })
+	T.eq(
+		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 0 / 0, cardId = "R001" }) },
+		{ nil, "BAD_INDEX" }
+	)
+	T.eq(
+		{ LedgerActions.apply(base(), { kind = "claim", freeIndex = 1.5, cardId = "R001" }) },
+		{ nil, "BAD_INDEX" }
+	)
+	T.eq(
+		{ LedgerActions.apply(base(), { kind = "discard", freeIndex = 0, cardId = "R001" }) },
+		{ nil, "BAD_INDEX" }
+	)
 	T.eq(
 		{ LedgerActions.apply(base(), { kind = "unclaim", cardId = "R005" }) },
 		{ nil, "NOT_CLAIMED" }
 	)
+end)
+
+T.test("a cardId that does not match the row is BAD_INDEX and changes nothing", function()
+	local input = base()
+	T.eq(
+		{ LedgerActions.apply(input, { kind = "claim", freeIndex = 1, cardId = "R002" }) },
+		{ nil, "BAD_INDEX" }
+	)
+	T.eq(
+		{ LedgerActions.apply(input, { kind = "discard", freeIndex = 2, cardId = "R001" }) },
+		{ nil, "BAD_INDEX" }
+	)
+	T.eq(input, base())
+end)
+
+T.test("a double discard cannot remove the next card", function()
+	local request = { kind = "discard", freeIndex = 1, cardId = "R001" }
+	local after = LedgerActions.apply(base(), request)
+	T.eq(after, { claimed = {}, free = { "R002" } })
+	T.eq({ LedgerActions.apply(after, request) }, { nil, "BAD_INDEX" })
+	T.eq(after, { claimed = {}, free = { "R002" } })
 end)

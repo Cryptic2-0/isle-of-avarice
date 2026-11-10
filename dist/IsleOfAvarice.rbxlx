@@ -203,7 +203,7 @@ type Cache = Types.Cache
 
 local islandHalfSize = 400
 local groundY = 0
-local spawn: Types.Vec3 = { x = 0, y = 3, z = 0 }
+local spawn: Types.Vec3 = { x = 0, y = 0.7, z = 0 }
 local townRadius = 40
 
 -- Cache C0NN holds Relic R0NN.
@@ -228,7 +228,7 @@ for i, xz in layout do
 	local cache: Cache = {
 		id = string.format("C%03d", i),
 		relicId = string.format("R%03d", i),
-		position = { x = xz[1], y = 1.5, z = xz[2] },
+		position = { x = xz[1], y = 1, z = xz[2] },
 	}
 	table.insert(caches, cache)
 	cacheById[cache.id] = cache
@@ -420,6 +420,11 @@ local MAX_CARD_ID_LENGTH = 16
 local LedgerActions = {}
 
 -- Validates a raw client request and applies it to the ledger.
+-- Request shapes:
+--   { kind = "claim" | "discard", freeIndex = number, cardId = string }
+--   { kind = "unclaim", cardId = string }
+-- claim and discard carry the card the player saw on that row; if the free list has
+-- shifted (a double click), the card at freeIndex differs and the request is BAD_INDEX.
 -- Success: new ledger, "CLAIMED" | "UNCLAIMED" | "DISCARDED", affected card id.
 -- Failure: nil, error code, nil. Never errors on hostile input.
 function LedgerActions.apply(ledger: Ledger?, raw: any): (Ledger?, string, CardId?)
@@ -435,7 +440,14 @@ function LedgerActions.apply(ledger: Ledger?, raw: any): (Ledger?, string, CardI
 		if type(freeIndex) ~= "number" then
 			return nil, "BAD_REQUEST", nil
 		end
+		local shownCardId = raw.cardId
+		if type(shownCardId) ~= "string" or #shownCardId > MAX_CARD_ID_LENGTH then
+			return nil, "BAD_REQUEST", nil
+		end
 		local cardId = ledger.free[freeIndex]
+		if cardId ~= shownCardId then
+			return nil, "BAD_INDEX", nil
+		end
 		local result, err
 		if kind == "claim" then
 			result, err = Ledger.claim(ledger, freeIndex)
@@ -939,11 +951,19 @@ local LedgerService = require(script.Parent.LedgerService)
 local SourceService = require(script.Parent.SourceService)
 local WorldBuilder = require(script.Parent.WorldBuilder)
 
-WorldBuilder.build()
-LedgerService.start()
-SourceService.start()
+-- A failing step is reported but does not stop the steps after it.
+local function runStep(name: string, step: () -> ())
+	local ok, trace = xpcall(step, debug.traceback)
+	if not ok then
+		warn(`[IsleOfAvarice] {name} failed: {trace}`)
+	end
+end
+
+runStep("WorldBuilder.build", WorldBuilder.build)
+runStep("LedgerService.start", LedgerService.start)
+runStep("SourceService.start", SourceService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
-DataService.start()
+runStep("DataService.start", DataService.start)
 
 print("[IsleOfAvarice] server started")
 ]]></string>
@@ -967,9 +987,11 @@ local SourceService = {}
 local function setVisible(part: BasePart, visible: boolean)
 	local transparency = if visible then 0 else 1
 	part.Transparency = transparency
+	part.CanCollide = visible
 	local pillar = part:FindFirstChild("Pillar")
 	if pillar ~= nil and pillar:IsA("BasePart") then
 		pillar.Transparency = transparency
+		pillar.CanCollide = visible
 	end
 	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
 	if prompt ~= nil then
@@ -3212,14 +3234,13 @@ local function buildTerrain(island: Folder)
 	local sea = makePart(
 		island,
 		"Sea",
-		Vector3.new(4000, 2, 4000),
+		Vector3.new(2048, 2, 2048),
 		Vector3.new(0, -3 - 1, 0),
 		SEA,
-		Enum.Material.Water
+		Enum.Material.Glass
 	)
 	sea.Transparency = 0.3
 	sea.CanCollide = false
-	workspace.FallenPartsDestroyHeight = -60
 end
 
 local function buildTallyport(island: Folder)
@@ -3351,6 +3372,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Tiers = require(Shared:WaitForChild("Catalog"):WaitForChild("Tiers"))
 local LedgerView = require(Shared:WaitForChild("Rules"):WaitForChild("LedgerView"))
+local Types = require(Shared:WaitForChild("Types"))
 
 type View = LedgerView.View
 
@@ -3369,7 +3391,7 @@ local progressLabel: TextLabel? = nil
 local freeLabel: TextLabel? = nil
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 
-local function tierColor(tier: string): Color3
+local function tierColor(tier: Types.Tier): Color3
 	local color = Tiers.info[tier].color
 	return Color3.fromRGB(color.r, color.g, color.b)
 end
@@ -3484,7 +3506,7 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	discard.AnchorPoint = Vector2.new(1, 0.5)
 	discard.Position = UDim2.new(0.99, 0, 0.5, 0)
 	discard.Activated:Connect(function()
-		actionHandler({ kind = "discard", freeIndex = card.index })
+		actionHandler({ kind = "discard", freeIndex = card.index, cardId = card.cardId })
 	end)
 	discard.Parent = row
 
@@ -3493,7 +3515,7 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 		claim.AnchorPoint = Vector2.new(1, 0.5)
 		claim.Position = UDim2.new(0.75, 0, 0.5, 0)
 		claim.Activated:Connect(function()
-			actionHandler({ kind = "claim", freeIndex = card.index })
+			actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
 		end)
 		claim.Parent = row
 	end
@@ -3748,5 +3770,12 @@ return Toast
         </Item>
       </Item>
     </Item>
+  </Item>
+  <Item class="Workspace" referent="30">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <float name="FallenPartsDestroyHeight">-60</float>
+      <bool name="NeedsPivotMigration">false</bool>
+    </Properties>
   </Item>
 </roblox>

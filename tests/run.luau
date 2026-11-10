@@ -11,6 +11,10 @@ for _, file in fs.readDir("tests") do
 	end
 end
 table.sort(specs)
+if #specs == 0 then
+	print("No spec files found in tests/ (expected tests/*.spec.luau)")
+	process.exit(1)
+end
 
 for _, name in specs do
 	require("./" .. name)
