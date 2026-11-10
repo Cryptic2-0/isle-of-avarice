@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 2)
+**Date:** 2026-11-10 (revision 3)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -29,7 +29,7 @@ system. We take the **mechanics**. We do not copy the content.
 | A book with numbered slots to complete | A clear, visible goal for every player |
 | A limited number of free slots | Forces choices about what to carry |
 | Each rare card has a cap on copies | Players must trade or fight for it, not just grind |
-| Dying costs you your collection | Every fight matters |
+| Defeat puts your collection at risk | Every fight matters |
 | Six power categories on a hexagon, learned at 100 / 80 / 60 / 40% | Real builds, real weaknesses |
 
 ### What we do not copy (content)
@@ -85,39 +85,58 @@ defeat a holder.
 
 The cap blocks only new copies. A player who joins a server already
 holding a card keeps it. Research showed that a cap with no release valve
-becomes a permanent monopoly; here the death rule (3.4) and players
-leaving the server are the release valves.
+becomes a permanent monopoly. Here the release valves are trade, the
+blind claim (3.4), holders leaving the server, and the rule that Crown
+Relics cannot be Vaulted.
 
 ### 3.3 Relics cannot be stolen
 
 No Edict or ability can take a Relic from another player. Relics change
 hands only two ways: **trade**, or **defeating the holder**.
 
-### 3.4 Defeat and spoils
+### 3.4 Defeat and the blind claim
 
-When one player defeats another outside a safe zone:
+**The Vault.** Each player marks up to 3 of their Relics as Vaulted.
+Vaulted Relics can never be taken. The Vault can be changed only in a safe
+zone. Crown-tier Relics cannot be Vaulted, so the rarest cards always stay
+in play.
 
-1. **The killer takes spoils.** From the victim's Relics, the killer
-   receives up to a fixed number per tier:
+**When one player defeats another outside a safe zone,** the killer makes
+a **blind claim**:
 
-   | Tier | Killer takes up to |
+1. The killer sees the victim's Ledger face-down: all 50 numbered slots,
+   with nothing to show which ones the victim holds.
+2. The killer has **5 picks** and 30 seconds. Each pick names one slot.
+3. If the victim holds that Relic (claimed or spare) and it is not
+   Vaulted, the killer takes one copy. Otherwise the pick is wasted. The
+   killer is not told why a pick missed.
+4. The killer can take only a limited number per tier in one claim:
+
+   | Tier | Killer takes at most |
    |---|---|
-   | Copper | 3 |
-   | Silver | 2 |
-   | Gold | 1 |
-   | Platinum | 1 |
    | Crown | 1 |
+   | Platinum | 1 |
+   | Gold | 2 |
+   | Silver | 3 |
+   | Copper | 3 |
 
-   Relics the killer is missing are chosen first, rarest first. Spoils go
-   into the killer's free slots; anything that does not fit is left
-   behind.
-2. **Everything else is lost.** All the victim's remaining Relics return
-   to the island. Their sources unseal, so anyone can earn them again.
-3. **The victim keeps** their Path levels, abilities, Coin and Edicts, and
-   respawns in Tallyport with an empty Ledger.
+   Once a tier's limit is reached, its slots can no longer be picked.
+5. Taken Relics go into the killer's free slots. A pick with no free slot
+   to receive it is wasted.
 
-Defeat by a creature or a fall is gentler: spares are lost, claimed Relics
-are kept. *(See open question 1.)*
+Slot numbers are public, so a pick is an informed guess: the killer
+chooses which Relic to bet on, not whether the victim has it. Audit and
+Summons (3.6) are how a hunter learns what a target holds.
+
+**What the victim keeps and loses, on any defeat (player or creature):**
+
+- Keeps every Relic that was not taken. Nothing else is removed from the
+  Ledger's Relics.
+- Keeps all Coin.
+- Keeps Path levels and abilities.
+- Loses one third (rounded down) of their non-Relic cards, such as
+  Edicts, chosen at random. These are destroyed, not given to the killer.
+- Respawns in Tallyport.
 
 All numbers above are starting values to be tuned in play tests.
 
@@ -130,8 +149,8 @@ rules address them:
 - **Safe zone.** No damage in Tallyport.
 - **New-player shield.** A player cannot be attacked, or attack, until
   they have claimed 3 Relics or chosen to drop the shield.
-- **Empty-handed players give nothing.** A victim with no Relics yields no
-  spoils, so there is no reason to camp the respawn.
+- **Repeat-kill limit.** A killer gets no blind claim against the same
+  victim more than once per hour.
 - **Respawn shield.** 60 seconds of immunity after respawning.
 - **Combat logging.** Leaving the game within 30 seconds of taking or
   dealing player damage counts as a defeat by the last attacker.
@@ -165,7 +184,7 @@ Robux, Roblox requires the odds to be shown.
 - **Creatures:** island beasts that drop cards when defeated.
 - **Shops:** Copper Relics and Edict packs for Coin.
 - **Trading:** a two-sided window where both players must confirm.
-- **Spoils:** defeating a holder (3.4).
+- **Blind claim:** defeating a holder (3.4).
 
 Coin is a plain number, not a card. It comes from trials, creatures and
 selling spares.
@@ -242,15 +261,15 @@ lost on defeat.
 |---|---|
 | Code sync | Rojo 7.x |
 | Tool versions | Rokit |
-| Packages | Wally |
+| Packages | None yet. ProfileStore is copied into the repo. Wally is added when a second library is needed |
 | Language | Luau, strict types |
 | Saved data | ProfileStore (session locking prevents card duplication) |
 | Unit tests | Lune, outside Roblox |
 | Lint and format | Selene, StyLua |
 | Checks on every push | GitHub Actions: lint, tests, Rojo build |
 
-Rojo, StyLua and Selene are confirmed installable in the cloud workspace.
-Lune will be confirmed during M0.
+Rojo, Lune, StyLua and Selene are confirmed installable in the cloud
+workspace.
 
 ### 5.2 Code layout
 
@@ -262,7 +281,7 @@ src/
     Rules/                  pure game rules, no Roblox APIs
       Ledger.luau           add / remove / move / claim / isComplete
       Scarcity.luau         cap checks
-      Spoils.luau           who gets what on a defeat
+      BlindClaim.luau       picks, tier limits, Vault, defeat losses
       Paths.luau            hexagon distance, learning rate, unlocks
       Combat.luau           damage, cooldown and status maths
       TradeRules.luau       validate and apply a swap
@@ -293,7 +312,7 @@ tests/                      Lune unit tests for src/shared/Rules
    confirmed on the server with shape casts.
 2. **Game rules are pure functions.** Everything in `Rules/` takes plain
    data and returns plain data, so it can be unit-tested without Roblox.
-3. **Card moves are atomic.** Spoils and trades fully happen or do not
+3. **Card moves are atomic.** Claims and trades fully happen or do not
    happen. Nothing can create or destroy a card by accident, including
    when a player leaves mid-fight or a server shuts down.
 4. **Content is data.** A new Relic or ability is a catalog entry.
@@ -327,7 +346,7 @@ plan.
 |---|---|---|
 | M0 | Project skeleton | Open the built place in Studio and walk on an empty island |
 | M1 | **The Ledger** | Find 12 Relics, fill the book, leave and return with it saved |
-| M2 | Combat and defeat | Fight another player; spoils, loss, scarcity caps and all protections work |
+| M2 | Combat and defeat | Fight another player; the Vault, blind claim, scarcity caps and all protections work |
 | M3 | The Six Paths | Choose a Calling, level Paths at different rates, equip 4 of 18 abilities |
 | M4 | Creatures and trials | Earn experience and higher-tier Relics from the island |
 | M5 | Edicts and trading | Track holders, hide, teleport, and swap cards safely |
@@ -344,17 +363,9 @@ The first build plan covers **M0 and M1**.
 
 ## 7. Open questions
 
-1. **How much does a defeat cost?** The draft follows the owner's rule: a
-   player killed by another player loses every Relic. Research flags this
-   as the biggest reason players quit such games. Options:
-   - **A. Full wipe** (as drafted).
-   - **B. Full wipe, plus a Vault:** each player locks 3 Relics that can
-     never be lost.
-   - **C. Spares only:** claimed Relics are safe; only free-slot Relics
-     are taken or lost.
-2. **Path names and styles** (Fang, Gale, Ember, Mire, Mend, Bulwark) and
-   all other names can be changed.
-3. **Research gaps.** No Reddit threads were found, and several sites
+1. **Blind-claim numbers.** 5 picks, the per-tier limits, the 3-Relic
+   Vault and the one-third loss of non-Relic cards are first guesses.
+2. **Research gaps.** No Reddit threads were found, and several sites
    (the official Roblox docs among them) were blocked in the workspace, so
    Roblox policy points rest on search snippets and need checking before
    launch.
