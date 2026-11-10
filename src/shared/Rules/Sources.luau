@@ -27,7 +27,7 @@ function Sources.isAvailable(state: SourceState, cacheId: string, now: number): 
 	return availableAt ~= nil and now >= availableAt
 end
 
--- Checks run in order: data, distance, cache, free slots. A failure returns the
+-- Checks run in order: data, locked ledger, distance, cache, sealed, free slots. A failure returns the
 -- same state untouched, so a refused attempt never consumes the cache.
 -- On success the fourth value is the time the cache becomes available again.
 function Sources.tryCollect(
@@ -35,10 +35,15 @@ function Sources.tryCollect(
 	ledger: Ledger?,
 	cache: Cache,
 	now: number,
-	distance: number
+	distance: number,
+	sealed: boolean,
+	locked: boolean
 ): (SourceState, Ledger?, string, number?)
 	if ledger == nil then
 		return state, nil, "DATA_NOT_LOADED", nil
+	end
+	if locked then
+		return state, nil, "LEDGER_LOCKED", nil
 	end
 	if not (distance <= Sources.MAX_DISTANCE) then
 		return state, nil, "TOO_FAR", nil
@@ -49,6 +54,9 @@ function Sources.tryCollect(
 	local relic = Relics.byId[cache.relicId]
 	if relic == nil then
 		return state, nil, "CACHE_EMPTY", nil
+	end
+	if sealed then
+		return state, nil, "SEALED", nil
 	end
 	local result, err = Ledger.add(ledger, cache.relicId)
 	if result == nil then
