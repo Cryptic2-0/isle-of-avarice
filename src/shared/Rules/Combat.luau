@@ -26,7 +26,7 @@ end
 function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
 	local lookLength =
 		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
-	if lookLength == 0 then
+	if not (lookLength > 0 and lookLength < math.huge) then
 		return nil
 	end
 	local lookX = attacker.look.x / lookLength
@@ -38,17 +38,17 @@ function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
 		if other.id == attacker.id then
 			continue
 		end
-		if math.abs(other.position.y - attacker.position.y) > Combat.STRIKE_MAX_HEIGHT then
+		if not (math.abs(other.position.y - attacker.position.y) <= Combat.STRIKE_MAX_HEIGHT) then
 			continue
 		end
 		local dx = other.position.x - attacker.position.x
 		local dz = other.position.z - attacker.position.z
 		local distance = math.sqrt(dx * dx + dz * dz)
-		if distance > Combat.STRIKE_RANGE then
+		if not (distance <= Combat.STRIKE_RANGE) then
 			continue
 		end
 		-- Standing on the attacker counts as in the arc.
-		if distance > 0 and (dx * lookX + dz * lookZ) / distance < Combat.STRIKE_MIN_DOT then
+		if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
 			continue
 		end
 		if distance < bestDistance then

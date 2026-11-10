@@ -35,6 +35,26 @@ T.test("pickTarget edge cases", function()
 	T.eq(Combat.pickTarget(me, { at(2, 0, 0, 0) }), 2, "same position is in the arc")
 end)
 
+T.test("pickTarget ignores the y axis of look", function()
+	local tilted = { id = 1, position = me.position, look = { x = 0, y = 5, z = -1 } }
+	T.eq(Combat.pickTarget(tilted, { at(2, 0, 0, -5) }), 2, "tilted look still hits ahead")
+	local vertical = { id = 1, position = me.position, look = { x = 0, y = 1, z = 0 } }
+	T.eq(Combat.pickTarget(vertical, { at(2, 0, 0, -5) }), nil, "purely vertical look")
+end)
+
+T.test("pickTarget fails closed on NaN and infinite input", function()
+	local nan = 0 / 0
+	local ahead = { at(2, 0, 0, -5) }
+	local nanLook = { id = 1, position = me.position, look = { x = nan, y = 0, z = -1 } }
+	T.eq(Combat.pickTarget(nanLook, ahead), nil, "NaN look")
+	local infLook = { id = 1, position = me.position, look = { x = 0, y = 0, z = math.huge } }
+	T.eq(Combat.pickTarget(infLook, { at(2, 0, 0, 5) }), nil, "infinite look")
+	local nanPos = { id = 1, position = { x = nan, y = 0, z = 0 }, look = me.look }
+	T.eq(Combat.pickTarget(nanPos, ahead), nil, "NaN attacker position")
+	T.eq(Combat.pickTarget(me, { at(2, nan, 0, -5) }), nil, "NaN candidate position")
+	T.eq(Combat.pickTarget(me, { at(2, 0, nan, -5) }), nil, "NaN candidate height")
+end)
+
 T.test("canStrike honours the cooldown", function()
 	T.truthy(Combat.canStrike(nil, 10))
 	T.falsy(Combat.canStrike(10, 10.79))
