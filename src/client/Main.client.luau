@@ -15,6 +15,7 @@ local StatusView = require(Rules:WaitForChild("StatusView"))
 local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
 local LedgerUI = require(script.Parent.LedgerUI)
+local AbilityBar = require(script.Parent.AbilityBar)
 local PathUI = require(script.Parent.PathUI)
 local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
@@ -37,6 +38,8 @@ local pathSync = remotes:WaitForChild(Net.PathSync) :: RemoteEvent
 local pickCalling = remotes:WaitForChild(Net.PickCalling) :: RemoteEvent
 local changeCalling = remotes:WaitForChild(Net.ChangeCalling) :: RemoteEvent
 local loadoutAction = remotes:WaitForChild(Net.LoadoutAction) :: RemoteEvent
+local castAbility = remotes:WaitForChild(Net.CastAbility) :: RemoteEvent
+local abilityCooldown = remotes:WaitForChild(Net.AbilityCooldown) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -64,8 +67,13 @@ PathUI.mount(playerGui, {
 		loadoutAction:FireServer(request)
 	end,
 })
+AbilityBar.mount(playerGui, function(slot)
+	castAbility:FireServer(slot)
+end)
 CombatController.start(function()
 	strikeRemote:FireServer()
+end, function(slot)
+	castAbility:FireServer(slot)
 end, function()
 	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen()
 end)
@@ -99,7 +107,9 @@ local pathsAt = 0
 local function renderPaths()
 	if lastPaths ~= nil then
 		local now = lastServerNow + (os.clock() - pathsAt)
-		PathUI.render(PathView.build(lastPaths, lastCoin, now))
+		local view = PathView.build(lastPaths, lastCoin, now)
+		PathUI.render(view)
+		AbilityBar.render(view.slots)
 	end
 end
 pathSync.OnClientEvent:Connect(function(progress, coin, serverNow)
@@ -108,6 +118,9 @@ pathSync.OnClientEvent:Connect(function(progress, coin, serverNow)
 	lastServerNow = serverNow
 	pathsAt = os.clock()
 	renderPaths()
+end)
+abilityCooldown.OnClientEvent:Connect(function(slot, seconds)
+	AbilityBar.startCooldown(slot, seconds)
 end)
 task.spawn(function()
 	while true do

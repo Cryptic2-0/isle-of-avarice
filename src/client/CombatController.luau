@@ -10,7 +10,11 @@ local FLASH_SECONDS = 0.15
 
 local CombatController = {}
 
-function CombatController.start(strike: () -> (), isBlocked: () -> boolean)
+function CombatController.start(
+	strike: () -> (),
+	cast: (slot: number) -> (),
+	isBlocked: () -> boolean
+)
 	local lastStrike = -math.huge
 	ContextActionService:BindAction("Strike", function(_name, state, _input)
 		if state == Enum.UserInputState.Begin and not isBlocked() then
@@ -24,6 +28,17 @@ function CombatController.start(strike: () -> (), isBlocked: () -> boolean)
 		return Enum.ContextActionResult.Pass
 	end, true, Enum.UserInputType.MouseButton1, Enum.KeyCode.F)
 	ContextActionService:SetTitle("Strike", "Strike")
+
+	-- Keys 1-4 cast ability slots; the bar itself is the touch control. The server decides.
+	local keys = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four }
+	for slot, key in keys do
+		ContextActionService:BindAction("Cast" .. slot, function(_name, state, _input)
+			if state == Enum.UserInputState.Begin and not isBlocked() then
+				cast(slot)
+			end
+			return Enum.ContextActionResult.Pass
+		end, false, key)
+	end
 end
 
 -- A brief white flash on a character that was hit.
