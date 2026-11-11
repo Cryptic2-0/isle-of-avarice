@@ -24,4 +24,16 @@ return {
 	ClaimUpdate = "ClaimUpdate",
 	-- client -> server: (slot: number)
 	ClaimPick = "ClaimPick",
+	-- server -> one client: (progress: PathProgress, coin: number, now: number) now = server os.time()
+	PathSync = "PathSync",
+	-- client -> server: (pathId: string)
+	PickCalling = "PickCalling",
+	-- client -> server: (pathId: string)
+	ChangeCalling = "ChangeCalling",
+	-- client -> server: (request: { slot: number, abilityId: string })
+	LoadoutAction = "LoadoutAction",
+	-- client -> server: (slot: number)
+	CastAbility = "CastAbility",
+	-- server -> one client: (slot: number, seconds: number)
+	AbilityCooldown = "AbilityCooldown",
 }
