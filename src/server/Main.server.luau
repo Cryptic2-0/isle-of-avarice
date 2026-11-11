@@ -1,4 +1,5 @@
 --!strict
+local AbilityService = require(script.Parent.AbilityService)
 local ClaimService = require(script.Parent.ClaimService)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
@@ -31,6 +32,7 @@ end)
 runStep("CombatService.start", function()
 	CombatService.start(PathService.get, PathService.grant)
 end)
+runStep("AbilityService.start", AbilityService.start)
 runStep("ClaimService.start", ClaimService.start)
 runStep("PathService.start", PathService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
