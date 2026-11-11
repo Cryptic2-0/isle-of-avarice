@@ -459,6 +459,26 @@ function PathUI.render(view: View)
 		callingLabel.Text = view.callingText
 	end
 
+	-- A pending Calling change only stays open while the new view still allows it.
+	local dialog = confirm
+	local question = confirmQuestion
+	if pendingChange ~= "" and dialog ~= nil and question ~= nil then
+		local pending: RowView? = nil
+		for _, row in view.rows do
+			if row.path == pendingChange then
+				pending = row
+			end
+		end
+		if pending == nil or pending.changeText == "" or not pending.canChange then
+			dialog.Visible = false
+			pendingChange = ""
+		else
+			question.Text = "Change your Calling to "
+				.. pending.name
+				.. "? Levels are kept; learning rates change."
+		end
+	end
+
 	clearRows(strip)
 	for _, slot in view.slots do
 		local empty = slot.abilityId == ""
