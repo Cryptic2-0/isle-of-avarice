@@ -71,3 +71,24 @@ T.test("hit log credits the latest attacker inside the window", function()
 	T.eq(Combat.clear(log, 2), {})
 	T.eq(Combat.creditFor(log, 2, 101, 15), 1, "clear did not mutate")
 end)
+
+T.test("pickTarget honours a custom range", function()
+	T.eq(Combat.pickTarget(me, { at(2, 0, 0, -5) }, 4), nil)
+	T.eq(Combat.pickTarget(me, { at(2, 0, 0, -5) }, 5), 2)
+end)
+
+T.test("pickTarget prefers a taunter that is in reach", function()
+	T.eq(
+		Combat.pickTarget(me, { at(2, 0, 0, -3), at(7, 0, 0, -6) }, nil, 7),
+		7,
+		"taunter in reach wins"
+	)
+	T.eq(
+		Combat.pickTarget(me, { at(2, 0, 0, -3), at(7, 0, 0, -9) }, nil, 7),
+		2,
+		"taunter out of reach"
+	)
+	T.eq(Combat.pickTarget(me, { at(2, 0, 0, -3), at(7, 0, 0, 6) }, nil, 7), 2, "taunter behind")
+	T.eq(Combat.pickTarget(me, { at(2, 0, 0, -3), at(7, 0, 9, -6) }, nil, 7), 2, "taunter too high")
+	T.eq(Combat.pickTarget(me, { at(1, 0, 0, -3), at(2, 0, 0, -6) }, nil, 1), 2, "taunter is self")
+end)

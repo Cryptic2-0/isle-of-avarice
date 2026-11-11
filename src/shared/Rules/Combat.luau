@@ -3,7 +3,7 @@ local Types = require("../Types")
 
 type Vec3 = Types.Vec3
 
-export type Fighter = { id: number, position: Vec3, look: Vec3 }
+export type Fighter = { id: number, position: Vec3, look: Vec3, health: number? }
 -- key: tostring(victim id)
 export type HitLog = { [string]: { attackerId: number, at: number } }
 
@@ -23,7 +23,13 @@ function Combat.canStrike(lastStrikeAt: number?, now: number): boolean
 end
 
 -- Distance and direction ignore the y axis. Returns the id of the nearest fighter in reach and arc.
-function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
+-- range defaults to STRIKE_RANGE. A taunter that passes every check wins over a nearer fighter.
+function Combat.pickTarget(
+	attacker: Fighter,
+	others: { Fighter },
+	range: number?,
+	taunter: number?
+): number?
 	local lookLength =
 		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
 	if not (lookLength > 0 and lookLength < math.huge) then
@@ -32,6 +38,7 @@ function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
 	local lookX = attacker.look.x / lookLength
 	local lookZ = attacker.look.z / lookLength
 
+	local reach = range or Combat.STRIKE_RANGE
 	local bestId: number? = nil
 	local bestDistance = math.huge
 	for _, other in others do
@@ -44,12 +51,15 @@ function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
 		local dx = other.position.x - attacker.position.x
 		local dz = other.position.z - attacker.position.z
 		local distance = math.sqrt(dx * dx + dz * dz)
-		if not (distance <= Combat.STRIKE_RANGE) then
+		if not (distance <= reach) then
 			continue
 		end
 		-- Standing on the attacker counts as in the arc.
 		if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
 			continue
+		end
+		if taunter ~= nil and other.id == taunter then
+			return other.id
 		end
 		if distance < bestDistance then
 			bestDistance = distance
