@@ -1,4 +1,5 @@
 --!strict
+local ClaimService = require(script.Parent.ClaimService)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
@@ -21,6 +22,7 @@ runStep("SourceService.start", SourceService.start)
 runStep("VaultService.start", VaultService.start)
 runStep("ProtectionService.start", ProtectionService.start)
 runStep("CombatService.start", CombatService.start)
+runStep("ClaimService.start", ClaimService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 
