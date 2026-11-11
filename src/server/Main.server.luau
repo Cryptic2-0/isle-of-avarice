@@ -6,6 +6,7 @@ local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
 local ProtectionService = require(script.Parent.ProtectionService)
 local SourceService = require(script.Parent.SourceService)
+local StatusService = require(script.Parent.StatusService)
 local VaultService = require(script.Parent.VaultService)
 local WorldBuilder = require(script.Parent.WorldBuilder)
 
@@ -22,7 +23,14 @@ runStep("LedgerService.start", LedgerService.start)
 runStep("SourceService.start", SourceService.start)
 runStep("VaultService.start", VaultService.start)
 runStep("ProtectionService.start", ProtectionService.start)
-runStep("CombatService.start", CombatService.start)
+-- StatusService never requires CombatService, and CombatService never requires PathService
+-- (PathService -> ClaimService -> CombatService): the functions are passed in here instead.
+runStep("StatusService.start", function()
+	StatusService.start(CombatService.damage, CombatService.hitPost)
+end)
+runStep("CombatService.start", function()
+	CombatService.start(PathService.get, PathService.grant)
+end)
 runStep("ClaimService.start", ClaimService.start)
 runStep("PathService.start", PathService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.

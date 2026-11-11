@@ -1,13 +1,26 @@
 --!strict
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
+local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local Types = require(ReplicatedStorage.Shared.Types)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
 local ProtectionService = require(script.Parent.ProtectionService)
+local StatusService = require(script.Parent.StatusService)
+
+type DamageOpts = { reflected: boolean?, tick: boolean? }
+
+local POST_TAG = "TrainingPost"
+local POST_XP = 10
+local POST_XP_GAP = 0.5 -- seconds between paid hits, per post per attacker
+local POST_FLASH_SECONDS = 0.15
+local POST_FLASH_COLOR = Color3.fromRGB(255, 235, 150)
 
 local CombatService = {}
 
@@ -16,6 +29,15 @@ local hitLog: Combat.HitLog = {}
 local lastStrike: { [Player]: number } = {}
 local defeatCallbacks: { (killer: Player, victim: Player) -> () } = {}
 local hitFx: RemoteEvent
+-- Last paid hit per attacker per post id, on os.clock().
+local postHits: { [Player]: { [number]: number } } = {}
+local postBaseColor: { [BasePart]: Color3 } = {}
+local postFlashToken: { [BasePart]: number } = {}
+
+-- PathService.get and PathService.grant, passed in by Main.server.luau. PathService
+-- requires ClaimService, which requires this module, so requiring it here would be a cycle.
+local getPaths: ((Player) -> Types.PathProgress?)? = nil
+local grantXp: ((Player, string, number) -> ())? = nil
 
 -- The Humanoid and HumanoidRootPart of a living character, or nil.
 local function living(player: Player): (Humanoid?, BasePart?)
@@ -34,14 +56,50 @@ local function living(player: Player): (Humanoid?, BasePart?)
 	return humanoid, root
 end
 
-local function fighterOf(id: number, root: BasePart): Combat.Fighter
+local function fighterOf(id: number, root: BasePart, health: number?): Combat.Fighter
 	local p = root.Position
 	local look = root.CFrame.LookVector
 	return {
 		id = id,
 		position = { x = p.X, y = p.Y, z = p.Z },
 		look = { x = look.X, y = look.Y, z = look.Z },
+		health = health,
 	}
+end
+
+-- Every training post part in the world, by post id.
+local function postParts(): { [number]: BasePart }
+	local parts: { [number]: BasePart } = {}
+	for _, instance in CollectionService:GetTagged(POST_TAG) do
+		local id = instance:GetAttribute("PostId")
+		if
+			instance:IsA("BasePart")
+			and instance:IsDescendantOf(workspace)
+			and type(id) == "number"
+			and World.postIndex(id) ~= nil
+		then
+			parts[id] = instance
+		end
+	end
+	return parts
+end
+
+-- A short flash on the post part. A newer flash takes over the restore.
+local function flashPost(postId: number)
+	local part = postParts()[postId]
+	if part == nil then
+		return
+	end
+	local base = postBaseColor[part] or part.Color
+	postBaseColor[part] = base
+	local token = (postFlashToken[part] or 0) + 1
+	postFlashToken[part] = token
+	part.Color = POST_FLASH_COLOR
+	task.delay(POST_FLASH_SECONDS, function()
+		if postFlashToken[part] == token then
+			part.Color = base
+		end
+	end)
 end
 
 -- Runs every defeat callback now, in this thread, so a callback can take a DataService hold
@@ -69,6 +127,158 @@ local function creditDefeat(victim: Player, windowSeconds: number)
 	end
 end
 
+function CombatService.isPost(id: number): boolean
+	return World.postIndex(id) ~= nil
+end
+
+-- Every other living player's fighter (with health) plus every training post, and a map
+-- from player fighter id (UserId) to the Player.
+function CombatService.fighters(except: Player): ({ Combat.Fighter }, { [number]: Player })
+	local list: { Combat.Fighter } = {}
+	local byId: { [number]: Player } = {}
+	for _, other in Players:GetPlayers() do
+		if other == except then
+			continue
+		end
+		local humanoid, root = living(other)
+		if humanoid ~= nil and root ~= nil then
+			table.insert(list, fighterOf(other.UserId, root, humanoid.Health))
+			byId[other.UserId] = other
+		end
+	end
+	local parts = postParts()
+	for i = 1, #World.trainingPosts do
+		local id = World.POST_ID_BASE - i
+		local part = parts[id]
+		if part ~= nil then
+			local p = part.Position
+			table.insert(list, {
+				id = id,
+				position = { x = p.X, y = p.Y, z = p.Z },
+				look = { x = 0, y = 0, z = 1 },
+			})
+		end
+	end
+	return list, byId
+end
+
+-- Path XP for hitting a training post: at most once per POST_XP_GAP per post per attacker.
+-- Posts have no protections. Callers pass the Path to train; nothing is paid without one.
+function CombatService.hitPost(attacker: Player, postId: number, path: string)
+	if attacker.Parent ~= Players or World.postIndex(postId) == nil then
+		return
+	end
+	flashPost(postId)
+	local now = os.clock()
+	local hits = postHits[attacker]
+	if hits == nil then
+		hits = {}
+		postHits[attacker] = hits
+	end
+	local last = hits[postId]
+	-- Written so a NaN time pays nothing.
+	if last ~= nil and not (now - last >= POST_XP_GAP) then
+		return
+	end
+	hits[postId] = now
+	local grant = grantXp
+	if grant ~= nil then
+		grant(attacker, path, POST_XP)
+	end
+end
+
+-- The one way a player takes damage: the Strike, abilities, burns, zones and reflects.
+-- True only when the hit landed (it passed the protections and the victim was not immune);
+-- callers apply statuses, pulls and knockbacks only then.
+-- `reflected`: damage sent back by a reflect, so no protections, Mark or empower.
+-- `tick`: burn or zone damage, so refusals are not notified and no empower is used.
+function CombatService.damage(
+	attacker: Player,
+	victim: Player,
+	amount: number,
+	opts: DamageOpts?
+): boolean
+	local reflected = opts ~= nil and opts.reflected == true
+	local tick = opts ~= nil and opts.tick == true
+	if attacker == victim or attacker.Parent ~= Players or victim.Parent ~= Players then
+		return false
+	end
+	local victimHumanoid = living(victim)
+	if victimHumanoid == nil then
+		return false
+	end
+	local now = os.clock()
+
+	-- No yielding call from here to TakeDamage: statuses cannot go stale.
+	if not reflected then
+		local attackerStatus = ProtectionService.status(attacker, now)
+		if attackerStatus == nil then
+			-- A living attacker without loaded data is told; one without a living character
+			-- (a burn or zone outliving its owner) cannot pass the protections either.
+			if not tick and DataService.get(attacker) == nil then
+				LedgerService.notify(attacker, "DATA_NOT_LOADED")
+			end
+			return false
+		end
+		local victimStatus = ProtectionService.status(victim, now)
+		if victimStatus == nil then
+			-- Victim's data is not loaded yet: treat them as shielded.
+			if not tick then
+				LedgerService.notify(attacker, "TARGET_SHIELDED")
+			end
+			return false
+		end
+		local ok, code = Protection.canDamage(attackerStatus, victimStatus, now)
+		if not ok then
+			if not tick then
+				LedgerService.notify(attacker, code or "BAD_REQUEST")
+			end
+			return false
+		end
+
+		ProtectionService.endRespawnShield(attacker)
+		local victimMarked = Protection.isMarked(victimStatus, now)
+		if Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now) then
+			ProtectionService.mark(attacker, now)
+		end
+	end
+
+	local total = amount
+	if not reflected and not tick then
+		local bonus = 0
+		StatusService.update(attacker, function(status, at)
+			local out, taken = Effects.takeEmpower(status, at)
+			bonus = taken
+			return out
+		end)
+		total += bonus
+	end
+
+	local immune, health, reflectBack = false, 0, 0
+	StatusService.update(victim, function(status, at)
+		immune = Effects.isImmune(status, at)
+		local out, toHealth, toReflect = Effects.resolveDamage(status, total, at)
+		health, reflectBack = toHealth, toReflect
+		return out
+	end)
+	if immune and not (health > 0) then
+		return false
+	end
+
+	-- Record the hit before the damage: with immediate signal behaviour, Died can fire
+	-- inside TakeDamage, and the kill must already be credited by then.
+	hitLog = Combat.recordHit(hitLog, victim.UserId, attacker.UserId, now)
+	if health > 0 then
+		victimHumanoid:TakeDamage(health)
+	end
+	hitFx:FireAllClients(victim.UserId)
+
+	if reflectBack > 0 and not reflected then
+		CombatService.damage(victim, attacker, reflectBack, { reflected = true })
+	end
+	return true
+end
+
 -- The client only says "I swung". Target, reach, damage and timing are all decided here.
 local function handleStrike(player: Player)
 	if player.Parent ~= Players then
@@ -84,57 +294,28 @@ local function handleStrike(player: Player)
 	end
 	lastStrike[player] = now
 
-	local others: { Combat.Fighter } = {}
-	local byId: { [number]: { player: Player, humanoid: Humanoid } } = {}
-	for _, other in Players:GetPlayers() do
-		if other == player then
-			continue
-		end
-		local humanoid, root = living(other)
-		if humanoid ~= nil and root ~= nil then
-			table.insert(others, fighterOf(other.UserId, root))
-			byId[other.UserId] = { player = other, humanoid = humanoid }
-		end
-	end
-
-	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others)
+	local others, byId = CombatService.fighters(player)
+	local taunter = Effects.tauntedBy(StatusService.get(player), now)
+	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others, nil, taunter)
 	if targetId == nil then
 		return
 	end
-	local target = byId[targetId]
-	if target == nil then
-		return
-	end
-	local victim = target.player
 
-	-- No yielding call from here to TakeDamage: statuses cannot go stale.
-	local attackerStatus = ProtectionService.status(player, now)
-	if attackerStatus == nil then
-		LedgerService.notify(player, "DATA_NOT_LOADED")
-		return
-	end
-	local victimStatus = ProtectionService.status(victim, now)
-	if victimStatus == nil then
-		-- Victim's data is not loaded yet: treat them as shielded.
-		LedgerService.notify(player, "TARGET_SHIELDED")
-		return
-	end
-	local ok, code = Protection.canDamage(attackerStatus, victimStatus, now)
-	if not ok then
-		LedgerService.notify(player, code or "BAD_REQUEST")
+	if CombatService.isPost(targetId) then
+		-- A post trains the Calling; without a Calling the swing does nothing.
+		local paths = getPaths
+		local progress = if paths ~= nil then paths(player) else nil
+		if progress ~= nil and progress.calling ~= "" then
+			CombatService.hitPost(player, targetId, progress.calling)
+		end
 		return
 	end
 
-	ProtectionService.endRespawnShield(player)
-	local victimMarked = Protection.isMarked(victimStatus, now)
-	if Protection.isAggressor(hitLog, player.UserId, victim.UserId, victimMarked, now) then
-		ProtectionService.mark(player, now)
+	local victim = byId[targetId]
+	if victim == nil then
+		return
 	end
-	-- Record the hit before the damage: with immediate signal behaviour, Died can fire
-	-- inside TakeDamage, and the kill must already be credited by then.
-	hitLog = Combat.recordHit(hitLog, victim.UserId, player.UserId, now)
-	target.humanoid:TakeDamage(Combat.STRIKE_DAMAGE)
-	hitFx:FireAllClients(victim.UserId)
+	CombatService.damage(player, victim, Combat.STRIKE_DAMAGE)
 end
 
 local function onCharacterAdded(player: Player, character: Model)
@@ -164,7 +345,13 @@ function CombatService.onDefeat(callback: (killer: Player, victim: Player) -> ()
 	table.insert(defeatCallbacks, callback)
 end
 
-function CombatService.start()
+-- `paths` and `grant` are PathService.get and PathService.grant (see getPaths above).
+function CombatService.start(
+	paths: (Player) -> Types.PathProgress?,
+	grant: (Player, string, number) -> ()
+)
+	getPaths = paths
+	grantXp = grant
 	hitFx = LedgerService.makeRemote(Net.HitFx)
 	local strike = LedgerService.makeRemote(Net.Strike)
 	strike.OnServerEvent:Connect(handleStrike)
@@ -180,6 +367,7 @@ function CombatService.start()
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		lastStrike[player] = nil
+		postHits[player] = nil
 	end)
 end
 
