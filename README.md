@@ -39,6 +39,7 @@ The rest of this page is for people who write code.
 - Install the tools: `rokit install`
 - Run all checks (format, lint, build, tests): `bash scripts/check.sh`
 - Live-sync into Studio: `rojo serve`
+- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1 and M2 checklists and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
 
 The playable file in `dist/IsleOfAvarice.rbxlx` is a copy of `build/IsleOfAvarice.rbxlx`. Copy it again after any code change, once the checks pass.
 

@@ -1,0 +1,18 @@
+{
+  "name": "IsleOfAvaricePlaytest",
+  "tree": {
+    "$className": "DataModel",
+    "Workspace": { "$properties": { "FallenPartsDestroyHeight": -60 } },
+    "ReplicatedStorage": { "Shared": { "$path": "src/shared" } },
+    "ServerScriptService": {
+      "Server": { "$path": "src/server" },
+      "PlaytestServer": { "$path": "playtest/server" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": { "$path": "src/client" },
+        "PlaytestClient": { "$path": "playtest/client" }
+      }
+    }
+  }
+}
