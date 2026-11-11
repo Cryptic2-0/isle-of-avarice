@@ -519,9 +519,12 @@ local function handleCast(player: Player, rawSlot: any)
 		local clear = moveCharacter(humanoid, root, moveTo)
 		if ability.kind == "dash" then
 			-- The plan scanned the dash's full length; a wall can stop it short. Only an enemy
-			-- inside the stretch actually travelled is passed (scanned from the start point).
+			-- inside the stretch actually travelled, plus the gap to what stopped it (the move
+			-- halts WALL_MARGIN short of it, and a post's centre is a further stud in), is
+			-- passed, scanned from the start point. Line of sight still rules out anything
+			-- behind a wall.
 			local hits: { Casting.Hit } = {}
-			local reach = math.min(ability.distance or 0, clear)
+			local reach = math.min(ability.distance or 0, clear + WALL_MARGIN + 1.5)
 			local targetId = Targeting.dashHit(caster, others, reach)
 			if targetId ~= nil then
 				table.insert(hits, { targetId = targetId, damage = ability.damage or 0 })
