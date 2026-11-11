@@ -11,6 +11,7 @@ local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages")
 local LedgerView = require(Rules:WaitForChild("LedgerView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local StatusView = require(Rules:WaitForChild("StatusView"))
+local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local StatusHUD = require(script.Parent.StatusHUD)
@@ -28,6 +29,8 @@ local statusSync = remotes:WaitForChild(Net.StatusSync) :: RemoteEvent
 local shieldDrop = remotes:WaitForChild(Net.ShieldDrop) :: RemoteEvent
 local strikeRemote = remotes:WaitForChild(Net.Strike) :: RemoteEvent
 local hitFx = remotes:WaitForChild(Net.HitFx) :: RemoteEvent
+local claimUpdate = remotes:WaitForChild(Net.ClaimUpdate) :: RemoteEvent
+local claimPick = remotes:WaitForChild(Net.ClaimPick) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -41,10 +44,13 @@ Toast.mount(playerGui)
 StatusHUD.mount(playerGui, function()
 	shieldDrop:FireServer()
 end)
+ClaimUI.mount(playerGui, function(slot)
+	claimPick:FireServer(slot)
+end)
 CombatController.start(function()
 	strikeRemote:FireServer()
 end, function()
-	return LedgerUI.isOpen()
+	return LedgerUI.isOpen() or ClaimUI.isOpen()
 end)
 
 ledgerSync.OnClientEvent:Connect(function(ledger, vault)
@@ -52,6 +58,13 @@ ledgerSync.OnClientEvent:Connect(function(ledger, vault)
 end)
 notify.OnClientEvent:Connect(function(code, args)
 	Toast.show(Messages.format(code, args))
+end)
+claimUpdate.OnClientEvent:Connect(function(payload)
+	if payload == nil then
+		ClaimUI.hide()
+	else
+		ClaimUI.show(payload.victimName, payload.claim, payload.secondsLeft)
+	end
 end)
 hitFx.OnClientEvent:Connect(function(victimUserId)
 	local victim = Players:GetPlayerByUserId(victimUserId)
