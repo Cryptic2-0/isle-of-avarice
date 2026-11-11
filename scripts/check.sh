@@ -9,7 +9,7 @@ if ! echo 'local x: number = 1' | stylua - >/dev/null 2>&1; then
 	exit 1
 fi
 # Pass each file by name so a parse error fails the check (exit code 2).
-find src tests -name '*.luau' -not -path 'src/server/Vendor/*' -print0 | xargs -0 stylua --check
-selene src
+find src tests playtest -name '*.luau' -not -path 'src/server/Vendor/*' -print0 | xargs -0 stylua --check
+selene src playtest
 mkdir -p build && rojo build -o build/IsleOfAvarice.rbxlx
 lune run tests/run
