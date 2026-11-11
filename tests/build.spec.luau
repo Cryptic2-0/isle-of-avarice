@@ -34,5 +34,14 @@ T.test("built place contains the expected scripts", function()
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.Toast.ClassName,
 		"ModuleScript"
 	)
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.StatusView.ClassName, "ModuleScript")
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.StatusHUD.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.CombatController.ClassName,
+		"ModuleScript"
+	)
 	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")
 end)
