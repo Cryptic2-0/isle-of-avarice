@@ -114,12 +114,12 @@ local function standHeight(humanoid: Humanoid, root: BasePart): number
 end
 
 -- ---------------------------------------------------------------------------------------
--- Movement (dash, pull, knockback)
+-- World rays: movement (dash, pull, knockback) and line of sight
 -- ---------------------------------------------------------------------------------------
 
--- Move rays pass through every player's character and the effects folder, and through
--- anything a character could walk through (non-colliding parts, water).
-local function moveRayParams(): RaycastParams
+-- Move and sight rays pass through every player's character and the effects folder, and
+-- through anything a character could walk through (non-colliding parts, water).
+local function worldRayParams(): RaycastParams
 	local exclude: { Instance } = { effectsFolder() }
 	for _, other in Players:GetPlayers() do
 		local character = other.Character
@@ -135,22 +135,42 @@ local function moveRayParams(): RaycastParams
 	return params
 end
 
+-- Where the straight line from `from` to `to` is first blocked, or nil when it is clear.
+-- Characters, workspace.Effects and non-colliding parts never block. When the target is a
+-- training post, pass its id: the ray ends on that post's own surface, which is not a block.
+local function obstruction(from: Vector3, to: Vector3, postId: number?): Vector3?
+	local delta = to - from
+	-- Written so a NaN or infinite line counts as blocked.
+	if not (delta.Magnitude < math.huge) then
+		return from
+	end
+	local result = workspace:Raycast(from, delta, worldRayParams())
+	if result == nil then
+		return nil
+	end
+	if postId ~= nil and result.Instance:GetAttribute("PostId") == postId then
+		return nil
+	end
+	return result.Position
+end
+
 -- Moves a character towards `target` using only the server's own geometry. `target` always
 -- comes from a server plan, never from a client. A level ray from the root towards the
 -- target's x and z stops WALL_MARGIN short of anything in the way; a ray down from there
 -- stands the character on the ground, or keeps its current height if there is none. The
--- facing is kept and the velocity zeroed.
-local function moveCharacter(humanoid: Humanoid, root: BasePart, target: Vec3)
+-- facing is kept and the velocity zeroed. Returns the level distance actually travelled
+-- (0 when nothing moved).
+local function moveCharacter(humanoid: Humanoid, root: BasePart, target: Vec3): number
 	local from = root.Position
 	local dx = target.x - from.X
 	local dz = target.z - from.Z
 	local distance = math.sqrt(dx * dx + dz * dz)
 	-- Written so NaN or infinite targets move nobody.
 	if not (distance > 0 and distance < math.huge) then
-		return
+		return 0
 	end
 	local direction = Vector3.new(dx / distance, 0, dz / distance)
-	local params = moveRayParams()
+	local params = worldRayParams()
 	local travel = distance
 	local blocked = workspace:Raycast(from, direction * distance, params)
 	if blocked ~= nil then
@@ -164,6 +184,7 @@ local function moveCharacter(humanoid: Humanoid, root: BasePart, target: Vec3)
 	end
 	root.CFrame = CFrame.new(stop.X, y, stop.Z) * root.CFrame.Rotation
 	root.AssemblyLinearVelocity = Vector3.zero
+	return travel
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -229,13 +250,41 @@ local function applyHitStatuses(player: Player, ability: Ability, victim: Player
 	end)
 end
 
--- Applies a plan's hits. A post trains the ability's Path (posts ignore every effect); a
--- player takes the hit through CombatService.damage, and its statuses and its pull or
--- knockback follow only when that returned true. Heal-on-hit heals the caster and allies when
--- any player hit landed or a post was hit.
-local function applyHits(player: Player, ability: Ability, plan: Plan, byId: { [number]: Player })
+local function vector(v: Vec3): Vector3
+	return Vector3.new(v.x, v.y, v.z)
+end
+
+-- True when nothing solid stands between the caster and the fighter `targetId`: one ray from
+-- the root position the plan was made from (for a dash, where it started) to the target's
+-- root or post position.
+local function inSight(caster: Fighter, others: { Fighter }, targetId: number): boolean
+	for _, other in others do
+		if other.id == targetId then
+			local postId = if CombatService.isPost(targetId) then targetId else nil
+			return obstruction(vector(caster.position), vector(other.position), postId) == nil
+		end
+	end
+	return false
+end
+
+-- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. A post
+-- trains the ability's Path (posts ignore every effect); a player takes the hit through
+-- CombatService.damage, and its statuses and its pull or knockback follow only when that
+-- returned true. Heal-on-hit heals the caster and allies when any player hit landed or a post
+-- was hit.
+local function applyHits(
+	player: Player,
+	ability: Ability,
+	plan: Plan,
+	caster: Fighter,
+	others: { Fighter },
+	byId: { [number]: Player }
+)
 	local connected = false
 	for _, hit in plan.hits do
+		if not inSight(caster, others, hit.targetId) then
+			continue
+		end
 		if CombatService.isPost(hit.targetId) then
 			CombatService.hitPost(player, hit.targetId, ability.path)
 			connected = true
@@ -341,8 +390,9 @@ local function showRay(from: Vector3, to: Vector3, color: Color3)
 	Debris:AddItem(part, SHOT_SECONDS)
 end
 
--- One ray per shot, from the caster to the fighter that shot found, or to full range. The
--- fan and the target use the same rules as the plan (Casting and Targeting.shot).
+-- One ray per shot, from the caster to the fighter that shot found, or to full range, cut
+-- short where something solid blocks it (as the hit is). The fan and the target use the same
+-- rules as the plan (Casting and Targeting.shot).
 local function showShots(ability: Ability, caster: Fighter, others: { Fighter }, taunter: number?)
 	local lx, lz = caster.look.x, caster.look.z
 	local length = math.sqrt(lx * lx + lz * lz)
@@ -368,12 +418,13 @@ local function showShots(ability: Ability, caster: Fighter, others: { Fighter },
 		if targetId ~= nil then
 			for _, other in others do
 				if other.id == targetId then
-					to = Vector3.new(other.position.x, other.position.y, other.position.z)
+					to = vector(other.position)
 					break
 				end
 			end
 		end
-		showRay(from, to, color)
+		local postId = if targetId ~= nil and CombatService.isPost(targetId) then targetId else nil
+		showRay(from, obstruction(from, to, postId) or to, color)
 	end
 end
 
@@ -415,8 +466,9 @@ local function runWave(player: Player, character: Model?, ability: Ability)
 	local now = os.clock()
 	local others, byId = CombatService.fighters(player)
 	local taunter = Effects.tauntedBy(StatusService.get(player), now)
-	local plan = Casting.plan(ability, fighterOf(player, humanoid, root), others, taunter)
-	applyHits(player, ability, plan, byId)
+	local caster = fighterOf(player, humanoid, root)
+	local plan = Casting.plan(ability, caster, others, taunter)
+	applyHits(player, ability, plan, caster, others, byId)
 end
 
 local function handleCast(player: Player, rawSlot: any)
@@ -464,9 +516,20 @@ local function handleCast(player: Player, rawSlot: any)
 
 	local moveTo = plan.moveTo
 	if moveTo ~= nil then
-		moveCharacter(humanoid, root, moveTo)
+		local clear = moveCharacter(humanoid, root, moveTo)
+		if ability.kind == "dash" then
+			-- The plan scanned the dash's full length; a wall can stop it short. Only an enemy
+			-- inside the stretch actually travelled is passed (scanned from the start point).
+			local hits: { Casting.Hit } = {}
+			local reach = math.min(ability.distance or 0, clear)
+			local targetId = Targeting.dashHit(caster, others, reach)
+			if targetId ~= nil then
+				table.insert(hits, { targetId = targetId, damage = ability.damage or 0 })
+			end
+			plan.hits = hits
+		end
 	end
-	applyHits(player, ability, plan, byId)
+	applyHits(player, ability, plan, caster, others, byId)
 	for k = 1, plan.waves - 1 do
 		task.delay(plan.interval * k, runWave, player, character, ability)
 	end
