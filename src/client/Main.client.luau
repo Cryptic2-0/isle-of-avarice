@@ -9,11 +9,13 @@ local Rules = Shared:WaitForChild("Rules")
 local Net = require(Shared:WaitForChild("Net"))
 local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages"))
 local LedgerView = require(Rules:WaitForChild("LedgerView"))
+local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local StatusView = require(Rules:WaitForChild("StatusView"))
 local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
 local LedgerUI = require(script.Parent.LedgerUI)
+local PathUI = require(script.Parent.PathUI)
 local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
 
@@ -31,6 +33,10 @@ local strikeRemote = remotes:WaitForChild(Net.Strike) :: RemoteEvent
 local hitFx = remotes:WaitForChild(Net.HitFx) :: RemoteEvent
 local claimUpdate = remotes:WaitForChild(Net.ClaimUpdate) :: RemoteEvent
 local claimPick = remotes:WaitForChild(Net.ClaimPick) :: RemoteEvent
+local pathSync = remotes:WaitForChild(Net.PathSync) :: RemoteEvent
+local pickCalling = remotes:WaitForChild(Net.PickCalling) :: RemoteEvent
+local changeCalling = remotes:WaitForChild(Net.ChangeCalling) :: RemoteEvent
+local loadoutAction = remotes:WaitForChild(Net.LoadoutAction) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -47,10 +53,21 @@ end)
 ClaimUI.mount(playerGui, function(slot)
 	claimPick:FireServer(slot)
 end)
+PathUI.mount(playerGui, {
+	pick = function(path)
+		pickCalling:FireServer(path)
+	end,
+	change = function(path)
+		changeCalling:FireServer(path)
+	end,
+	loadout = function(request)
+		loadoutAction:FireServer(request)
+	end,
+})
 CombatController.start(function()
 	strikeRemote:FireServer()
 end, function()
-	return LedgerUI.isOpen() or ClaimUI.isOpen()
+	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen()
 end)
 
 ledgerSync.OnClientEvent:Connect(function(ledger, vault)
@@ -71,6 +88,31 @@ hitFx.OnClientEvent:Connect(function(victimUserId)
 	local character = if victim ~= nil then victim.Character else nil
 	if character ~= nil then
 		CombatController.flash(character)
+	end
+end)
+
+-- The last path sync and when it arrived (local clock); cooldown text advances from it.
+local lastPaths: any = nil
+local lastCoin = 0
+local lastServerNow = 0
+local pathsAt = 0
+local function renderPaths()
+	if lastPaths ~= nil then
+		local now = lastServerNow + (os.clock() - pathsAt)
+		PathUI.render(PathView.build(lastPaths, lastCoin, now))
+	end
+end
+pathSync.OnClientEvent:Connect(function(progress, coin, serverNow)
+	lastPaths = progress
+	lastCoin = coin
+	lastServerNow = serverNow
+	pathsAt = os.clock()
+	renderPaths()
+end)
+task.spawn(function()
+	while true do
+		task.wait(60)
+		renderPaths()
 	end
 end)
 
