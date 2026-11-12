@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local StarterPlayer = game:GetService("StarterPlayer")
 
 local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
+local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -19,13 +20,16 @@ type DamageFn = (
 	attacker: Player,
 	victim: Player,
 	amount: number,
-	opts: { reflected: boolean?, tick: boolean? }?
+	opts: { reflected: boolean?, tick: boolean?, passive: boolean? }?
 ) -> boolean
 type HitPostFn = (attacker: Player, postId: number, path: string) -> ()
 
 type ZoneEntry = {
 	owner: Player,
 	x: number,
+	y: number,
+	-- Players inside when the zone was placed; others who walk in later are passive targets.
+	inside: { [Player]: boolean },
 	z: number,
 	radius: number,
 	dps: number,
@@ -107,8 +111,7 @@ local function makeZonePart(entry: ZoneEntry): BasePart
 	part.Transparency = ZONE_TRANSPARENCY
 	-- A cylinder's axis is its X axis: stand it on end, then lay it flat.
 	part.Size = Vector3.new(ZONE_THICKNESS, entry.radius * 2, entry.radius * 2)
-	part.CFrame = CFrame.new(entry.x, World.groundY + 0.25, entry.z)
-		* CFrame.Angles(0, 0, math.pi / 2)
+	part.CFrame = CFrame.new(entry.x, entry.y + 0.25, entry.z) * CFrame.Angles(0, 0, math.pi / 2)
 	part.Parent = effectsFolder()
 	return part
 end
@@ -142,6 +145,13 @@ local function guarded(name: string, step: () -> ())
 	if not ok then
 		warn(`[IsleOfAvarice] StatusService {name} failed: {err}`)
 	end
+end
+
+-- True when a root at `p` is inside the zone: within its radius on the ground plane and
+-- within the height tolerance every other targeting rule uses.
+local function zoneContains(entry: ZoneEntry, p: Vector3): boolean
+	return horizontalDistance(p.X, p.Z, entry.x, entry.z) <= entry.radius
+		and math.abs(p.Y - entry.y) <= Combat.STRIKE_MAX_HEIGHT
 end
 
 local function tickBurns(now: number, damage: DamageFn)
@@ -178,12 +188,14 @@ local function tickZone(entry: ZoneEntry, damage: DamageFn, hitPost: HitPostFn?)
 		if root == nil then
 			continue
 		end
-		local p = root.Position
-		if not (horizontalDistance(p.X, p.Z, entry.x, entry.z) <= entry.radius) then
+		if not zoneContains(entry, root.Position) then
 			continue
 		end
+		-- Someone who walked in after placement is hurt and slowed, but the owner is not
+		-- marked, loses no respawn shield and starts no fight by it.
+		local passive = not entry.inside[victim]
 		-- The slow is only refreshed on a victim the damage actually reached.
-		local landed = damage(owner, victim, entry.dps, { tick = true })
+		local landed = damage(owner, victim, entry.dps, { tick = true, passive = passive })
 		local slow = entry.slow
 		if landed and slow ~= nil then
 			local factor: number = slow
@@ -309,7 +321,9 @@ function StatusService.addZone(owner: Player, zone: Casting.Zone, path: string)
 	local entry: ZoneEntry = {
 		owner = owner,
 		x = zone.center.x,
+		y = zone.center.y,
 		z = zone.center.z,
+		inside = {},
 		radius = radius,
 		dps = dps,
 		slow = zone.slow,
@@ -317,6 +331,15 @@ function StatusService.addZone(owner: Player, zone: Casting.Zone, path: string)
 		expiresAt = os.clock() + duration,
 		part = nil,
 	}
+	if not (math.abs(zone.center.y) < math.huge) then
+		return
+	end
+	for _, other in Players:GetPlayers() do
+		local _, otherRoot = living(other)
+		if other ~= owner and otherRoot ~= nil and zoneContains(entry, otherRoot.Position) then
+			entry.inside[other] = true
+		end
+	end
 	entry.part = makeZonePart(entry)
 	table.insert(zones, entry)
 end

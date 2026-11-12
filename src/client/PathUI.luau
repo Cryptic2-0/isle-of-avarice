@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Paths = require(Shared:WaitForChild("Catalog"):WaitForChild("Paths"))
+local PathProgress = require(Shared:WaitForChild("Rules"):WaitForChild("PathProgress"))
 local PathView = require(Shared:WaitForChild("Rules"):WaitForChild("PathView"))
 local Types = require(Shared:WaitForChild("Types"))
 
@@ -42,6 +43,7 @@ local slotStrip: Frame? = nil
 local callingLabel: TextLabel? = nil
 local lastView: View? = nil
 local pendingChange = ""
+local pendingPick = ""
 local dismissedPicker = false
 
 local function pathColor(path: string): Color3
@@ -136,11 +138,58 @@ local function askChange(row: RowView)
 	if dialog == nil or question == nil then
 		return
 	end
+	pendingPick = ""
 	pendingChange = row.path
 	question.Text = "Change your Calling to "
 		.. row.name
 		.. "? Levels are kept; learning rates change."
 	dialog.Visible = true
+end
+
+local function askPick(row: RowView)
+	local dialog = confirm
+	local question = confirmQuestion
+	if dialog == nil or question == nil then
+		return
+	end
+	pendingChange = ""
+	pendingPick = row.path
+	question.Text = "Make " .. row.name .. " your Calling?"
+	dialog.Visible = true
+end
+
+-- "Learns: Gale, Bulwark 80% · Ember, Mend 60% · Mire 40%": the shared learning rate from this
+-- Calling to every other Path, grouped by rate, nearest first.
+local function learnsText(path: string): string
+	local groups: { { rate: number, names: { string } } } = {}
+	for _, other in Paths.order do
+		if other == path then
+			continue
+		end
+		local rate = PathProgress.learningRate(path, other)
+		local group = nil
+		for _, existing in groups do
+			if existing.rate == rate then
+				group = existing
+			end
+		end
+		if group == nil then
+			group = { rate = rate, names = {} }
+			table.insert(groups, group)
+		end
+		table.insert(group.names, Paths.info[other].name)
+	end
+	table.sort(groups, function(a, b)
+		return a.rate > b.rate
+	end)
+	local parts: { string } = {}
+	for _, group in groups do
+		table.insert(
+			parts,
+			table.concat(group.names, ", ") .. " " .. math.floor(group.rate * 100 + 0.5) .. "%"
+		)
+	end
+	return "Learns: " .. table.concat(parts, " · ")
 end
 
 local function makeAbility(row: RowView, index: number): Frame
@@ -219,7 +268,7 @@ local function makeRow(row: RowView, order: number, needsCalling: boolean): Fram
 		choose.AnchorPoint = Vector2.new(1, 0)
 		choose.Position = UDim2.new(0.98, 0, 0, 6)
 		choose.Activated:Connect(function()
-			handlers.pick(row.path)
+			askPick(row)
 		end)
 		choose.Parent = frame
 	elseif row.changeText ~= "" then
@@ -269,17 +318,24 @@ local function makeCard(row: RowView, order: number): Frame
 		table.insert(lines, ability.name .. ": " .. ability.description)
 	end
 	local abilities =
-		makeLabel("Abilities", UDim2.new(0.92, 0, 1, -98), UDim2.new(0.04, 0, 0, 56), 15)
+		makeLabel("Abilities", UDim2.new(0.92, 0, 1, -128), UDim2.new(0.04, 0, 0, 56), 15)
 	abilities.TextYAlignment = Enum.TextYAlignment.Top
 	abilities.TextColor3 = DARK_TEXT
 	abilities.Text = table.concat(lines, "\n")
 	abilities.Parent = card
 
+	local learns = makeLabel("Learns", UDim2.new(0.92, 0, 0, 30), UDim2.new(0.04, 0, 1, -68), 13)
+	learns.AnchorPoint = Vector2.new(0, 0)
+	learns.TextYAlignment = Enum.TextYAlignment.Top
+	learns.TextColor3 = DARK_TEXT
+	learns.Text = learnsText(row.path)
+	learns.Parent = card
+
 	local choose = makeButton("Choose", "Choose", UDim2.new(0.92, 0, 0, 30))
 	choose.AnchorPoint = Vector2.new(0.5, 1)
 	choose.Position = UDim2.new(0.5, 0, 1, -6)
 	choose.Activated:Connect(function()
-		handlers.pick(row.path)
+		askPick(row)
 	end)
 	choose.Parent = card
 	return card
@@ -308,9 +364,13 @@ local function buildConfirm(gui: ScreenGui)
 	yes.ZIndex = 51
 	yes.Activated:Connect(function()
 		frame.Visible = false
+		local pick = pendingPick
 		local path = pendingChange
+		pendingPick = ""
 		pendingChange = ""
-		if path ~= "" then
+		if pick ~= "" then
+			handlers.pick(pick)
+		elseif path ~= "" then
 			handlers.change(path)
 		end
 	end)
@@ -322,6 +382,7 @@ local function buildConfirm(gui: ScreenGui)
 	no.Activated:Connect(function()
 		frame.Visible = false
 		pendingChange = ""
+		pendingPick = ""
 	end)
 	no.Parent = frame
 
@@ -457,6 +518,13 @@ function PathUI.render(view: View)
 	end
 	if callingLabel ~= nil then
 		callingLabel.Text = view.callingText
+	end
+
+	-- A pending first pick closes once a Calling has been chosen.
+	local pickDialog = confirm
+	if pendingPick ~= "" and not view.needsCalling and pickDialog ~= nil then
+		pickDialog.Visible = false
+		pendingPick = ""
 	end
 
 	-- A pending Calling change only stays open while the new view still allows it.

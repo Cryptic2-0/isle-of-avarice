@@ -16,9 +16,11 @@ local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Targeting = require(ReplicatedStorage.Shared.Rules.Targeting)
 local Types = require(ReplicatedStorage.Shared.Types)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
 local CombatService = require(script.Parent.CombatService)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
+local Sight = require(script.Parent.Sight)
 local StatusService = require(script.Parent.StatusService)
 
 type Ability = Types.Ability
@@ -29,6 +31,7 @@ type Vec3 = Types.Vec3
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
 local WALL_MARGIN = 2 -- a move stops this many studs short of anything in its way
+local ZONE_WALL_MARGIN = 1 -- a zone's centre stops this far short of a wall
 local GROUND_PROBE = 50 -- how far below a move's end point to look for ground
 local R6_LEG_HEIGHT = 2
 local SHOT_WIDTH = 0.3
@@ -117,43 +120,6 @@ end
 -- World rays: movement (dash, pull, knockback) and line of sight
 -- ---------------------------------------------------------------------------------------
 
--- Move and sight rays pass through every player's character and the effects folder, and
--- through anything a character could walk through (non-colliding parts, water).
-local function worldRayParams(): RaycastParams
-	local exclude: { Instance } = { effectsFolder() }
-	for _, other in Players:GetPlayers() do
-		local character = other.Character
-		if character ~= nil then
-			table.insert(exclude, character)
-		end
-	end
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = exclude
-	params.RespectCanCollide = true
-	params.IgnoreWater = true
-	return params
-end
-
--- Where the straight line from `from` to `to` is first blocked, or nil when it is clear.
--- Characters, workspace.Effects and non-colliding parts never block. When the target is a
--- training post, pass its id: the ray ends on that post's own surface, which is not a block.
-local function obstruction(from: Vector3, to: Vector3, postId: number?): Vector3?
-	local delta = to - from
-	-- Written so a NaN or infinite line counts as blocked.
-	if not (delta.Magnitude < math.huge) then
-		return from
-	end
-	local result = workspace:Raycast(from, delta, worldRayParams())
-	if result == nil then
-		return nil
-	end
-	if postId ~= nil and result.Instance:GetAttribute("PostId") == postId then
-		return nil
-	end
-	return result.Position
-end
-
 -- Moves a character towards `target` using only the server's own geometry. `target` always
 -- comes from a server plan, never from a client. A level ray from the root towards the
 -- target's x and z stops WALL_MARGIN short of anything in the way; a ray down from there
@@ -170,7 +136,7 @@ local function moveCharacter(humanoid: Humanoid, root: BasePart, target: Vec3): 
 		return 0
 	end
 	local direction = Vector3.new(dx / distance, 0, dz / distance)
-	local params = worldRayParams()
+	local params = Sight.rayParams()
 	local travel = distance
 	local blocked = workspace:Raycast(from, direction * distance, params)
 	if blocked ~= nil then
@@ -261,7 +227,7 @@ local function inSight(caster: Fighter, others: { Fighter }, targetId: number): 
 	for _, other in others do
 		if other.id == targetId then
 			local postId = if CombatService.isPost(targetId) then targetId else nil
-			return obstruction(vector(caster.position), vector(other.position), postId) == nil
+			return Sight.obstruction(vector(caster.position), vector(other.position), postId) == nil
 		end
 	end
 	return false
@@ -424,7 +390,7 @@ local function showShots(ability: Ability, caster: Fighter, others: { Fighter },
 			end
 		end
 		local postId = if targetId ~= nil and CombatService.isPost(targetId) then targetId else nil
-		showRay(from, obstruction(from, to, postId) or to, color)
+		showRay(from, Sight.obstruction(from, to, postId) or to, color)
 	end
 end
 
@@ -453,6 +419,42 @@ end
 -- Casting
 -- ---------------------------------------------------------------------------------------
 
+-- The fighters a plan may pick from. A single-target melee or shot ability only sees what the
+-- caster has a clear line to, so a target behind a corner never swallows the hit (and an
+-- unseen taunter forces nothing). Area abilities keep everyone: applyHits skips unseen hits.
+local function candidates(ability: Ability, caster: Fighter, others: { Fighter }): { Fighter }
+	if ability.kind == "melee" or ability.kind == "shot" then
+		return Sight.filter(vector(caster.position), others)
+	end
+	return others
+end
+
+-- Settles a planned zone on the server's own geometry. The centre never lands past a wall
+-- (a level ray from the caster's root towards it stops ZONE_WALL_MARGIN short of the hit),
+-- and its height is the ground under it, or World.groundY when there is none.
+local function placeZone(zone: Casting.Zone, from: Vector3): Casting.Zone
+	local params = Sight.rayParams()
+	local x, z = zone.center.x, zone.center.z
+	local dx, dz = x - from.X, z - from.Z
+	local distance = math.sqrt(dx * dx + dz * dz)
+	if distance > 0 and distance < math.huge then
+		local blocked = workspace:Raycast(from, Vector3.new(dx, 0, dz), params)
+		if blocked ~= nil then
+			local travel = math.max(0, blocked.Distance - ZONE_WALL_MARGIN)
+			x, z = from.X + dx / distance * travel, from.Z + dz / distance * travel
+		end
+	end
+	local y = World.groundY
+	local ground =
+		workspace:Raycast(Vector3.new(x, from.Y, z), Vector3.new(0, -GROUND_PROBE, 0), params)
+	if ground ~= nil then
+		y = ground.Position.Y
+	end
+	local placed = table.clone(zone)
+	placed.center = { x = x, y = y, z = z }
+	return placed
+end
+
 -- A later wave (Rending Flurry): re-planned from where the caster is now. Skipped if the caster
 -- left, died or respawned since the cast.
 local function runWave(player: Player, character: Model?, ability: Ability)
@@ -467,7 +469,7 @@ local function runWave(player: Player, character: Model?, ability: Ability)
 	local others, byId = CombatService.fighters(player)
 	local taunter = Effects.tauntedBy(StatusService.get(player), now)
 	local caster = fighterOf(player, humanoid, root)
-	local plan = Casting.plan(ability, caster, others, taunter)
+	local plan = Casting.plan(ability, caster, candidates(ability, caster, others), taunter)
 	applyHits(player, ability, plan, caster, others, byId)
 end
 
@@ -512,7 +514,8 @@ local function handleCast(player: Player, rawSlot: any)
 	local others, byId = CombatService.fighters(player)
 	local taunter = Effects.tauntedBy(status, now)
 	local caster = fighterOf(player, humanoid, root)
-	local plan = Casting.plan(ability, caster, others, taunter)
+	local targets = candidates(ability, caster, others)
+	local plan = Casting.plan(ability, caster, targets, taunter)
 
 	local moveTo = plan.moveTo
 	if moveTo ~= nil then
@@ -538,12 +541,12 @@ local function handleCast(player: Player, rawSlot: any)
 	end
 	local zone = plan.zone
 	if zone ~= nil then
-		StatusService.addZone(player, zone, ability.path)
+		StatusService.addZone(player, placeZone(zone, root.Position), ability.path)
 	end
 	applySelfEffects(player, ability)
 
 	if ability.kind == "shot" then
-		showShots(ability, caster, others, taunter)
+		showShots(ability, caster, targets, taunter)
 	elseif ability.kind == "burst" then
 		local p = caster.position
 		local center = Vector3.new(p.x, p.y - standHeight(humanoid, root) + RING_LIFT, p.z)

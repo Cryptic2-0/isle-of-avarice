@@ -12,9 +12,10 @@ local World = require(ReplicatedStorage.Shared.Catalog.World)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
 local ProtectionService = require(script.Parent.ProtectionService)
+local Sight = require(script.Parent.Sight)
 local StatusService = require(script.Parent.StatusService)
 
-type DamageOpts = { reflected: boolean?, tick: boolean? }
+type DamageOpts = { reflected: boolean?, tick: boolean?, passive: boolean? }
 
 local POST_TAG = "TrainingPost"
 local POST_XP = 10
@@ -192,6 +193,8 @@ end
 -- callers apply statuses, pulls and knockbacks only then.
 -- `reflected`: damage sent back by a reflect, so no protections, Mark or empower.
 -- `tick`: burn or zone damage, so refusals are not notified and no empower is used.
+-- `passive`: a zone tick on someone who walked in after it was placed; the damage and the
+-- protections are unchanged, but the attacker is not Marked and keeps their respawn shield.
 function CombatService.damage(
 	attacker: Player,
 	victim: Player,
@@ -200,6 +203,7 @@ function CombatService.damage(
 ): boolean
 	local reflected = opts ~= nil and opts.reflected == true
 	local tick = opts ~= nil and opts.tick == true
+	local passive = opts ~= nil and opts.passive == true
 	if attacker == victim or attacker.Parent ~= Players or victim.Parent ~= Players then
 		return false
 	end
@@ -236,10 +240,15 @@ function CombatService.damage(
 			return false
 		end
 
-		ProtectionService.endRespawnShield(attacker)
-		local victimMarked = Protection.isMarked(victimStatus, now)
-		if Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now) then
-			ProtectionService.mark(attacker, now)
+		-- A passive hit (a zone on someone who walked into it) starts no fight for its owner.
+		if not passive then
+			ProtectionService.endRespawnShield(attacker)
+			local victimMarked = Protection.isMarked(victimStatus, now)
+			if
+				Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now)
+			then
+				ProtectionService.mark(attacker, now)
+			end
 		end
 	end
 
@@ -273,7 +282,8 @@ function CombatService.damage(
 	end
 	hitFx:FireAllClients(victim.UserId)
 
-	if reflectBack > 0 and not reflected then
+	-- A player the hit defeated reflects nothing.
+	if reflectBack > 0 and not reflected and victimHumanoid.Health > 0 then
 		CombatService.damage(victim, attacker, reflectBack, { reflected = true })
 	end
 	return true
@@ -294,7 +304,10 @@ local function handleStrike(player: Player)
 	end
 	lastStrike[player] = now
 
-	local others, byId = CombatService.fighters(player)
+	-- Only what the attacker can see is a candidate, so a target behind a corner never
+	-- swallows the swing, and an unseen taunter forces nothing.
+	local all, byId = CombatService.fighters(player)
+	local others = Sight.filter(attackerRoot.Position, all)
 	local taunter = Effects.tauntedBy(StatusService.get(player), now)
 	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others, nil, taunter)
 	if targetId == nil then

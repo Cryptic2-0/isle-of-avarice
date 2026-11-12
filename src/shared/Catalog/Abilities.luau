@@ -42,7 +42,7 @@ local list: { Ability } = {
 		damage = 12,
 		executeBelow = 35,
 		executeDamage = 40,
-		description = "Strike for 12 damage, or 40 if the enemy is below 35 health.",
+		description = "Strike for 12 damage, or 40 if the enemy has 35 health or less.",
 	},
 	-- Gale
 	{
@@ -76,7 +76,7 @@ local list: { Ability } = {
 		kind = "self",
 		immune = 1.5,
 		empower = { bonus = 20, duration = 4 },
-		description = "Take no damage for 1.5 seconds, then deal 20 extra damage on your hits for 4 seconds.",
+		description = "For 1.5 seconds nothing can hurt or affect you; your next hit within 4 seconds deals 20 extra damage.",
 	},
 	-- Ember
 	{
@@ -148,7 +148,7 @@ local list: { Ability } = {
 		damage = 10,
 		pull = 4,
 		slow = { factor = 0.7, duration = 2 },
-		description = "Hit an enemy up to 25 studs for 10 damage, pull them 4 studs closer and slow them for 2 seconds.",
+		description = "Hit an enemy up to 25 studs for 10 damage, pull them to 4 studs in front of you and slow them for 2 seconds.",
 	},
 	-- Mend
 	{
@@ -185,7 +185,7 @@ local list: { Ability } = {
 		heal = 35,
 		cleanse = true,
 		allyRadius = 15,
-		description = "Heal yourself and allies within 15 studs for 35 health and remove harmful effects.",
+		description = "Heal yourself and allies within 15 studs for 35 health and remove slow, root and burn.",
 	},
 	-- Bulwark
 	{
