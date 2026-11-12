@@ -49,6 +49,46 @@ export type Ability = {
 	reflect: { factor: number, duration: number }?,
 	allyRadius: number?,
 }
+export type Drop = { relicId: CardId, chance: number }
+export type CreatureKind = {
+	id: string,
+	name: string,
+	health: number,
+	speed: number,
+	sight: number,
+	attack: {
+		kind: "melee" | "shot" | "slam",
+		name: string,
+		damage: number,
+		range: number,
+		interval: number,
+	},
+	keepAway: number?,
+	lunge: { distance: number, damage: number, interval: number }?,
+	xp: number,
+	coin: number,
+	respawn: number,
+	drops: { Drop },
+	height: number, -- look only
+	color: { r: number, g: number, b: number }, -- look only
+}
+export type TrialKind = "course" | "delivery" | "hunt" | "duel"
+export type Trial = {
+	id: string,
+	name: string,
+	warden: string,
+	kind: TrialKind,
+	goal: string,
+	seconds: number,
+	relicId: CardId,
+	coin: number,
+	xp: number,
+	creature: string?,
+	count: number?,
+}
+export type TrialRecord = { cooldowns: { [string]: number }, questStep: number } -- trial id -> os.time() it may be taken again
+export type Den = { kind: string, count: number, position: Vec3 }
+export type Ledge = { x: number, z: number, size: number, top: number }
 export type PlayerData = {
 	schemaVersion: number,
 	ledger: Ledger,
@@ -56,6 +96,7 @@ export type PlayerData = {
 	vault: Vault,
 	shieldEnded: boolean,
 	paths: PathProgress,
+	trials: TrialRecord,
 }
 export type RegionId =
 	"Tallyport"

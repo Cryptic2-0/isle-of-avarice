@@ -56,6 +56,20 @@ local templates: { [string]: string } = {
 	NO_ABILITY = "Nothing is equipped in that slot.",
 	ON_COOLDOWN = "That ability is not ready yet.",
 	ROOTED = "You are rooted and cannot dash.",
+	CREATURE_DEFEATED = "{creature} defeated! +{coin} Coin.",
+	REWARD_SEALED = "{name} is sealed on this server, so you did not get it.",
+	REWARD_LOST = "Your free slots are full, so {name} was lost.",
+	REWARD_LOCKED = "Your Ledger is locked, so {name} was lost.",
+	TRIAL_STARTED = "{name} has begun!",
+	TRIAL_PASSED = "You passed {name}! +{coin} Coin.",
+	TRIAL_FAILED_TIME = "Out of time: {name} failed.",
+	TRIAL_FAILED_DEFEAT = "You were defeated: {name} failed.",
+	TRIAL_BUSY = "Finish your current trial first.",
+	TRIAL_COOLDOWN = "You can try {name} again in {seconds} seconds.",
+	MARKER_REACHED = "Marker {n} of {total}.",
+	HUNT_PROGRESS = "{n} of {total} defeated.",
+	QUEST_STEP = "The Unpaid Debt: step {n} of 4 done.",
+	QUEST_COMPLETE = "The Unpaid Debt is paid! +{coin} Coin.",
 }
 
 local function format(code: string, args: { [string]: string }?): string

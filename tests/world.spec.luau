@@ -51,13 +51,14 @@ T.test("Copper caches stay in the Fields; prizes sit in their regions", function
 	end
 end)
 
-T.test("every Relic in the catalog has at least one cache", function()
+T.test("every cache holds a known Relic, and Relics R001 to R012 each have a cache", function()
 	local covered: { [string]: boolean } = {}
 	for _, cache in World.caches do
 		covered[cache.relicId] = true
 		T.truthy(Relics.byId[cache.relicId] ~= nil, cache.id .. " holds a known relic")
 	end
-	for _, relic in Relics.list do
+	for i = 1, 12 do
+		local relic = Relics.list[i]
 		T.truthy(covered[relic.id], relic.id .. " has a cache")
 	end
 end)

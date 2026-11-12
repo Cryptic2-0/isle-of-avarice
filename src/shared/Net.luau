@@ -18,7 +18,7 @@ return {
 	ShieldDrop = "ShieldDrop",
 	-- client -> server: ()
 	Strike = "Strike",
-	-- server -> all clients: (victimUserId: number)
+	-- server -> all clients: (victimId: number) any fighter id (a player user id or a creature id)
 	HitFx = "HitFx",
 	-- server -> one client: (payload: { victimName: string, claim: Claim, secondsLeft: number }?), nil closes the screen
 	ClaimUpdate = "ClaimUpdate",
@@ -36,4 +36,12 @@ return {
 	CastAbility = "CastAbility",
 	-- server -> one client: (slot: number, seconds: number)
 	AbilityCooldown = "AbilityCooldown",
+	-- server -> one client: (offer: TrialView.OfferView)
+	TrialOffer = "TrialOffer",
+	-- client -> server: (trialId: string)
+	TrialAccept = "TrialAccept",
+	-- server -> one client: (state: TrialView.HudState?, questStep: number)
+	TrialSync = "TrialSync",
+	-- server -> one client: (coin: number)
+	CoinSync = "CoinSync",
 }
