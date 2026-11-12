@@ -1,5 +1,10 @@
 --!strict
 local Types = require("../Types")
+local BastionReach = require("./SiteData/BastionReach")
+local CinderFlats = require("./SiteData/CinderFlats")
+local DrownedFen = require("./SiteData/DrownedFen")
+local HushGardens = require("./SiteData/HushGardens")
+local ReckoningRock = require("./SiteData/ReckoningRock")
 local SquallSteps = require("./SiteData/SquallSteps")
 local Thornwood = require("./SiteData/Thornwood")
 
@@ -7,6 +12,11 @@ local Thornwood = require("./SiteData/Thornwood")
 local list: { Types.Site } = {
 	Thornwood,
 	SquallSteps,
+	CinderFlats,
+	DrownedFen,
+	ReckoningRock,
+	HushGardens,
+	BastionReach,
 }
 
 local hazards: { Types.Hazard } = {}

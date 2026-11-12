@@ -1,9 +1,14 @@
 --!strict
 local T = require("./harness")
+local BastionReach = require("../src/shared/Catalog/SiteData/BastionReach")
+local CinderFlats = require("../src/shared/Catalog/SiteData/CinderFlats")
+local DrownedFen = require("../src/shared/Catalog/SiteData/DrownedFen")
 local Geography = require("../src/shared/Rules/Geography")
 local Hazards = require("../src/shared/Rules/Hazards")
+local HushGardens = require("../src/shared/Catalog/SiteData/HushGardens")
 local Looks = require("../src/shared/Catalog/Looks")
 local Make = require("../src/shared/Catalog/SiteData/Make")
+local ReckoningRock = require("../src/shared/Catalog/SiteData/ReckoningRock")
 local Relics = require("../src/shared/Catalog/Relics")
 local Sites = require("../src/shared/Catalog/Sites")
 local SquallSteps = require("../src/shared/Catalog/SiteData/SquallSteps")
@@ -30,6 +35,12 @@ local function footprint(feature: Types.Feature): Types.Shape
 		halfAcross = feature.sx / 2,
 		region = "",
 	}
+end
+
+-- Every site hazard's combined effect at the world point (along, across) of a region's frame.
+local function at(region: string, along: number, across: number, now: number): Hazards.Sample
+	local x, z = Geography.place(region, along, across)
+	return Hazards.sample(Sites.hazards, x, z, now)
 end
 
 T.test("every hazard is well formed and sits on land in its own region", function()
@@ -368,6 +379,155 @@ T.test("Squall Steps climb", function()
 	local px, pz = Geography.place("SquallSteps", 845, 0)
 	T.eq(SquallSteps.prize, { relicId = "R007", x = px, y = 58, z = pz, hold = 3 })
 	T.eq(SquallSteps.keepOut, { Geography.rect("SquallSteps", 470, 880, -45, 45) })
+end)
+
+T.test("Cinder Flats", function()
+	T.eq(#CinderFlats.hazards, 37)
+	T.eq(Sites.hazardById.CinderVent1.cycle, { period = 6, warn = 1.5, active = 1, offset = 0 })
+	T.eq((Sites.hazardById.CinderVent8.cycle :: Types.Cycle).offset, 1.2 * ((1 + 2 * 2) % 5)) -- m = 1, n = 2
+	T.eq(Sites.hazardById.CinderVent25.shape.radius, 15)
+	T.eq(at("CinderFlats", 760, 60, 0).dps, 30) -- in the lake
+	T.eq(at("CinderFlats", 760, 20, 0).dps, 0) -- on the islet
+	T.eq(
+		at("CinderFlats", 700, 0, 0),
+		{ dps = 0, heal = 0, slow = 1, pushX = 0, pushZ = 0, bursts = {}, names = {} }
+	)
+	T.eq(
+		at("CinderFlats", 700, 0, 2).bursts,
+		{ { id = "CinderCausewayVent3", damage = 35, cycle = 0 } }
+	)
+	T.eq(
+		at("CinderFlats", 760, 0, 4.5).bursts,
+		{ { id = "CinderPrizeVent", damage = 35, cycle = 0 } }
+	)
+	T.eq(at("CinderFlats", 530, 150, 0).names, { "Lava" })
+	T.eq(#CinderFlats.features, 2)
+	T.eq((CinderFlats.prize :: Types.SiteCache).y, 1.6)
+end)
+
+T.test("Drowned Fen", function()
+	T.eq(#DrownedFen.hazards, 1)
+	T.eq(DrownedFen.prize, nil)
+	T.eq(#DrownedFen.features, 5)
+	local wet =
+		{ dps = 3, heal = 0, slow = 0.5, pushX = 0, pushZ = 0, bursts = {}, names = { "Bog" } }
+	T.eq(at("DrownedFen", 650, 0, 0), wet) -- the rotted gap
+	T.eq(at("DrownedFen", 600, 60, 0), wet)
+	for _, p in { { 500, 0 }, { 700, 0 }, { 500, 100 }, { 600, 150 }, { 700, 100 }, { 850, 0 } } do
+		T.eq(at("DrownedFen", p[1], p[2], 0).dps, 0, "boardwalk " .. p[1] .. "," .. p[2])
+	end
+	T.eq(at("DrownedFen", 390, 0, 0).dps, 0) -- before the bog
+end)
+
+T.test("Reckoning Rock tide", function()
+	T.eq(ReckoningRock.prize, { relicId = "R010", x = 0, y = 1, z = 1240, hold = 3 })
+	T.eq(Hazards.sample(Sites.hazards, 0, 1050, 0).dps, 0) -- low tide
+	T.eq(Hazards.sample(Sites.hazards, 0, 1050, 75).dps, 0) -- warning
+	T.eq(
+		Hazards.sample(Sites.hazards, 0, 1050, 90),
+		{ dps = 40, heal = 0, slow = 1, pushX = 0, pushZ = 0, bursts = {}, names = { "High tide" } }
+	)
+	T.eq(Hazards.sample(Sites.hazards, 0, 1240, 90).dps, 0) -- the Rock is always safe
+	T.eq(Hazards.sample(Sites.hazards, 0, 920, 90).dps, 0) -- the Fen shore
+end)
+
+T.test("Hush Gardens", function()
+	T.eq(#HushGardens.hazards, 10)
+	T.eq(
+		at("HushGardens", 500, 60, 0),
+		{ dps = 5, heal = 0, slow = 1, pushX = 0, pushZ = 0, bursts = {}, names = { "Blight" } }
+	)
+	T.eq(at("HushGardens", 470, 0, 0), {
+		dps = 5,
+		heal = 15,
+		slow = 1,
+		pushX = 0,
+		pushZ = 0,
+		bursts = {},
+		names = { "Blight", "Spring" },
+	})
+	T.eq(at("HushGardens", 790, 130, 0).heal, 15)
+	T.eq(at("HushGardens", 300, 0, 0).dps, 0) -- the gate is clear
+	T.eq(at("HushGardens", 860, 0, 0).dps, 5) -- the prize is in the blight
+	T.eq(at("HushGardens", 860, 0, 0).heal, 0)
+end)
+
+T.test("Bastion Reach", function()
+	T.eq(#BastionReach.hazards, 90)
+	T.eq(#BastionReach.features, 18)
+	T.eq(
+		Sites.hazardById.BastionRock1_0_0.cycle,
+		{ period = 6, warn = 2, active = 0.6, offset = 0 }
+	)
+	T.eq(
+		Sites.hazardById.BastionRock3_2_10.cycle,
+		{ period = 4.5, warn = 1.5, active = 0.6, offset = 0 }
+	)
+	T.eq(Sites.hazardById.BastionRock3_1_4.damage, 35)
+	T.eq(Sites.hazardById.BastionRock2_1_3.damage, 30)
+	T.eq(Sites.hazardById.BastionRock1_0_5, nil)
+
+	-- No rockfall hazard affects (along, 0) for along = 530..870 step 10: the shelter line and the prize.
+	for along = 530, 870, 10 do
+		local x, z = Geography.place("BastionReach", along, 0)
+		for _, h in BastionReach.hazards do
+			T.falsy(Hazards.affects(h, x, z), `{h.id} at along {along}`)
+		end
+	end
+
+	-- Every rockfall circle centre lies inside the walls: 524 < along < 876 and |across| < 196.
+	for _, h in BastionReach.hazards do
+		T.eq(h.shape.kind, "circle", h.id)
+		local along, across = Geography.toFrame(300, h.shape.x, h.shape.z)
+		T.truthy(
+			524 < along and along < 876 and math.abs(across) < 196,
+			h.id .. " inside the walls"
+		)
+	end
+
+	-- For A, g in {520, -120}, {640, 120}, {760, -120}: (A, g) lies in no wall footprint and
+	-- (A, 0) lies in one.
+	local walls: { Types.Feature } = {}
+	for _, f in BastionReach.features do
+		if f.shape == "block" and f.look == "wall" then
+			table.insert(walls, f)
+		end
+	end
+	T.eq(#walls, 9)
+	for _, yard in { { 520, -120 }, { 640, 120 }, { 760, -120 } } do
+		local gateX, gateZ = Geography.place("BastionReach", yard[1], yard[2])
+		local wallX, wallZ = Geography.place("BastionReach", yard[1], 0)
+		local inGate, inWall = 0, 0
+		for _, w in walls do
+			if Hazards.contains(footprint(w), gateX, gateZ) then
+				inGate += 1
+			end
+			if Hazards.contains(footprint(w), wallX, wallZ) then
+				inWall += 1
+			end
+		end
+		T.eq(inGate, 0, `gate of the curtain wall at {yard[1]}`)
+		T.eq(inWall, 1, `curtain wall at {yard[1]}`)
+	end
+
+	local px, pz = Geography.place("BastionReach", 820, 0)
+	T.eq(BastionReach.prize, { relicId = "R012", x = px, y = 1, z = pz, hold = 4 })
+end)
+
+T.test("seven sites in order", function()
+	local order = {}
+	for i, site in Sites.list do
+		order[i] = site.region
+	end
+	T.eq(order, {
+		"Thornwood",
+		"SquallSteps",
+		"CinderFlats",
+		"DrownedFen",
+		"ReckoningRock",
+		"HushGardens",
+		"BastionReach",
+	})
 end)
 
 T.test("Sites gathers the sites", function()
