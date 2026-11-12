@@ -3,6 +3,7 @@ local AbilityService = require(script.Parent.AbilityService)
 local ClaimService = require(script.Parent.ClaimService)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
+local Fighters = require(script.Parent.Fighters)
 local HazardService = require(script.Parent.HazardService)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
@@ -21,6 +22,8 @@ local function runStep(name: string, step: () -> ())
 end
 
 runStep("WorldBuilder.build", WorldBuilder.build)
+-- The fighter registry first: every service below looks players and posts up by id.
+runStep("Fighters.start", Fighters.start)
 runStep("LedgerService.start", LedgerService.start)
 runStep("SourceService.start", SourceService.start)
 runStep("VaultService.start", VaultService.start)
@@ -28,7 +31,7 @@ runStep("ProtectionService.start", ProtectionService.start)
 -- StatusService never requires CombatService, and CombatService never requires PathService
 -- (PathService -> ClaimService -> CombatService): the functions are passed in here instead.
 runStep("StatusService.start", function()
-	StatusService.start(CombatService.damage, CombatService.hitPost)
+	StatusService.start(CombatService.damage)
 end)
 runStep("CombatService.start", function()
 	CombatService.start(PathService.get, PathService.grant)

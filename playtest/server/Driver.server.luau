@@ -1495,7 +1495,7 @@ local function run()
 		heal(B)
 		local mBolt = mark(A)
 		local boltCast = cast(A, 4)
-		local burn = StatusService.get(B)
+		local burn = StatusService.get(B.UserId)
 		local burnLeft = fmt(burn.burnUntil - os.clock())
 		local boltCodes = codesSince(A, mBolt)
 		check(
@@ -1566,7 +1566,7 @@ local function run()
 		local bBeforeWard = health(B)
 		local bladeIntoWard = cast(A, 3)
 		task.wait(0.3)
-		local shieldLeft = StatusService.get(B).shield
+		local shieldLeft = StatusService.get(B.UserId).shield
 		local wardCodes = codesSince(B, mWard)
 		check(
 			"M3.8 Ward absorbs an 18-damage Gust Blade: B's health unchanged, shield 30 -> 12",
@@ -1592,7 +1592,7 @@ local function run()
 		)
 		local mChallenge = mark(B)
 		local challengeCast = cast(B, 4)
-		local taunt = StatusService.get(A)
+		local taunt = StatusService.get(A.UserId)
 		local tauntLeft = fmt(taunt.tauntUntil - os.clock())
 		local challengeCodes = codesSince(B, mChallenge)
 		check(
@@ -1602,7 +1602,7 @@ local function run()
 		)
 		-- B's Ward shield from the step above may still be up; clear it so the Strike's full
 		-- 20 reaches B's health.
-		StatusService.update(B, function(s, _now)
+		StatusService.update(B.UserId, function(s, _now)
 			local out = table.clone(s)
 			out.shield = 0
 			out.shieldUntil = 0

@@ -36,6 +36,8 @@ T.test("built place contains the expected scripts", function()
 		game:GetService("ReplicatedStorage").Shared.Catalog.SiteData.Thornwood.ClassName,
 		"ModuleScript"
 	)
+	T.eq(game:GetService("ServerScriptService").Server.Fighters.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.Sight.ClassName, "ModuleScript")
 	T.eq(game:GetService("ReplicatedStorage").Shared.Net.ClassName, "ModuleScript")
 	T.eq(
 		game:GetService("ServerScriptService").Server.Vendor.ProfileStore.ClassName,

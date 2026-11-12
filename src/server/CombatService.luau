@@ -1,5 +1,4 @@
 --!strict
-local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -8,16 +7,17 @@ local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local Types = require(ReplicatedStorage.Shared.Types)
-local World = require(ReplicatedStorage.Shared.Catalog.World)
 local DataService = require(script.Parent.DataService)
+local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
 local ProtectionService = require(script.Parent.ProtectionService)
 local Sight = require(script.Parent.Sight)
 local StatusService = require(script.Parent.StatusService)
 
-type DamageOpts = { reflected: boolean?, tick: boolean?, passive: boolean? }
+-- `path`: the Path a post hit trains ("Strike" = the attacker's Calling, "" = none).
+type DamageOpts = { reflected: boolean?, tick: boolean?, passive: boolean?, path: string? }
 
-local POST_TAG = "TrainingPost"
+local STRIKE_PATH = "Strike"
 local POST_XP = 10
 local POST_XP_GAP = 0.5 -- seconds between paid hits, per post per attacker
 local POST_FLASH_SECONDS = 0.15
@@ -30,8 +30,8 @@ local hitLog: Combat.HitLog = {}
 local lastStrike: { [Player]: number } = {}
 local defeatCallbacks: { (killer: Player, victim: Player) -> () } = {}
 local hitFx: RemoteEvent
--- Last paid hit per attacker per post id, on os.clock().
-local postHits: { [Player]: { [number]: number } } = {}
+-- Last paid hit per attacker fighter id per post id, on os.clock().
+local postHits: { [number]: { [number]: number } } = {}
 local postBaseColor: { [BasePart]: Color3 } = {}
 local postFlashToken: { [BasePart]: number } = {}
 
@@ -40,57 +40,13 @@ local postFlashToken: { [BasePart]: number } = {}
 local getPaths: ((Player) -> Types.PathProgress?)? = nil
 local grantXp: ((Player, string, number) -> ())? = nil
 
--- The Humanoid and HumanoidRootPart of a living character, or nil.
-local function living(player: Player): (Humanoid?, BasePart?)
-	local character = player.Character
-	if character == nil then
-		return nil, nil
-	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid == nil or humanoid.Health <= 0 then
-		return nil, nil
-	end
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if root == nil or not root:IsA("BasePart") then
-		return nil, nil
-	end
-	return humanoid, root
-end
-
-local function fighterOf(id: number, root: BasePart, health: number?): Combat.Fighter
-	local p = root.Position
-	local look = root.CFrame.LookVector
-	return {
-		id = id,
-		position = { x = p.X, y = p.Y, z = p.Z },
-		look = { x = look.X, y = look.Y, z = look.Z },
-		health = health,
-	}
-end
-
--- Every training post part in the world, by post id.
-local function postParts(): { [number]: BasePart }
-	local parts: { [number]: BasePart } = {}
-	for _, instance in CollectionService:GetTagged(POST_TAG) do
-		local id = instance:GetAttribute("PostId")
-		if
-			instance:IsA("BasePart")
-			and instance:IsDescendantOf(workspace)
-			and type(id) == "number"
-			and World.postIndex(id) ~= nil
-		then
-			parts[id] = instance
-		end
-	end
-	return parts
-end
-
 -- A short flash on the post part. A newer flash takes over the restore.
 local function flashPost(postId: number)
-	local part = postParts()[postId]
-	if part == nil then
+	local model = Fighters.model(postId)
+	if model == nil or not model:IsA("BasePart") or not model:IsDescendantOf(workspace) then
 		return
 	end
+	local part = model :: BasePart
 	local base = postBaseColor[part] or part.Color
 	postBaseColor[part] = base
 	local token = (postFlashToken[part] or 0) + 1
@@ -122,80 +78,53 @@ local function creditDefeat(victim: Player, windowSeconds: number)
 	if killerId == nil then
 		return
 	end
-	local killer = Players:GetPlayerByUserId(killerId)
+	local entry = Fighters.get(killerId)
+	local killer = if entry ~= nil then entry.player else nil
 	if killer ~= nil and killer ~= victim then
 		fireDefeat(killer, victim)
 	end
 end
 
-function CombatService.isPost(id: number): boolean
-	return World.postIndex(id) ~= nil
-end
-
--- Every other living player's fighter (with health) plus every training post, and a map
--- from player fighter id (UserId) to the Player.
-function CombatService.fighters(except: Player): ({ Combat.Fighter }, { [number]: Player })
-	local list: { Combat.Fighter } = {}
-	local byId: { [number]: Player } = {}
-	for _, other in Players:GetPlayers() do
-		if other == except then
-			continue
-		end
-		local humanoid, root = living(other)
-		if humanoid ~= nil and root ~= nil then
-			table.insert(list, fighterOf(other.UserId, root, humanoid.Health))
-			byId[other.UserId] = other
-		end
+-- A player hits a training post: Path XP, at most once per POST_XP_GAP per post per attacker,
+-- and a flash. Posts have no protections and take no damage or effects. "Strike" trains the
+-- attacker's Calling; without a Path (or a Calling) nothing happens.
+local function hitPost(
+	attacker: Player,
+	attackerId: number,
+	postId: number,
+	opts: DamageOpts?
+): boolean
+	local path = if opts ~= nil and opts.path ~= nil then opts.path else ""
+	if path == STRIKE_PATH then
+		local paths = getPaths
+		local progress = if paths ~= nil then paths(attacker) else nil
+		path = if progress ~= nil then progress.calling else ""
 	end
-	local parts = postParts()
-	for i = 1, #World.trainingPosts do
-		local id = World.POST_ID_BASE - i
-		local part = parts[id]
-		if part ~= nil then
-			local p = part.Position
-			table.insert(list, {
-				id = id,
-				position = { x = p.X, y = p.Y, z = p.Z },
-				look = { x = 0, y = 0, z = 1 },
-			})
-		end
-	end
-	return list, byId
-end
-
--- Path XP for hitting a training post: at most once per POST_XP_GAP per post per attacker.
--- Posts have no protections. Callers pass the Path to train; nothing is paid without one.
-function CombatService.hitPost(attacker: Player, postId: number, path: string)
-	if attacker.Parent ~= Players or World.postIndex(postId) == nil then
-		return
+	if path == "" then
+		return true
 	end
 	flashPost(postId)
 	local now = os.clock()
-	local hits = postHits[attacker]
+	local hits = postHits[attackerId]
 	if hits == nil then
 		hits = {}
-		postHits[attacker] = hits
+		postHits[attackerId] = hits
 	end
 	local last = hits[postId]
 	-- Written so a NaN time pays nothing.
 	if last ~= nil and not (now - last >= POST_XP_GAP) then
-		return
+		return true
 	end
 	hits[postId] = now
 	local grant = grantXp
 	if grant ~= nil then
 		grant(attacker, path, POST_XP)
 	end
+	return true
 end
 
--- The one way a player takes damage: the Strike, abilities, burns, zones and reflects.
--- True only when the hit landed (it passed the protections and the victim was not immune);
--- callers apply statuses, pulls and knockbacks only then.
--- `reflected`: damage sent back by a reflect, so no protections, Mark or empower.
--- `tick`: burn or zone damage, so refusals are not notified and no empower is used.
--- `passive`: a zone tick on someone who walked in after it was placed; the damage and the
--- protections are unchanged, but the attacker is not Marked and keeps their respawn shield.
-function CombatService.damage(
+-- Player versus player: protections, Mark, empower, statuses, the hit log and the reflect.
+local function damagePlayer(
 	attacker: Player,
 	victim: Player,
 	amount: number,
@@ -204,10 +133,7 @@ function CombatService.damage(
 	local reflected = opts ~= nil and opts.reflected == true
 	local tick = opts ~= nil and opts.tick == true
 	local passive = opts ~= nil and opts.passive == true
-	if attacker == victim or attacker.Parent ~= Players or victim.Parent ~= Players then
-		return false
-	end
-	local victimHumanoid = living(victim)
+	local victimHumanoid = Fighters.body(victim.UserId)
 	if victimHumanoid == nil then
 		return false
 	end
@@ -255,7 +181,7 @@ function CombatService.damage(
 	local total = amount
 	if not reflected and not tick then
 		local bonus = 0
-		StatusService.update(attacker, function(status, at)
+		StatusService.update(attacker.UserId, function(status, at)
 			local out, taken = Effects.takeEmpower(status, at)
 			bonus = taken
 			return out
@@ -264,7 +190,7 @@ function CombatService.damage(
 	end
 
 	local immune, health, reflectBack = false, 0, 0
-	StatusService.update(victim, function(status, at)
+	StatusService.update(victim.UserId, function(status, at)
 		immune = Effects.isImmune(status, at)
 		local out, toHealth, toReflect = Effects.resolveDamage(status, total, at)
 		health, reflectBack = toHealth, toReflect
@@ -280,13 +206,18 @@ function CombatService.damage(
 	if health > 0 then
 		victimHumanoid:TakeDamage(health)
 	end
-	hitFx:FireAllClients(victim.UserId)
+	CombatService.flash(victim.UserId)
 
 	-- A player the hit defeated reflects nothing.
 	if reflectBack > 0 and not reflected and victimHumanoid.Health > 0 then
-		CombatService.damage(victim, attacker, reflectBack, { reflected = true })
+		CombatService.damage(victim.UserId, attacker.UserId, reflectBack, { reflected = true })
 	end
 	return true
+end
+
+-- HitFx to every client for the fighter `id`.
+function CombatService.flash(id: number)
+	hitFx:FireAllClients(id)
 end
 
 -- Damage from the island: no attacker, no protections (shields guard against players only),
@@ -298,14 +229,14 @@ function CombatService.environmentDamage(victim: Player, amount: number, flash: 
 	if not (amount > 0) or victim.Parent ~= Players then
 		return false
 	end
-	local humanoid = living(victim)
+	local humanoid = Fighters.body(victim.UserId)
 	if humanoid == nil then
 		return false
 	end
 
 	-- No yielding call from here to the health change: statuses cannot go stale.
 	local immune, health = false, 0
-	StatusService.update(victim, function(status, at)
+	StatusService.update(victim.UserId, function(status, at)
 		immune = Effects.isImmune(status, at)
 		-- The reflect amount is dropped: the island has nothing to reflect at.
 		local out, toHealth = Effects.resolveDamage(status, amount, at)
@@ -322,7 +253,7 @@ function CombatService.environmentDamage(victim: Player, amount: number, flash: 
 		humanoid.Health = math.max(0, humanoid.Health - health)
 	end
 	if flash == true then
-		hitFx:FireAllClients(victim.UserId)
+		CombatService.flash(victim.UserId)
 	end
 	return health > 0
 end
@@ -332,10 +263,45 @@ function CombatService.environmentDefeat(victim: Player)
 	if victim.Parent ~= Players then
 		return
 	end
-	local humanoid = living(victim)
+	local humanoid = Fighters.body(victim.UserId)
 	if humanoid ~= nil then
 		humanoid.Health = 0
 	end
+end
+
+-- The one way any fighter is hurt: the Strike, abilities, burns, zones and reflects, between
+-- any two fighters in the registry that may fight. True only when the hit landed (a post
+-- always counts; a player hit passed the protections and the victim was not immune); callers
+-- apply statuses, pulls and knockbacks only then.
+-- `reflected`: damage sent back by a reflect, so no protections, Mark or empower.
+-- `tick`: burn or zone damage, so refusals are not notified and no empower is used.
+-- `passive`: a zone tick on someone who walked in after it was placed; the damage and the
+-- protections are unchanged, but the attacker is not Marked and keeps their respawn shield.
+-- `path`: the Path a post hit trains ("Strike" = the attacker's Calling).
+function CombatService.damage(
+	attackerId: number,
+	targetId: number,
+	amount: number,
+	opts: DamageOpts?
+): boolean
+	local attacker, target = Fighters.get(attackerId), Fighters.get(targetId)
+	if attacker == nil or target == nil or not Fighters.mayFight(attackerId, targetId) then
+		return false
+	end
+	local attackerPlayer = attacker.player
+	if attacker.kind ~= "player" or attackerPlayer == nil then
+		-- Creature attackers: Task 9.
+		return false
+	end
+	if target.kind == "post" then
+		return hitPost(attackerPlayer, attackerId, targetId, opts)
+	end
+	local victimPlayer = target.player
+	if target.kind == "player" and victimPlayer ~= nil then
+		return damagePlayer(attackerPlayer, victimPlayer, amount, opts)
+	end
+	-- Creature targets: Task 9.
+	return false
 end
 
 -- The client only says "I swung". Target, reach, damage and timing are all decided here.
@@ -343,8 +309,8 @@ local function handleStrike(player: Player)
 	if player.Parent ~= Players then
 		return
 	end
-	local _, attackerRoot = living(player)
-	if attackerRoot == nil then
+	local attacker = Fighters.fighter(player.UserId)
+	if attacker == nil then
 		return
 	end
 	local now = os.clock()
@@ -355,29 +321,15 @@ local function handleStrike(player: Player)
 
 	-- Only what the attacker can see is a candidate, so a target behind a corner never
 	-- swallows the swing, and an unseen taunter forces nothing.
-	local all, byId = CombatService.fighters(player)
-	local others = Sight.filter(attackerRoot.Position, all)
-	local taunter = Effects.tauntedBy(StatusService.get(player), now)
-	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others, nil, taunter)
+	local p = attacker.position
+	local others = Sight.filter(Vector3.new(p.x, p.y, p.z), Fighters.list(player.UserId))
+	local taunter = Effects.tauntedBy(StatusService.get(player.UserId), now)
+	local targetId = Combat.pickTarget(attacker, others, nil, taunter)
 	if targetId == nil then
 		return
 	end
-
-	if CombatService.isPost(targetId) then
-		-- A post trains the Calling; without a Calling the swing does nothing.
-		local paths = getPaths
-		local progress = if paths ~= nil then paths(player) else nil
-		if progress ~= nil and progress.calling ~= "" then
-			CombatService.hitPost(player, targetId, progress.calling)
-		end
-		return
-	end
-
-	local victim = byId[targetId]
-	if victim == nil then
-		return
-	end
-	CombatService.damage(player, victim, Combat.STRIKE_DAMAGE)
+	-- A post trains the Calling; without a Calling the swing does nothing there.
+	CombatService.damage(player.UserId, targetId, Combat.STRIKE_DAMAGE, { path = STRIKE_PATH })
 end
 
 local function onCharacterAdded(player: Player, character: Model)
@@ -429,7 +381,7 @@ function CombatService.start(
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		lastStrike[player] = nil
-		postHits[player] = nil
+		postHits[player.UserId] = nil
 	end)
 end
 

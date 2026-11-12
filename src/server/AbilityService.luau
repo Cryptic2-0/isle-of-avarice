@@ -1,7 +1,7 @@
 --!strict
 -- Turns a client's "cast slot N" into the effects of the 18 abilities. The client names only
 -- a slot: the ability, targets, damage, movement and timing are all decided here, from the pure
--- Casting plan and the server's own view of the world. Every player hit goes through
+-- Casting plan and the server's own view of the world. Every hit (player or post) goes through
 -- CombatService.damage, and a hit's statuses, pull or knockback follow only when it landed.
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
@@ -18,6 +18,7 @@ local Targeting = require(ReplicatedStorage.Shared.Rules.Targeting)
 local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 local CombatService = require(script.Parent.CombatService)
+local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
 local Sight = require(script.Parent.Sight)
@@ -63,19 +64,7 @@ end
 
 -- The Humanoid and HumanoidRootPart of a living character, or nil.
 local function living(player: Player): (Humanoid?, BasePart?)
-	local character = player.Character
-	if character == nil then
-		return nil, nil
-	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid == nil or humanoid.Health <= 0 then
-		return nil, nil
-	end
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if root == nil or not root:IsA("BasePart") then
-		return nil, nil
-	end
-	return humanoid, root
+	return Fighters.body(player.UserId)
 end
 
 local function fighterOf(player: Player, humanoid: Humanoid, root: BasePart): Fighter
@@ -191,31 +180,6 @@ local function alliesOf(player: Player, ability: Ability): { Player }
 	return result
 end
 
--- The hit's statuses on a victim the damage reached. Only called after damage() returned true.
-local function applyHitStatuses(player: Player, ability: Ability, victim: Player)
-	local burn, rootFor, slow, taunt = ability.burn, ability.root, ability.slow, ability.taunt
-	if burn == nil and rootFor == nil and slow == nil and taunt == nil then
-		return
-	end
-	local byId = player.UserId
-	StatusService.update(victim, function(status, now)
-		local out = status
-		if burn ~= nil then
-			out = Effects.applyBurn(out, burn.dps, burn.duration, byId, now)
-		end
-		if rootFor ~= nil then
-			out = Effects.applyRoot(out, rootFor, now)
-		end
-		if slow ~= nil then
-			out = Effects.applySlow(out, slow.factor, slow.duration, now)
-		end
-		if taunt ~= nil then
-			out = Effects.applyTaunt(out, byId, taunt, now)
-		end
-		return out
-	end)
-end
-
 local function vector(v: Vec3): Vector3
 	return Vector3.new(v.x, v.y, v.z)
 end
@@ -226,46 +190,39 @@ end
 local function inSight(caster: Fighter, others: { Fighter }, targetId: number): boolean
 	for _, other in others do
 		if other.id == targetId then
-			local postId = if CombatService.isPost(targetId) then targetId else nil
-			return Sight.obstruction(vector(caster.position), vector(other.position), postId) == nil
+			local target = Fighters.model(targetId)
+			return Sight.obstruction(vector(caster.position), vector(other.position), target) == nil
 		end
 	end
 	return false
 end
 
--- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. A post
--- trains the ability's Path (posts ignore every effect); a player takes the hit through
--- CombatService.damage, and its statuses and its pull or knockback follow only when that
--- returned true. Heal-on-hit heals the caster and allies when any player hit landed or a post
--- was hit.
+-- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. Every
+-- hit goes through CombatService.damage (a post trains the ability's Path and ignores every
+-- effect); its statuses and its pull or knockback follow only when that returned true.
+-- Heal-on-hit heals the caster and allies when any hit landed.
 local function applyHits(
 	player: Player,
 	ability: Ability,
 	plan: Plan,
 	caster: Fighter,
-	others: { Fighter },
-	byId: { [number]: Player }
+	others: { Fighter }
 )
 	local connected = false
 	for _, hit in plan.hits do
-		if not inSight(caster, others, hit.targetId) then
+		local id = hit.targetId
+		if not inSight(caster, others, id) then
 			continue
 		end
-		if CombatService.isPost(hit.targetId) then
-			CombatService.hitPost(player, hit.targetId, ability.path)
-			connected = true
-			continue
-		end
-		local victim = byId[hit.targetId]
-		if victim == nil or not CombatService.damage(player, victim, hit.damage) then
+		if not CombatService.damage(player.UserId, id, hit.damage, { path = ability.path }) then
 			continue
 		end
 		connected = true
-		applyHitStatuses(player, ability, victim)
+		StatusService.applyHit(player.UserId, id, ability)
 		-- No ability both pulls and knocks back; each point is for the plan's one target.
 		local destination = plan.pullTo or plan.knockbackTo
 		if destination ~= nil then
-			local humanoid, root = living(victim)
+			local humanoid, root = Fighters.body(id)
 			if humanoid ~= nil and root ~= nil then
 				moveCharacter(humanoid, root, destination)
 			end
@@ -302,7 +259,7 @@ local function applySelfEffects(player: Player, ability: Ability)
 		if not anyStatus then
 			continue
 		end
-		StatusService.update(ally, function(status, now)
+		StatusService.update(ally.UserId, function(status, now)
 			local out = status
 			if cleanse then
 				out = Effects.cleanse(out)
@@ -389,8 +346,8 @@ local function showShots(ability: Ability, caster: Fighter, others: { Fighter },
 				end
 			end
 		end
-		local postId = if targetId ~= nil and CombatService.isPost(targetId) then targetId else nil
-		showRay(from, Sight.obstruction(from, to, postId) or to, color)
+		local target = if targetId ~= nil then Fighters.model(targetId) else nil
+		showRay(from, Sight.obstruction(from, to, target) or to, color)
 	end
 end
 
@@ -471,11 +428,11 @@ local function runWave(player: Player, character: Model?, ability: Ability)
 		return
 	end
 	local now = os.clock()
-	local others, byId = CombatService.fighters(player)
-	local taunter = Effects.tauntedBy(StatusService.get(player), now)
+	local others = Fighters.list(player.UserId)
+	local taunter = Effects.tauntedBy(StatusService.get(player.UserId), now)
 	local caster = fighterOf(player, humanoid, root)
 	local plan = Casting.plan(ability, caster, candidates(ability, caster, others), taunter)
-	applyHits(player, ability, plan, caster, others, byId)
+	applyHits(player, ability, plan, caster, others)
 end
 
 local function handleCast(player: Player, rawSlot: any)
@@ -498,7 +455,7 @@ local function handleCast(player: Player, rawSlot: any)
 
 	-- No yielding call from here to the commit: the cooldown check cannot go stale.
 	local now = os.clock()
-	local status = StatusService.get(player)
+	local status = StatusService.get(player.UserId)
 	local state = castStates[player] or Casting.new()
 	local id, code = Casting.canCast(state, progress, rawSlot, now, Effects.isRooted(status, now))
 	if id == nil then
@@ -516,7 +473,7 @@ local function handleCast(player: Player, rawSlot: any)
 	cooldownRemote:FireClient(player, rawSlot :: number, ability.cooldown)
 
 	local character = player.Character
-	local others, byId = CombatService.fighters(player)
+	local others = Fighters.list(player.UserId)
 	local taunter = Effects.tauntedBy(status, now)
 	local caster = fighterOf(player, humanoid, root)
 	local targets = candidates(ability, caster, others)
@@ -540,13 +497,13 @@ local function handleCast(player: Player, rawSlot: any)
 			plan.hits = hits
 		end
 	end
-	applyHits(player, ability, plan, caster, others, byId)
+	applyHits(player, ability, plan, caster, others)
 	for k = 1, plan.waves - 1 do
 		task.delay(plan.interval * k, runWave, player, character, ability)
 	end
 	local zone = plan.zone
 	if zone ~= nil then
-		StatusService.addZone(player, placeZone(zone, root.Position), ability.path)
+		StatusService.addZone(player.UserId, placeZone(zone, root.Position), ability.path)
 	end
 	applySelfEffects(player, ability)
 
