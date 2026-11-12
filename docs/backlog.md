@@ -32,3 +32,16 @@ the M1 play test.
   are written inline instead of in `World.luau`.
 - `Ledger.sanitize` uses `#` on a list that could have gaps.
 - Test harness: no guard against tables that contain themselves.
+
+## World
+
+Open questions from the wide-island design (section 10 of
+`docs/superpowers/specs/2026-11-12-world-regions-design.md`), to settle in
+play tests:
+
+- All hazard numbers, especially blight (5 a second) against the 120-stud
+  last leg to the Ledger-Moth Wing in Hush Gardens.
+- Whether the pillar gaps in Squall Steps (5 studs across, 3 up) feel right
+  on a phone.
+- Whether dying to the island should cost something. Today it does not, so a
+  prize run can end in a free trip home.

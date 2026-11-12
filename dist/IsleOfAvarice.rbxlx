@@ -272,6 +272,58 @@ return {
         </Item>
         <Item class="ModuleScript" referent="5">
           <Properties>
+            <string name="Name">Looks</string>
+            <string name="Source"><![CDATA[--!strict
+export type Look = { r: number, g: number, b: number, material: string, transparency: number }
+
+-- material is the name of an Enum.Material item.
+local function look(r: number, g: number, b: number, material: string, transparency: number?): Look
+	return { r = r, g = g, b = b, material = material, transparency = transparency or 0 }
+end
+
+local byName: { [string]: Look } = {
+	grass = look(86, 140, 60, "Grass"),
+	thorngrass = look(52, 92, 48, "Grass"),
+	slate = look(128, 136, 148, "Slate"),
+	ash = look(58, 52, 50, "Basalt"),
+	mud = look(84, 92, 62, "Mud"),
+	shale = look(96, 104, 112, "Slate"),
+	palegrass = look(150, 160, 120, "Grass"),
+	gravel = look(140, 132, 120, "Pebble"),
+	hedge = look(38, 84, 42, "Grass"),
+	pillar = look(150, 156, 168, "Slate"),
+	wall = look(120, 112, 104, "Brick"),
+	roof = look(96, 84, 72, "WoodPlanks"),
+	wood = look(139, 100, 60, "WoodPlanks"),
+	road = look(150, 146, 140, "Cobblestone"),
+	sign = look(139, 100, 60, "Wood"),
+	rock = look(110, 110, 112, "Slate"),
+	trunk = look(92, 64, 40, "Wood"),
+	leaf = look(60, 120, 50, "Grass"),
+	deadwood = look(120, 110, 100, "Wood"),
+	basalt = look(40, 38, 42, "Basalt"),
+	rubble = look(130, 124, 116, "Slate"),
+	flower = look(200, 150, 200, "Grass"),
+	reed = look(120, 130, 70, "Grass"),
+	briar = look(70, 48, 60, "Grass", 0.2),
+	lava = look(255, 110, 20, "Neon", 0.1),
+	vent = look(255, 170, 60, "Neon", 0.6),
+	bog = look(60, 70, 40, "Mud", 0.2),
+	tide = look(60, 120, 200, "Glass", 0.5),
+	spring = look(90, 200, 255, "Neon", 0.4),
+	gust = look(220, 240, 255, "Neon", 0.85),
+	rockfall = look(255, 90, 60, "Neon", 0.7),
+	none = look(0, 0, 0, "SmoothPlastic", 1),
+}
+
+return {
+	byName = byName,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="6">
+          <Properties>
             <string name="Name">Messages</string>
             <string name="Source"><![CDATA[--!strict
 local templates: { [string]: string } = {
@@ -354,7 +406,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="6">
+        <Item class="ModuleScript" referent="7">
           <Properties>
             <string name="Name">Paths</string>
             <string name="Source"><![CDATA[--!strict
@@ -410,7 +462,111 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="7">
+        <Item class="ModuleScript" referent="8">
+          <Properties>
+            <string name="Name">Regions</string>
+            <string name="Source"><![CDATA[--!strict
+local Types = require("../Types")
+
+type Region = Types.Region
+type RegionId = Types.RegionId
+
+local list: { Region } = {
+	{
+		id = "Tallyport",
+		name = "Tallyport",
+		hint = "Safe ground. No fighting here.",
+		ground = "grass",
+		fog = { r = 200, g = 215, b = 230, start = 200, finish = 2500 },
+	},
+	{
+		id = "CountingFields",
+		name = "Counting Fields",
+		hint = "Quiet fields. Nothing here will hurt you.",
+		ground = "grass",
+		fog = { r = 200, g = 215, b = 230, start = 200, finish = 2500 },
+	},
+	{
+		id = "Thornwood",
+		name = "Thornwood",
+		hint = "A hedge maze. Briars are a shortcut that costs health.",
+		bearing = 0,
+		ground = "thorngrass",
+		fog = { r = 60, g = 90, b = 60, start = 80, finish = 900 },
+	},
+	{
+		id = "SquallSteps",
+		name = "Squall Steps",
+		hint = "Climb the pillars. Brace when the wind lanes glow.",
+		bearing = 60,
+		ground = "slate",
+		fog = { r = 210, g = 225, b = 240, start = 300, finish = 3000 },
+	},
+	{
+		id = "CinderFlats",
+		name = "Cinder Flats",
+		hint = "Vents glow before they erupt. Lava burns fast.",
+		bearing = 120,
+		ground = "ash",
+		fog = { r = 120, g = 50, b = 30, start = 120, finish = 1200 },
+	},
+	{
+		id = "DrownedFen",
+		name = "Drowned Fen",
+		hint = "Stay on the boardwalk. The bog slows and drains you.",
+		bearing = 180,
+		ground = "mud",
+		fog = { r = 110, g = 125, b = 110, start = 30, finish = 450 },
+	},
+	{
+		id = "ReckoningRock",
+		name = "Reckoning Rock",
+		hint = "The causeway floods at high tide. The Rock is safe.",
+		ground = "shale",
+		fog = { r = 150, g = 170, b = 190, start = 100, finish = 1500 },
+	},
+	{
+		id = "HushGardens",
+		name = "Hush Gardens",
+		hint = "The blight drains you. Springs heal.",
+		bearing = 240,
+		ground = "palegrass",
+		fog = { r = 170, g = 150, b = 190, start = 100, finish = 1000 },
+	},
+	{
+		id = "BastionReach",
+		name = "Bastion Reach",
+		hint = "Rocks fall where the ground glows. Shelter under the roofs.",
+		bearing = 300,
+		ground = "gravel",
+		fog = { r = 150, g = 150, b = 160, start = 150, finish = 1600 },
+	},
+}
+
+local byId: { [string]: Region } = {}
+for _, region in list do
+	byId[region.id] = region
+end
+
+-- The six regions with a bearing, in bearing order (0, 60, ... 300).
+local wild: { RegionId } = {
+	"Thornwood",
+	"SquallSteps",
+	"CinderFlats",
+	"DrownedFen",
+	"HushGardens",
+	"BastionReach",
+}
+
+return {
+	list = list,
+	byId = byId,
+	wild = wild,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="9">
           <Properties>
             <string name="Name">Relics</string>
             <string name="Source"><![CDATA[--!strict
@@ -518,7 +674,977 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="8">
+        <Item class="Folder" referent="10">
+          <Properties>
+            <string name="Name">SiteData</string>
+          </Properties>
+          <Item class="ModuleScript" referent="11">
+            <Properties>
+              <string name="Name">BastionReach</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+local Make = require("./Make")
+
+local REGION: Types.RegionId = "BastionReach"
+local WALL_HEIGHT = 24
+local ROOF_BOTTOM = 12
+local ROOF_TOP = 13.5
+local POST_RADIUS = 1.5
+
+-- The three yards, nearest first: the along of the curtain wall that opens the yard, and the
+-- across of the gate in it.
+local CURTAIN_ALONGS = { 520, 640, 760 }
+local GATES = { -120, 120, -120 }
+
+local features: { Types.Feature } = {}
+
+local function wall(a1: number, a2: number, c1: number, c2: number)
+	table.insert(features, Make.block(REGION, a1, a2, c1, c2, 0, WALL_HEIGHT, "wall", true))
+end
+
+-- A curtain wall across each yard's mouth, with a 20-stud gate centred on the across g.
+for i, a in CURTAIN_ALONGS do
+	local gate = GATES[i]
+	wall(a - 4, a + 4, -200, gate - 10)
+	wall(a - 4, a + 4, gate + 10, 200)
+end
+wall(516, 884, -204, -196)
+wall(516, 884, 196, 204)
+wall(876, 884, -200, 200)
+
+-- One shelter per yard: a roof on two posts, in line with the prize.
+for _, a in CURTAIN_ALONGS do
+	table.insert(
+		features,
+		Make.block(REGION, a + 12, a + 108, -16, 16, ROOF_BOTTOM, ROOF_TOP, "roof", true)
+	)
+	table.insert(features, Make.disc(REGION, a + 14, 0, POST_RADIUS, 0, ROOF_BOTTOM, "wall", true))
+	table.insert(features, Make.disc(REGION, a + 106, 0, POST_RADIUS, 0, ROOF_BOTTOM, "wall", true))
+end
+
+-- Three rows of rocks in each yard. The middle column (n = 5) is left bare: that is the shelter
+-- line, and the way to the prize.
+local hazards: { Types.Hazard } = {}
+for yard, a in CURTAIN_ALONGS do
+	local damage = if yard == 3 then 35 else 30
+	for row = 0, 2 do
+		for n = 0, 10 do
+			if n ~= 5 then
+				local cycle: Types.Cycle = if yard == 3
+					then { period = 4.5, warn = 1.5, active = 0.6, offset = ((n + row) % 3) * 1.5 }
+					else { period = 6, warn = 2, active = 0.6, offset = ((n + row) % 4) * 1.5 }
+				table.insert(hazards, {
+					id = `BastionRock{yard}_{row}_{n}`,
+					region = REGION,
+					name = "Rockfall",
+					look = "rockfall",
+					shape = Geography.circle(REGION, a + 24 + 36 * row, -180 + 36 * n, 18),
+					cycle = cycle,
+					damage = damage,
+				})
+			end
+		end
+	end
+end
+
+local prizeX, prizeZ = Geography.place(REGION, 820, 0)
+
+local site: Types.Site = {
+	region = REGION,
+	hazards = hazards,
+	features = features,
+	prize = { relicId = "R012", x = prizeX, y = 1, z = prizeZ, hold = 4 },
+	keepOut = { Geography.rect(REGION, 510, 890, -210, 210) },
+}
+
+return site
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="12">
+            <Properties>
+              <string name="Name">CinderFlats</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+local Make = require("./Make")
+
+local REGION: Types.RegionId = "CinderFlats"
+local VENT_DAMAGE = 35
+local LAVA_DPS = 30
+local BASALT_TOP = 0.6
+
+local function vent(id: string, shape: Types.Shape, cycle: Types.Cycle): Types.Hazard
+	return {
+		id = id,
+		region = REGION,
+		name = "Vent",
+		look = "vent",
+		shape = shape,
+		cycle = cycle,
+		damage = VENT_DAMAGE,
+	}
+end
+
+local function lava(id: string, shape: Types.Shape, holes: { Types.Shape }?): Types.Hazard
+	return {
+		id = id,
+		region = REGION,
+		name = "Lava",
+		look = "lava",
+		shape = shape,
+		holes = holes,
+		dps = LAVA_DPS,
+	}
+end
+
+local hazards: { Types.Hazard } = {}
+
+-- A five by five grid of vents; vent 5m + n + 1 is row m, column n, and the grid erupts in a
+-- slow diagonal wave.
+for m = 0, 4 do
+	for n = 0, 4 do
+		table.insert(
+			hazards,
+			vent(
+				`CinderVent{5 * m + n + 1}`,
+				Geography.circle(REGION, 440 + 40 * m, -80 + 40 * n, 15),
+				{ period = 6, warn = 1.5, active = 1, offset = ((m + 2 * n) % 5) * 1.2 }
+			)
+		)
+	end
+end
+
+-- Lava along both flanks of the vent field.
+table.insert(hazards, lava("CinderFlank1", Geography.rect(REGION, 440, 620, -190, -110), nil))
+table.insert(hazards, lava("CinderFlank2", Geography.rect(REGION, 440, 620, 110, 190), nil))
+
+local pools = {
+	{ 340, -120, 22 },
+	{ 350, 90, 20 },
+	{ 680, -190, 26 },
+	{ 700, 200, 24 },
+}
+for i, pool in pools do
+	table.insert(
+		hazards,
+		lava(`CinderPool{i}`, Geography.circle(REGION, pool[1], pool[2], pool[3]), nil)
+	)
+end
+
+-- The lake round the prize islet, crossed by a causeway.
+table.insert(
+	hazards,
+	lava("CinderLake", Geography.circle(REGION, 760, 0, 110), {
+		Geography.circle(REGION, 760, 0, 32),
+		Geography.rect(REGION, 650, 730, -10, 10),
+	})
+)
+
+-- Four vents on the causeway, firing one after another toward the islet.
+for i = 1, 4 do
+	table.insert(
+		hazards,
+		vent(
+			`CinderCausewayVent{i}`,
+			Geography.circle(REGION, 640 + 20 * i, 0, 11),
+			{ period = 4.8, warn = 1.2, active = 0.8, offset = (i - 1) * 1.2 }
+		)
+	)
+end
+
+table.insert(
+	hazards,
+	vent(
+		"CinderPrizeVent",
+		Geography.circle(REGION, 760, 0, 12),
+		{ period = 5, warn = 1.5, active = 1, offset = 0 }
+	)
+)
+
+local features: { Types.Feature } = {
+	Make.block(REGION, 650, 730, -10, 10, 0, BASALT_TOP, "basalt", true),
+	Make.disc(REGION, 760, 0, 32, 0, BASALT_TOP, "basalt", true),
+}
+
+local prizeX, prizeZ = Geography.place(REGION, 760, 0)
+
+local site: Types.Site = {
+	region = REGION,
+	hazards = hazards,
+	features = features,
+	prize = { relicId = "R011", x = prizeX, y = 1.6, z = prizeZ, hold = 3 },
+	keepOut = {
+		Geography.rect(REGION, 420, 640, -200, 200),
+		Geography.circle(REGION, 760, 0, 120),
+	},
+}
+
+return site
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="13">
+            <Properties>
+              <string name="Name">DrownedFen</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+local Make = require("./Make")
+
+local REGION: Types.RegionId = "DrownedFen"
+local BOARDWALK_TOP = 0.6
+
+-- along from, along to, across from, across to. The two long walks run down the middle with a
+-- rotted gap between them; the three short ones lead off to the east.
+local BOARDWALKS = {
+	{ 400, 620, -7, 7 },
+	{ 680, 860, -7, 7 },
+	{ 493, 507, 7, 150 },
+	{ 493, 707, 143, 157 },
+	{ 693, 707, 7, 150 },
+}
+
+local bog = Geography.rect(REGION, 400, 860, -180, 200)
+
+local holes: { Types.Shape } = {}
+local features: { Types.Feature } = {}
+for _, walk in BOARDWALKS do
+	table.insert(holes, Geography.rect(REGION, walk[1], walk[2], walk[3], walk[4]))
+	table.insert(
+		features,
+		Make.block(REGION, walk[1], walk[2], walk[3], walk[4], 0, BOARDWALK_TOP, "wood", true)
+	)
+end
+
+local site: Types.Site = {
+	region = REGION,
+	hazards = {
+		{
+			id = "FenBog",
+			region = REGION,
+			name = "Bog",
+			look = "bog",
+			shape = bog,
+			holes = holes,
+			slow = 0.5,
+			dps = 3,
+		},
+	},
+	features = features,
+	prize = nil,
+	keepOut = { bog },
+}
+
+return site
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="14">
+            <Properties>
+              <string name="Name">HushGardens</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+
+local REGION: Types.RegionId = "HushGardens"
+local SPRING_RADIUS = 14
+local KEEP_OUT_RADIUS = 20
+
+-- along, across.
+local springs = {
+	{ 380, 0 },
+	{ 470, 0 },
+	{ 560, 0 },
+	{ 650, 0 },
+	{ 740, 0 },
+	{ 450, -120 },
+	{ 560, 140 },
+	{ 660, -150 },
+	{ 790, 130 },
+}
+
+-- The blight must come first: a point in both reads "Blight" then "Spring".
+local hazards: { Types.Hazard } = {
+	{
+		id = "HushBlight",
+		region = REGION,
+		name = "Blight",
+		look = "none",
+		shape = Geography.regionShape(REGION, 330),
+		dps = 5,
+	},
+}
+local keepOut: { Types.Shape } = {}
+for i, spring in springs do
+	table.insert(hazards, {
+		id = `HushSpring{i}`,
+		region = REGION,
+		name = "Spring",
+		look = "spring",
+		shape = Geography.circle(REGION, spring[1], spring[2], SPRING_RADIUS),
+		heal = 15,
+	})
+	table.insert(keepOut, Geography.circle(REGION, spring[1], spring[2], KEEP_OUT_RADIUS))
+end
+
+local prizeX, prizeZ = Geography.place(REGION, 860, 0)
+table.insert(keepOut, Geography.circle(REGION, 860, 0, KEEP_OUT_RADIUS))
+
+local site: Types.Site = {
+	region = REGION,
+	hazards = hazards,
+	features = {},
+	prize = { relicId = "R008", x = prizeX, y = 1, z = prizeZ, hold = 3 },
+	keepOut = keepOut,
+}
+
+return site
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="15">
+            <Properties>
+              <string name="Name">Make</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+
+local Make = {}
+
+-- A feature covering the region-frame rectangle a1..a2 along, c1..c2 across, from height y1
+-- to y2. Its yaw is the region's bearing.
+function Make.block(
+	regionId: string,
+	a1: number,
+	a2: number,
+	c1: number,
+	c2: number,
+	y1: number,
+	y2: number,
+	look: string,
+	solid: boolean
+): Types.Feature
+	local footprint = Geography.rect(regionId, a1, a2, c1, c2)
+	return {
+		look = look,
+		shape = "block",
+		x = footprint.x,
+		y = (y1 + y2) / 2,
+		z = footprint.z,
+		sx = 2 * footprint.halfAcross,
+		sy = y2 - y1,
+		sz = 2 * footprint.halfAlong,
+		yaw = footprint.bearing,
+		solid = solid,
+	}
+end
+
+-- An upright cylinder from height y1 to y2.
+function Make.disc(
+	regionId: string,
+	along: number,
+	across: number,
+	radius: number,
+	y1: number,
+	y2: number,
+	look: string,
+	solid: boolean
+): Types.Feature
+	local footprint = Geography.rect(regionId, along, along, across, across)
+	return {
+		look = look,
+		shape = "cylinder",
+		x = footprint.x,
+		y = (y1 + y2) / 2,
+		z = footprint.z,
+		sx = 2 * radius,
+		sy = y2 - y1,
+		sz = 2 * radius,
+		yaw = footprint.bearing,
+		solid = solid,
+	}
+end
+
+return Make
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="16">
+            <Properties>
+              <string name="Name">ReckoningRock</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+
+-- The Rock has no bearing of its own. It lies due south of the island centre, so it is measured
+-- in the Fen's frame: along is world z, across is minus world x, and the Rock's centre is
+-- (1240, 0).
+local FRAME = "DrownedFen"
+
+local site: Types.Site = {
+	region = "ReckoningRock",
+	hazards = {
+		{
+			id = "RockTide",
+			region = "ReckoningRock",
+			name = "High tide",
+			look = "tide",
+			shape = Geography.rect(FRAME, 940, 1160, -20, 20),
+			cycle = { period = 120, warn = 15, active = 35, offset = 0 },
+			dps = 40,
+		},
+	},
+	features = {},
+	-- World coordinates, written out so the Rock's x is exactly 0.
+	prize = { relicId = "R010", x = 0, y = 1, z = 1240, hold = 3 },
+	keepOut = { Geography.circle(FRAME, 1240, 0, 30) },
+}
+
+return site
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="17">
+            <Properties>
+              <string name="Name">Scenery</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Hazards = require("../../Rules/Hazards")
+local Types = require("../../Types")
+local Make = require("./Make")
+
+local Scenery = {}
+
+local TRIES = 400
+local PROPS = 36
+local SEED_BASE = 1000
+local MIN_ALONG = 300
+local ALONG_SPAN = 600
+local CLEARANCE = 12 -- a prop's footprint is checked this far out in each direction
+local ROAD_HALF_WIDTH = 16
+local ROAD_END = 480
+local CACHE_CLEARANCE = 30
+-- Where Sites puts the region's extra Copper cache.
+local COPPER_ALONG = 310
+local COPPER_ACROSS = -60
+
+-- One piece of a prop: a block sx across by sz along, or a cylinder of diameter sx = sz, standing
+-- on the piece below it. Heights are multiplied by the prop's scale.
+type Part = {
+	shape: "block" | "cylinder",
+	sx: number,
+	sz: number,
+	height: number,
+	look: string,
+	solid: boolean,
+}
+type Kind = { Part }
+
+local function cylinder(diameter: number, height: number, look: string, solid: boolean): Part
+	return {
+		shape = "cylinder",
+		sx = diameter,
+		sz = diameter,
+		height = height,
+		look = look,
+		solid = solid,
+	}
+end
+
+local function block(sx: number, sz: number, height: number, look: string, solid: boolean): Part
+	return { shape = "block", sx = sx, sz = sz, height = height, look = look, solid = solid }
+end
+
+local deadTree: Kind = { cylinder(2.5, 16, "deadwood", true) }
+
+local kindsByRegion: { [string]: { Kind } } = {
+	Thornwood = {
+		{ cylinder(3, 14, "trunk", true), cylinder(14, 8, "leaf", false) },
+		{ cylinder(8, 4, "leaf", true) },
+	},
+	SquallSteps = {
+		{ block(6, 6, 18, "pillar", true) },
+		{ block(8, 8, 5, "rock", true) },
+	},
+	CinderFlats = {
+		{ cylinder(6, 12, "basalt", true) },
+		{ cylinder(14, 3, "basalt", true) },
+	},
+	DrownedFen = {
+		deadTree,
+		{ cylinder(10, 5, "reed", false) },
+	},
+	HushGardens = {
+		deadTree,
+		{ cylinder(12, 0.4, "flower", false) },
+	},
+	BastionReach = {
+		{ block(8, 6, 4, "rubble", true) },
+		{ cylinder(4, 10, "wall", true) },
+	},
+}
+
+-- Land of the site's own region, clear of its keep-out shapes and of every hazard that has a
+-- footprint of its own.
+local function usable(site: Types.Site, x: number, z: number): boolean
+	if not Geography.isLand(x, z) or Geography.regionAt(x, z) ~= site.region then
+		return false
+	end
+	for _, shape in site.keepOut do
+		if Hazards.contains(shape, x, z) then
+			return false
+		end
+	end
+	for _, hazard in site.hazards do
+		if hazard.shape.kind ~= "region" and Hazards.affects(hazard, x, z) then
+			return false
+		end
+	end
+	return true
+end
+
+-- The features of one prop standing at (along, across), its parts stacked from the ground up.
+local function build(
+	region: string,
+	kind: Kind,
+	along: number,
+	across: number,
+	scale: number
+): { Types.Feature }
+	local features: { Types.Feature } = {}
+	local base = 0
+	for _, part in kind do
+		local top = base + part.height * scale
+		if part.shape == "cylinder" then
+			table.insert(
+				features,
+				Make.disc(region, along, across, part.sx / 2, base, top, part.look, part.solid)
+			)
+		else
+			table.insert(
+				features,
+				Make.block(
+					region,
+					along - part.sz / 2,
+					along + part.sz / 2,
+					across - part.sx / 2,
+					across + part.sx / 2,
+					base,
+					top,
+					part.look,
+					part.solid
+				)
+			)
+		end
+		base = top
+	end
+	return features
+end
+
+-- Trees, rocks and the like scattered over a wild region, the same every time. index is the
+-- region's place in Regions.wild; it seeds the pseudo-random sequence.
+function Scenery.scatter(site: Types.Site, index: number): { Types.Feature }
+	local kinds = kindsByRegion[site.region]
+	if kinds == nil then
+		error(`Scenery: region {site.region} has no scenery`)
+	end
+
+	local seed = SEED_BASE + index
+	local function draw(): number
+		seed = (seed * 1103515245 + 12345) % 2147483648
+		return seed / 2147483648
+	end
+
+	-- The caches no prop may crowd: the site's prize, if it has one, and the Copper cache.
+	local caches: { { number } } = {}
+	local prize = site.prize
+	if prize ~= nil then
+		table.insert(caches, { prize.x, prize.z })
+	end
+	local copperX, copperZ = Geography.place(site.region, COPPER_ALONG, COPPER_ACROSS)
+	table.insert(caches, { copperX, copperZ })
+
+	local features: { Types.Feature } = {}
+	local placed = 0
+	for _ = 1, TRIES do
+		if placed >= PROPS then
+			break
+		end
+		-- Four draws a try, whether or not the spot is used.
+		local along = MIN_ALONG + ALONG_SPAN * draw()
+		local across = (2 * draw() - 1) * 0.5 * along
+		local kind = kinds[math.floor(draw() * #kinds) + 1]
+		local scale = 0.8 + 0.6 * draw()
+
+		local onRoad = math.abs(across) < ROAD_HALF_WIDTH and along < ROAD_END
+		local nearCache = false
+		local x, z = Geography.place(site.region, along, across)
+		for _, point in caches do
+			if math.sqrt((x - point[1]) ^ 2 + (z - point[2]) ^ 2) <= CACHE_CLEARANCE then
+				nearCache = true
+			end
+		end
+
+		local ok = not onRoad and not nearCache and usable(site, x, z)
+		if ok then
+			for _, offset in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+				local px, pz = Geography.place(
+					site.region,
+					along + offset[1] * CLEARANCE,
+					across + offset[2] * CLEARANCE
+				)
+				if not usable(site, px, pz) then
+					ok = false
+					break
+				end
+			end
+		end
+
+		if ok then
+			placed += 1
+			for _, feature in build(site.region, kind, along, across, scale) do
+				table.insert(features, feature)
+			end
+		end
+	end
+	return features
+end
+
+return Scenery
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="18">
+            <Properties>
+              <string name="Name">SquallSteps</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+local Make = require("./Make")
+
+local REGION: Types.RegionId = "SquallSteps"
+local BEARING = 60
+local PILLARS = 18
+local PILLAR_SIZE = 14
+local PILLAR_SPACING = 19
+local FIRST_PILLAR_ALONG = 480
+local RISE = 3
+local GUST_SPEED = 11
+
+export type Pillar = { along: number, across: number, top: number }
+export type SquallStepsSite = Types.Site & { pillars: { Pillar } }
+
+local pillars: { Pillar } = {}
+local features: { Types.Feature } = {}
+for k = 1, PILLARS do
+	local along = FIRST_PILLAR_ALONG + PILLAR_SPACING * (k - 1)
+	local across = if k % 2 == 1 then 6 else -6
+	local half = PILLAR_SIZE / 2
+	table.insert(pillars, { along = along, across = across, top = RISE * k })
+	table.insert(
+		features,
+		Make.block(
+			REGION,
+			along - half,
+			along + half,
+			across - half,
+			across + half,
+			0,
+			RISE * k,
+			"pillar",
+			true
+		)
+	)
+end
+-- The summit, one rise above the last pillar.
+table.insert(features, Make.block(REGION, 815, 875, -30, 30, 0, 57, "pillar", true))
+
+-- The world velocity of a gust blowing along and across the region's bearing.
+local function push(along: number, across: number): { x: number, z: number }
+	local x, z = Geography.fromFrame(BEARING, along, across)
+	return { x = x * GUST_SPEED, z = z * GUST_SPEED }
+end
+
+local function gust(
+	n: number,
+	a1: number,
+	a2: number,
+	c1: number,
+	c2: number,
+	pushing: { x: number, z: number },
+	offset: number,
+	markerY: number?
+): Types.Hazard
+	return {
+		id = `SquallGust{n}`,
+		region = REGION,
+		name = "Gust",
+		look = "gust",
+		shape = Geography.rect(REGION, a1, a2, c1, c2),
+		cycle = { period = 7, warn = 1.5, active = 2, offset = offset },
+		push = pushing,
+		markerY = markerY,
+	}
+end
+
+local hazards: { Types.Hazard } = {
+	gust(1, 530, 600, -40, 40, push(0, 1), 0, nil),
+	gust(2, 625, 695, -40, 40, push(0, -1), 2.3, nil),
+	gust(3, 720, 790, -40, 40, push(0, 1), 4.6, nil),
+	gust(4, 815, 875, -30, 30, push(1, 0), 1.2, 57.2),
+}
+
+local prizeX, prizeZ = Geography.place(REGION, 845, 0)
+
+local site: SquallStepsSite = {
+	region = REGION,
+	hazards = hazards,
+	features = features,
+	prize = { relicId = "R007", x = prizeX, y = 58, z = prizeZ, hold = 3 },
+	keepOut = { Geography.rect(REGION, 470, 880, -45, 45) },
+	pillars = pillars,
+}
+
+return site
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="19">
+            <Properties>
+              <string name="Name">Thornwood</string>
+              <string name="Source"><![CDATA[--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+local Make = require("./Make")
+
+export type ThornwoodSite = Types.Site & {
+	MAZE: { string },
+	cellCentre: (number, number) -> (number, number),
+}
+
+local REGION: Types.RegionId = "Thornwood"
+local FIRST_ROW_ALONG = 490
+local SQUARE = 20
+local HALF = SQUARE / 2
+local HEDGE_HEIGHT = 14
+
+-- Nearest row first. "#" hedge, "b" briar gap, "P" the prize square, "." open ground.
+local MAZE = {
+	"#######.#########",
+	"#...#...#...#...#",
+	"#.#.#.#b#.#.#.#.#",
+	"#.#.#.#...#...#.#",
+	"#.###.#.#######.#",
+	"#.#...#.......#.#",
+	"#.#.#########.#.#",
+	"..#...b.....#.#.#",
+	"#.###.#.P.#.#.b.#",
+	"#.....#.....#.#..",
+	"#.#####.#.#.#.#.#",
+	"#.....#.#.#.#.#.#",
+	"#####.b.#.###.#.#",
+	"#...#.#.#.....b.#",
+	"#.###.###b#####.#",
+	"#...............#",
+	"#################",
+}
+
+-- Square (r, c), both from 1, as the along and across of its centre in the region frame.
+local function cellCentre(r: number, c: number): (number, number)
+	return FIRST_ROW_ALONG + SQUARE * (r - 1), SQUARE * (c - 9)
+end
+
+local function squareShape(r: number, c: number): Types.Shape
+	local along, across = cellCentre(r, c)
+	return Geography.rect(REGION, along - HALF, along + HALF, across - HALF, across + HALF)
+end
+
+local function briars(id: string, shape: Types.Shape): Types.Hazard
+	return {
+		id = id,
+		region = REGION,
+		name = "Briars",
+		look = "briar",
+		shape = shape,
+		dps = 12,
+		slow = 0.6,
+	}
+end
+
+local features: { Types.Feature } = {}
+local hazards: { Types.Hazard } = {}
+local prize: Types.SiteCache? = nil
+
+for r, row in MAZE do
+	local along = cellCentre(r, 1)
+	-- Each maximal run of hedge is one block. The column after the row's end closes a last run.
+	local runStart: number? = nil
+	for c = 1, #row + 1 do
+		local char = string.sub(row, c, c)
+		if char == "#" and runStart == nil then
+			runStart = c
+		elseif char ~= "#" and runStart ~= nil then
+			local _, firstAcross = cellCentre(r, runStart)
+			local _, lastAcross = cellCentre(r, c - 1)
+			table.insert(
+				features,
+				Make.block(
+					REGION,
+					along - HALF,
+					along + HALF,
+					firstAcross - HALF,
+					lastAcross + HALF,
+					0,
+					HEDGE_HEIGHT,
+					"hedge",
+					true
+				)
+			)
+			runStart = nil
+		end
+		if char == "b" then
+			table.insert(hazards, briars(`ThornBriar{#hazards + 1}`, squareShape(r, c)))
+		elseif char == "P" then
+			local x, z = Geography.place(REGION, cellCentre(r, c))
+			prize = { relicId = "R009", x = x, y = 1, z = z, hold = 3 }
+		end
+	end
+end
+
+-- Briars growing in the open, outside the maze: along, across.
+local thickets = {
+	{ 350, -100 },
+	{ 380, 110 },
+	{ 420, -150 },
+	{ 440, 60 },
+	{ 455, -60 },
+	{ 415, -35 },
+}
+for i, at in thickets do
+	table.insert(hazards, briars(`ThornThicket{i}`, Geography.circle(REGION, at[1], at[2], 14)))
+end
+
+local site: ThornwoodSite = {
+	region = REGION,
+	hazards = hazards,
+	features = features,
+	prize = prize,
+	keepOut = { Geography.rect(REGION, 480, 820, -170, 170) },
+	MAZE = MAZE,
+	cellCentre = cellCentre,
+}
+
+return site
+]]></string>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="ModuleScript" referent="20">
+          <Properties>
+            <string name="Name">Sites</string>
+            <string name="Source"><![CDATA[--!strict
+local Geography = require("../Rules/Geography")
+local Regions = require("./Regions")
+local Types = require("../Types")
+local BastionReach = require("./SiteData/BastionReach")
+local CinderFlats = require("./SiteData/CinderFlats")
+local DrownedFen = require("./SiteData/DrownedFen")
+local HushGardens = require("./SiteData/HushGardens")
+local Make = require("./SiteData/Make")
+local ReckoningRock = require("./SiteData/ReckoningRock")
+local Scenery = require("./SiteData/Scenery")
+local SquallSteps = require("./SiteData/SquallSteps")
+local Thornwood = require("./SiteData/Thornwood")
+
+-- In the order the sites were added.
+local list: { Types.Site } = {
+	Thornwood,
+	SquallSteps,
+	CinderFlats,
+	DrownedFen,
+	ReckoningRock,
+	HushGardens,
+	BastionReach,
+}
+
+local hazards: { Types.Hazard } = {}
+local hazardById: { [string]: Types.Hazard } = {}
+local features: { Types.Feature } = {}
+local siteByRegion: { [string]: Types.Site } = {}
+for _, site in list do
+	siteByRegion[site.region] = site
+	for _, hazard in site.hazards do
+		table.insert(hazards, hazard)
+		hazardById[hazard.id] = hazard
+	end
+	for _, feature in site.features do
+		table.insert(features, feature)
+	end
+end
+
+-- A road from the Fields to each wild region's site, a signpost beside it, and the bridges.
+local common: { Types.Feature } = {}
+for _, regionId in Regions.wild do
+	local region = Regions.byId[regionId]
+	table.insert(common, Make.block(regionId, 45, 470, -6, 6, 0.02, 0.12, "road", false))
+	table.insert(common, Make.disc(regionId, 285, 14, 0.5, 0, 7, "sign", true))
+	local board = Make.block(regionId, 284.5, 285.5, 10, 18, 5, 8, "sign", false)
+	board.text = region.name .. "\n" .. region.hint
+	table.insert(common, board)
+end
+for _, bridge in Geography.bridges() do
+	table.insert(common, {
+		look = "wood",
+		shape = "block",
+		x = bridge.x,
+		y = -0.7,
+		z = bridge.z,
+		sx = bridge.width,
+		sy = 2,
+		sz = bridge.length,
+		yaw = bridge.yaw,
+		solid = true,
+	})
+end
+
+-- Props scattered over each wild region.
+local scenery: { Types.Feature } = {}
+for index, regionId in Regions.wild do
+	for _, feature in Scenery.scatter(siteByRegion[regionId], index) do
+		table.insert(scenery, feature)
+	end
+end
+
+-- Off the road in each wild region, a Copper cache holding Relics R001 to R006 in turn.
+local extras: { Types.SiteCache } = {}
+for k, regionId in Regions.wild do
+	local x, z = Geography.place(regionId, 310, -60)
+	table.insert(extras, { relicId = string.format("R%03d", k), x = x, y = 1, z = z })
+end
+
+-- Every site's features, then the common ones, then the scenery.
+for _, feature in common do
+	table.insert(features, feature)
+end
+for _, feature in scenery do
+	table.insert(features, feature)
+end
+
+return {
+	list = list,
+	hazards = hazards,
+	hazardById = hazardById,
+	features = features,
+	common = common,
+	scenery = scenery,
+	extras = extras,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="21">
           <Properties>
             <string name="Name">Tiers</string>
             <string name="Source"><![CDATA[--!strict
@@ -549,45 +1675,67 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="9">
+        <Item class="ModuleScript" referent="22">
           <Properties>
             <string name="Name">World</string>
             <string name="Source"><![CDATA[--!strict
+local Geography = require("../Rules/Geography")
+local Sites = require("./Sites")
 local Types = require("../Types")
 
 type Cache = Types.Cache
 
-local islandHalfSize = 400
+local islandHalfSize = 1380
 local groundY = 0
 local spawn: Types.Vec3 = { x = 0, y = 0.7, z = 0 }
-local townRadius = 40
+local townRadius = Geography.TOWN_RADIUS
 
--- Cache C0NN holds Relic R0NN.
-local layout: { { number } } = {
+-- Caches C001 to C006 hold Relics R001 to R006 in the Counting Fields.
+local fieldLayout: { { number } } = {
 	{ 60, 40 },
 	{ -70, 55 },
 	{ 90, -60 },
 	{ -50, -95 },
 	{ 120, 20 },
 	{ -130, -10 },
-	{ 200, 140 },
-	{ -220, 110 },
-	{ 30, -250 },
-	{ -290, -170 },
-	{ 300, -120 },
-	{ -40, 370 },
 }
 
 local caches: { Cache } = {}
 local cacheById: { [string]: Cache } = {}
-for i, xz in layout do
+local function addCache(relicId: string, x: number, y: number, z: number, hold: number?)
 	local cache: Cache = {
-		id = string.format("C%03d", i),
-		relicId = string.format("R%03d", i),
-		position = { x = xz[1], y = 1, z = xz[2] },
+		id = string.format("C%03d", #caches + 1),
+		relicId = relicId,
+		position = { x = x, y = y, z = z },
+		hold = hold,
 	}
 	table.insert(caches, cache)
 	cacheById[cache.id] = cache
+end
+
+for i, xz in fieldLayout do
+	addCache(string.format("R%03d", i), xz[1], 1, xz[2], nil)
+end
+
+-- Caches C007 to C012 hold Relics R007 to R012, each at the prize of the site that holds it.
+local prizes: { [string]: Types.SiteCache } = {}
+for _, site in Sites.list do
+	if site.prize ~= nil then
+		prizes[site.prize.relicId] = site.prize
+	end
+end
+for n = 7, 12 do
+	local relicId = string.format("R%03d", n)
+	local prize = prizes[relicId]
+	if prize == nil then
+		error(`World: no site holds {relicId}`)
+	end
+	addCache(relicId, prize.x, prize.y, prize.z, prize.hold)
+end
+
+-- Caches C013 to C018 are the Copper caches out in the wild regions.
+for _, extra in Sites.extras do
+	addCache(extra.relicId, extra.x, extra.y, extra.z, extra.hold)
 end
 
 local trainingPosts: { Types.Vec3 } = {
@@ -624,7 +1772,7 @@ return {
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Net</string>
           <string name="Source"><![CDATA[--!strict
@@ -669,11 +1817,11 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="11">
+      <Item class="Folder" referent="24">
         <Properties>
           <string name="Name">Rules</string>
         </Properties>
-        <Item class="ModuleScript" referent="12">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">BlindClaim</string>
             <string name="Source"><![CDATA[--!strict
@@ -781,7 +1929,7 @@ return BlindClaim
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="13">
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">Casting</string>
             <string name="Source"><![CDATA[--!strict
@@ -979,7 +2127,7 @@ return Casting
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="14">
+        <Item class="ModuleScript" referent="27">
           <Properties>
             <string name="Name">ClaimView</string>
             <string name="Source"><![CDATA[--!strict
@@ -1046,7 +2194,7 @@ return ClaimView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="15">
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">Combat</string>
             <string name="Source"><![CDATA[--!strict
@@ -1149,7 +2297,7 @@ return Combat
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="16">
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">Effects</string>
             <string name="Source"><![CDATA[--!strict
@@ -1370,7 +2518,374 @@ return Effects
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="17">
+        <Item class="ModuleScript" referent="30">
+          <Properties>
+            <string name="Name">Geography</string>
+            <string name="Source"><![CDATA[--!strict
+local Types = require("../Types")
+local Regions = require("../Catalog/Regions")
+
+export type Strip = { z: number, x1: number, x2: number, region: Types.RegionId }
+export type Bridge = { x: number, z: number, yaw: number, length: number, width: number }
+
+local Geography = {}
+
+Geography.CELL = 40
+Geography.GRID = 34
+Geography.TOWN_RADIUS = 40
+Geography.FIELDS_RADIUS = 260
+Geography.DROWN_Y = -6
+Geography.ROCK = { x = 0, z = 1240, radius = 80 }
+
+local CELL = Geography.CELL
+local GRID = Geography.GRID
+local ROCK = Geography.ROCK
+local CAUSEWAY_MIN_Z = 940
+local CAUSEWAY_MAX_Z = 1160
+local RIVER_BEARINGS = { 30, 150, 270 }
+local RIVER_START = 300
+local RIVER_HALF_WIDTH = 50
+local BRIDGE_ALONG = { 420, 760 }
+local BRIDGE_LENGTH = 180
+local BRIDGE_WIDTH = 16
+
+local function isFinite(n: number): boolean
+	return n > -math.huge and n < math.huge
+end
+
+-- Degrees clockwise from north (-Z), in [0, 360). The centre has no direction and reads as 0.
+function Geography.bearingOf(x: number, z: number): number
+	if x == 0 and z == 0 then
+		return 0
+	end
+	local b = math.deg(math.atan2(x, -z))
+	if b < 0 then
+		b += 360
+		-- A tiny negative angle rounds up to exactly 360.
+		if b >= 360 then
+			b = 0
+		end
+	end
+	return b
+end
+
+function Geography.coastRadius(bearing: number): number
+	local t = math.rad(bearing)
+	return 960 + 60 * math.sin(3 * t) + 40 * math.sin(5 * t + 1)
+end
+
+-- World x, z to a region frame: distance down the bearing, distance to the right of it.
+function Geography.toFrame(bearing: number, x: number, z: number): (number, number)
+	local t = math.rad(bearing)
+	local s, c = math.sin(t), math.cos(t)
+	return x * s - z * c, x * c + z * s
+end
+
+function Geography.fromFrame(bearing: number, along: number, across: number): (number, number)
+	local t = math.rad(bearing)
+	local s, c = math.sin(t), math.cos(t)
+	return along * s + across * c, -along * c + across * s
+end
+
+local function bearingOfRegion(regionId: string): number
+	local region = Regions.byId[regionId]
+	local bearing = if region then region.bearing else nil
+	if bearing == nil then
+		error(`Geography: region {regionId} has no bearing`)
+	end
+	return bearing
+end
+
+function Geography.place(regionId: string, along: number, across: number): (number, number)
+	return Geography.fromFrame(bearingOfRegion(regionId), along, across)
+end
+
+function Geography.cellOf(x: number, z: number): (number, number)
+	return math.floor(x / CELL + 0.5), math.floor(z / CELL + 0.5)
+end
+
+-- The region owning cell (i, j), judged at the cell centre. Tallyport is not a cell region:
+-- its circle is smaller than a cell and regionAt answers for it.
+function Geography.cellRegion(i: number, j: number): Types.RegionId
+	local x, z = CELL * i, CELL * j
+	local rx, rz = x - ROCK.x, z - ROCK.z
+	if rx * rx + rz * rz <= ROCK.radius * ROCK.radius then
+		return "ReckoningRock"
+	end
+	if i == 0 and CAUSEWAY_MIN_Z <= z and z <= CAUSEWAY_MAX_Z then
+		return "ReckoningRock"
+	end
+	if math.sqrt(x * x + z * z) <= Geography.FIELDS_RADIUS then
+		return "CountingFields"
+	end
+	return Regions.wild[math.floor((Geography.bearingOf(x, z) + 30) / 60) % 6 + 1]
+end
+
+function Geography.cellIsLand(i: number, j: number): boolean
+	if math.abs(i) > GRID or math.abs(j) > GRID then
+		return false
+	end
+	if Geography.cellRegion(i, j) == "ReckoningRock" then
+		return true
+	end
+	local x, z = CELL * i, CELL * j
+	if math.sqrt(x * x + z * z) > Geography.coastRadius(Geography.bearingOf(x, z)) then
+		return false
+	end
+	for _, bearing in RIVER_BEARINGS do
+		local along, across = Geography.toFrame(bearing, x, z)
+		if along >= RIVER_START and math.abs(across) < RIVER_HALF_WIDTH then
+			return false
+		end
+	end
+	return true
+end
+
+-- A position that is not a finite number reads as Counting Fields.
+function Geography.regionAt(x: number, z: number): Types.RegionId
+	if not (isFinite(x) and isFinite(z)) then
+		return "CountingFields"
+	end
+	if x * x + z * z <= Geography.TOWN_RADIUS * Geography.TOWN_RADIUS then
+		return "Tallyport"
+	end
+	return Geography.cellRegion(Geography.cellOf(x, z))
+end
+
+function Geography.isLand(x: number, z: number): boolean
+	if not (isFinite(x) and isFinite(z)) then
+		return false
+	end
+	return Geography.cellIsLand(Geography.cellOf(x, z))
+end
+
+-- Every land cell exactly once, as horizontal runs of one region: row z = 40j, from x1 to x2.
+function Geography.strips(): { Strip }
+	local strips: { Strip } = {}
+	for j = -GRID, GRID do
+		local runStart: number? = nil
+		local runRegion: Types.RegionId = "CountingFields"
+		-- One cell past the grid is never land, so it closes a run that reaches the edge.
+		for i = -GRID, GRID + 1 do
+			local region = if Geography.cellIsLand(i, j) then Geography.cellRegion(i, j) else nil
+			if runStart ~= nil and region ~= runRegion then
+				table.insert(strips, {
+					z = CELL * j,
+					x1 = CELL * runStart - CELL / 2,
+					x2 = CELL * (i - 1) + CELL / 2,
+					region = runRegion,
+				})
+				runStart = nil
+			end
+			if region ~= nil and runStart == nil then
+				runStart = i
+				runRegion = region
+			end
+		end
+	end
+	return strips
+end
+
+-- One bridge over each river at 420 and 760 out, lying across the river.
+function Geography.bridges(): { Bridge }
+	local bridges: { Bridge } = {}
+	for _, bearing in RIVER_BEARINGS do
+		for _, along in BRIDGE_ALONG do
+			local x, z = Geography.fromFrame(bearing, along, 0)
+			table.insert(bridges, {
+				x = x,
+				z = z,
+				yaw = (bearing + 90) % 360,
+				length = BRIDGE_LENGTH,
+				width = BRIDGE_WIDTH,
+			})
+		end
+	end
+	return bridges
+end
+
+function Geography.circle(
+	regionId: string,
+	along: number,
+	across: number,
+	radius: number
+): Types.Shape
+	local x, z = Geography.place(regionId, along, across)
+	return {
+		kind = "circle",
+		x = x,
+		z = z,
+		radius = radius,
+		bearing = 0,
+		halfAlong = 0,
+		halfAcross = 0,
+		region = "",
+	}
+end
+
+function Geography.rect(
+	regionId: string,
+	a1: number,
+	a2: number,
+	c1: number,
+	c2: number
+): Types.Shape
+	local x, z = Geography.place(regionId, (a1 + a2) / 2, (c1 + c2) / 2)
+	return {
+		kind = "rect",
+		x = x,
+		z = z,
+		radius = 0,
+		bearing = bearingOfRegion(regionId),
+		halfAlong = (a2 - a1) / 2,
+		halfAcross = (c2 - c1) / 2,
+		region = "",
+	}
+end
+
+-- Everything of the region at least minRadius from the island centre.
+function Geography.regionShape(regionId: string, minRadius: number): Types.Shape
+	return {
+		kind = "region",
+		x = 0,
+		z = 0,
+		radius = minRadius,
+		bearing = 0,
+		halfAlong = 0,
+		halfAcross = 0,
+		region = regionId,
+	}
+end
+
+return Geography
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="31">
+          <Properties>
+            <string name="Name">Hazards</string>
+            <string name="Source"><![CDATA[--!strict
+local Geography = require("./Geography")
+local Types = require("../Types")
+
+export type Phase = "idle" | "warn" | "active"
+export type Burst = { id: string, damage: number, cycle: number }
+export type Sample = {
+	dps: number,
+	heal: number,
+	slow: number, -- smallest speed multiplier in effect; 1 when none
+	pushX: number,
+	pushZ: number,
+	bursts: { Burst },
+	names: { string },
+}
+
+local Hazards = {}
+
+Hazards.TICK_SECONDS = 0.25
+Hazards.SLOW_SECONDS = 1
+
+local function isFinite(n: number): boolean
+	return n > -math.huge and n < math.huge
+end
+
+-- A point that is not a finite number is inside nothing.
+function Hazards.contains(shape: Types.Shape, x: number, z: number): boolean
+	if not (isFinite(x) and isFinite(z)) then
+		return false
+	end
+	if shape.kind == "circle" then
+		local dx, dz = x - shape.x, z - shape.z
+		return dx * dx + dz * dz <= shape.radius * shape.radius
+	elseif shape.kind == "rect" then
+		local along, across = Geography.toFrame(shape.bearing, x - shape.x, z - shape.z)
+		return math.abs(along) <= shape.halfAlong and math.abs(across) <= shape.halfAcross
+	elseif shape.kind == "region" then
+		return Geography.regionAt(x, z) == shape.region and math.sqrt(x * x + z * z) >= shape.radius
+	end
+	return false
+end
+
+-- Inside the shape and inside none of its holes.
+function Hazards.affects(hazard: Types.Hazard, x: number, z: number): boolean
+	if not Hazards.contains(hazard.shape, x, z) then
+		return false
+	end
+	if hazard.holes then
+		for _, hole in hazard.holes do
+			if Hazards.contains(hole, x, z) then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- The phase, the cycle index, and the fraction of the current phase already elapsed (0..1).
+function Hazards.phase(hazard: Types.Hazard, now: number): (Phase, number, number)
+	local cycle = hazard.cycle
+	if cycle == nil then
+		return "active", 0, 0
+	end
+	if not isFinite(now) then
+		return "idle", 0, 0
+	end
+	local shifted = now + cycle.offset
+	local t = shifted % cycle.period
+	local index = math.floor(shifted / cycle.period)
+	local idle = cycle.period - cycle.warn - cycle.active
+	if t < idle then
+		return "idle", index, t / idle
+	elseif t < idle + cycle.warn then
+		return "warn", index, (t - idle) / cycle.warn
+	end
+	return "active", index, math.min((t - idle - cycle.warn) / cycle.active, 1)
+end
+
+-- The combined effect on a point at time now. Only active hazards that affect the point count.
+function Hazards.sample(list: { Types.Hazard }, x: number, z: number, now: number): Sample
+	local sample: Sample = {
+		dps = 0,
+		heal = 0,
+		slow = 1,
+		pushX = 0,
+		pushZ = 0,
+		bursts = {},
+		names = {},
+	}
+	for _, hazard in list do
+		if Hazards.affects(hazard, x, z) then
+			local phase, index = Hazards.phase(hazard, now)
+			if phase == "active" then
+				sample.dps += hazard.dps or 0
+				sample.heal += hazard.heal or 0
+				if hazard.slow ~= nil then
+					sample.slow = math.min(sample.slow, hazard.slow)
+				end
+				if hazard.push ~= nil then
+					sample.pushX += hazard.push.x
+					sample.pushZ += hazard.push.z
+				end
+				if hazard.damage ~= nil then
+					table.insert(
+						sample.bursts,
+						{ id = hazard.id, damage = hazard.damage, cycle = index }
+					)
+				end
+				if not table.find(sample.names, hazard.name) then
+					table.insert(sample.names, hazard.name)
+				end
+			end
+		end
+	end
+	return sample
+end
+
+return Hazards
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="32">
           <Properties>
             <string name="Name">Ledger</string>
             <string name="Source"><![CDATA[--!strict
@@ -1506,7 +3021,7 @@ return Ledger
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="18">
+        <Item class="ModuleScript" referent="33">
           <Properties>
             <string name="Name">LedgerActions</string>
             <string name="Source"><![CDATA[--!strict
@@ -1577,7 +3092,7 @@ return LedgerActions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="19">
+        <Item class="ModuleScript" referent="34">
           <Properties>
             <string name="Name">LedgerView</string>
             <string name="Source"><![CDATA[--!strict
@@ -1668,7 +3183,7 @@ return LedgerView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="20">
+        <Item class="ModuleScript" referent="35">
           <Properties>
             <string name="Name">Loadout</string>
             <string name="Source"><![CDATA[--!strict
@@ -1761,7 +3276,7 @@ return Loadout
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="21">
+        <Item class="ModuleScript" referent="36">
           <Properties>
             <string name="Name">PathProgress</string>
             <string name="Source"><![CDATA[--!strict
@@ -2004,7 +3519,7 @@ return PathProgress
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="37">
           <Properties>
             <string name="Name">PathView</string>
             <string name="Source"><![CDATA[--!strict
@@ -2142,7 +3657,39 @@ return PathView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="23">
+        <Item class="ModuleScript" referent="38">
+          <Properties>
+            <string name="Name">PlaceView</string>
+            <string name="Source"><![CDATA[--!strict
+-- Where a point is and which hazards are in effect there. Pure: the client shows this.
+local Geography = require("./Geography")
+local Hazards = require("./Hazards")
+local Regions = require("../Catalog/Regions")
+local Sites = require("../Catalog/Sites")
+
+export type Place = { regionId: string, name: string, hint: string, hazards: { string } }
+
+local PlaceView = {}
+
+-- The region at (x, z) and the names of the hazards active there at server time `now`.
+-- A position that is not a finite number reads as Counting Fields with no hazards.
+function PlaceView.at(x: number, z: number, now: number): Place
+	local regionId = Geography.regionAt(x, z)
+	local region = Regions.byId[regionId]
+	local sample = Hazards.sample(Sites.hazards, x, z, now)
+	return {
+		regionId = regionId,
+		name = region.name,
+		hint = region.hint,
+		hazards = sample.names,
+	}
+end
+
+return PlaceView
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="39">
           <Properties>
             <string name="Name">Protection</string>
             <string name="Source"><![CDATA[--!strict
@@ -2263,7 +3810,7 @@ return Protection
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="40">
           <Properties>
             <string name="Name">RateLimiter</string>
             <string name="Source"><![CDATA[--!strict
@@ -2298,7 +3845,7 @@ return RateLimiter
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="25">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">Scarcity</string>
             <string name="Source"><![CDATA[--!strict
@@ -2336,7 +3883,7 @@ return Scarcity
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="26">
+        <Item class="ModuleScript" referent="42">
           <Properties>
             <string name="Name">Sources</string>
             <string name="Source"><![CDATA[--!strict
@@ -2413,13 +3960,13 @@ return Sources
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="27">
+        <Item class="ModuleScript" referent="43">
           <Properties>
             <string name="Name">StatusView</string>
             <string name="Source"><![CDATA[--!strict
 -- Status lines for the HUD. Pure: the client renders this and nothing else.
 
-export type Line = { text: string, kind: "safe" | "shield" | "marked" }
+export type Line = { text: string, kind: "region" | "safe" | "shield" | "marked" | "hazard" }
 export type Status = { newShield: boolean, respawnShieldSeconds: number, markedSeconds: number }
 
 local StatusView = {}
@@ -2429,25 +3976,38 @@ local function running(seconds: number): boolean
 	return seconds > 0 and seconds < math.huge
 end
 
-function StatusView.build(status: Status?, inSafeZone: boolean): { Line }
+-- The region comes first, then safe zone and status effects, then the hazards in effect.
+-- Without a place there are no region or hazard lines.
+function StatusView.build(
+	status: Status?,
+	inSafeZone: boolean,
+	place: { name: string, hazards: { string } }?
+): { Line }
 	local lines: { Line } = {}
+	if place ~= nil then
+		table.insert(lines, { text = place.name, kind = "region" })
+	end
 	if inSafeZone then
 		table.insert(lines, { text = "Safe zone", kind = "safe" })
 	end
-	if status == nil then
-		return lines
+	if status ~= nil then
+		if status.newShield then
+			table.insert(lines, { text = "New-player shield", kind = "shield" })
+		end
+		if running(status.respawnShieldSeconds) then
+			local seconds = math.ceil(status.respawnShieldSeconds)
+			table.insert(lines, { text = `Respawn shield: {seconds}s`, kind = "shield" })
+		end
+		if running(status.markedSeconds) then
+			local total = math.ceil(status.markedSeconds)
+			local text = string.format("MARKED %d:%02d", total // 60, total % 60)
+			table.insert(lines, { text = text, kind = "marked" })
+		end
 	end
-	if status.newShield then
-		table.insert(lines, { text = "New-player shield", kind = "shield" })
-	end
-	if running(status.respawnShieldSeconds) then
-		local seconds = math.ceil(status.respawnShieldSeconds)
-		table.insert(lines, { text = `Respawn shield: {seconds}s`, kind = "shield" })
-	end
-	if running(status.markedSeconds) then
-		local total = math.ceil(status.markedSeconds)
-		local text = string.format("MARKED %d:%02d", total // 60, total % 60)
-		table.insert(lines, { text = text, kind = "marked" })
+	if place ~= nil then
+		for _, name in place.hazards do
+			table.insert(lines, { text = name, kind = "hazard" })
+		end
 	end
 	return lines
 end
@@ -2456,7 +4016,7 @@ return StatusView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="44">
           <Properties>
             <string name="Name">Targeting</string>
             <string name="Source"><![CDATA[--!strict
@@ -2587,7 +4147,7 @@ return Targeting
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="29">
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">Vault</string>
             <string name="Source"><![CDATA[--!strict
@@ -2713,7 +4273,7 @@ return Vault
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">Types</string>
           <string name="Source"><![CDATA[--!strict
@@ -2722,7 +4282,7 @@ export type Tier = "Copper" | "Silver" | "Gold" | "Platinum" | "Crown"
 export type Relic = { id: CardId, slot: number, name: string, tier: Tier, description: string }
 export type Ledger = { claimed: { [CardId]: boolean }, free: { CardId } }
 export type Vec3 = { x: number, y: number, z: number }
-export type Cache = { id: string, relicId: CardId, position: Vec3 }
+export type Cache = { id: string, relicId: CardId, position: Vec3, hold: number? }
 export type Vault = { [CardId]: boolean }
 export type PathId = "Fang" | "Gale" | "Ember" | "Mire" | "Mend" | "Bulwark"
 export type PathProgress = {
@@ -2775,6 +4335,74 @@ export type PlayerData = {
 	shieldEnded: boolean,
 	paths: PathProgress,
 }
+export type RegionId =
+	"Tallyport"
+	| "CountingFields"
+	| "Thornwood"
+	| "SquallSteps"
+	| "CinderFlats"
+	| "DrownedFen"
+	| "ReckoningRock"
+	| "HushGardens"
+	| "BastionReach"
+export type Region = {
+	id: RegionId,
+	name: string,
+	hint: string,
+	bearing: number?, -- wild regions only
+	ground: string, -- a look name
+	fog: { r: number, g: number, b: number, start: number, finish: number },
+}
+-- Every field is always present; unused ones are 0 or "".
+export type Shape = {
+	kind: "circle" | "rect" | "region",
+	x: number,
+	z: number, -- centre; 0 for "region"
+	radius: number, -- circle radius; for "region" the least distance from the island centre
+	bearing: number,
+	halfAlong: number,
+	halfAcross: number, -- rect only
+	region: string, -- "region" only
+}
+export type Cycle = { period: number, warn: number, active: number, offset: number }
+export type Hazard = {
+	id: string,
+	region: RegionId,
+	name: string,
+	look: string,
+	shape: Shape,
+	holes: { Shape }?,
+	cycle: Cycle?,
+	dps: number?,
+	damage: number?,
+	heal: number?,
+	slow: number?, -- speed multiplier, 0.5 = half speed
+	push: { x: number, z: number }?, -- world velocity, studs per second
+	markerY: number?, -- height of the visual marker; ground when nil
+}
+-- x, y, z is the centre. sx is the extent across the yaw bearing, sy the height, sz the
+-- extent along it. A cylinder stands upright: sx = sz = diameter.
+export type Feature = {
+	look: string,
+	shape: "block" | "cylinder",
+	x: number,
+	y: number,
+	z: number,
+	sx: number,
+	sy: number,
+	sz: number,
+	yaw: number,
+	solid: boolean,
+	text: string?,
+}
+export type SiteCache = { relicId: CardId, x: number, y: number, z: number, hold: number? }
+export type Site = {
+	region: RegionId,
+	hazards: { Hazard },
+	features: { Feature },
+	prize: SiteCache?,
+	keepOut: { Shape },
+}
 
 return {}
 ]]></string>
@@ -2782,15 +4410,15 @@ return {}
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="31">
+  <Item class="ServerScriptService" referent="47">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="32">
+    <Item class="Folder" referent="48">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">AbilityService</string>
           <string name="Source"><![CDATA[--!strict
@@ -3369,7 +4997,7 @@ return AbilityService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">ClaimService</string>
           <string name="Source"><![CDATA[--!strict
@@ -3596,7 +5224,7 @@ return ClaimService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">CombatService</string>
           <string name="Source"><![CDATA[--!strict
@@ -3890,6 +5518,55 @@ function CombatService.damage(
 	return true
 end
 
+-- Damage from the island: no attacker, no protections (shields guard against players only),
+-- no hit-log entry. The victim's own effects still apply: immunity cancels it; damage
+-- reduction and ability shields absorb. Sets Humanoid.Health directly, so a ForceField does
+-- not block it. `flash` also fires the HitFx remote. True when health was removed.
+function CombatService.environmentDamage(victim: Player, amount: number, flash: boolean?): boolean
+	-- Written positively so a NaN amount is refused too.
+	if not (amount > 0) or victim.Parent ~= Players then
+		return false
+	end
+	local humanoid = living(victim)
+	if humanoid == nil then
+		return false
+	end
+
+	-- No yielding call from here to the health change: statuses cannot go stale.
+	local immune, health = false, 0
+	StatusService.update(victim, function(status, at)
+		immune = Effects.isImmune(status, at)
+		-- The reflect amount is dropped: the island has nothing to reflect at.
+		local out, toHealth = Effects.resolveDamage(status, amount, at)
+		health = toHealth
+		return out
+	end)
+	if immune and not (health > 0) then
+		return false
+	end
+
+	-- Not TakeDamage: a ForceField blocks that, and a shielded player is still hurt by the island.
+	-- A defeat here is credited by the Died handler like any other.
+	if health > 0 then
+		humanoid.Health = math.max(0, humanoid.Health - health)
+	end
+	if flash == true then
+		hitFx:FireAllClients(victim.UserId)
+	end
+	return health > 0
+end
+
+-- Defeats the victim outright (drowning). Ignores effects. The Died handler credits it.
+function CombatService.environmentDefeat(victim: Player)
+	if victim.Parent ~= Players then
+		return
+	end
+	local humanoid = living(victim)
+	if humanoid ~= nil then
+		humanoid.Health = 0
+	end
+end
+
 -- The client only says "I swung". Target, reach, damage and timing are all decided here.
 local function handleStrike(player: Player)
 	if player.Parent ~= Players then
@@ -3989,7 +5666,7 @@ return CombatService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[--!strict
@@ -4184,7 +5861,135 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="53">
+        <Properties>
+          <string name="Name">HazardService</string>
+          <string name="Source"><![CDATA[--!strict
+-- Applies the island's hazards to every player four times a second. The server decides all
+-- of it: damage, healing, slow and drowning. The gust push is the one client-applied effect
+-- and is not handled here. Hazard cycles run on workspace:GetServerTimeNow().
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
+local Geography = require(ReplicatedStorage.Shared.Rules.Geography)
+local Hazards = require(ReplicatedStorage.Shared.Rules.Hazards)
+local Sites = require(ReplicatedStorage.Shared.Catalog.Sites)
+local CombatService = require(script.Parent.CombatService)
+local StatusService = require(script.Parent.StatusService)
+
+-- A long stall must not turn into one huge damage or healing step.
+local MAX_ELAPSED_SECONDS = 1
+
+local HazardService = {}
+
+-- Real time gathered since the last tick.
+local accumulated = 0
+-- The last burst cycle that hit each player, by hazard id, so a burst lands once per cycle.
+local lastBurst: { [Player]: { [string]: number } } = {}
+
+-- The Humanoid and HumanoidRootPart of a living character, or nil.
+local function living(player: Player): (Humanoid?, BasePart?)
+	local character = player.Character
+	if character == nil then
+		return nil, nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil or humanoid.Health <= 0 then
+		return nil, nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
+		return nil, nil
+	end
+	return humanoid, root
+end
+
+-- One player's share of a tick: drowning, damage, bursts, healing, then slow.
+local function tickPlayer(player: Player, now: number, elapsed: number)
+	local humanoid, root = living(player)
+	if humanoid == nil or root == nil then
+		return
+	end
+	local position = root.Position
+	if position.Y < Geography.DROWN_Y then
+		CombatService.environmentDefeat(player)
+		return
+	end
+
+	local sample = Hazards.sample(Sites.hazards, position.X, position.Z, now)
+	if sample.dps > 0 then
+		CombatService.environmentDamage(player, sample.dps * elapsed)
+	end
+
+	if #sample.bursts > 0 then
+		local seen = lastBurst[player]
+		if seen == nil then
+			seen = {}
+			lastBurst[player] = seen
+		end
+		for _, burst in sample.bursts do
+			if seen[burst.id] ~= burst.cycle then
+				seen[burst.id] = burst.cycle
+				CombatService.environmentDamage(player, burst.damage, true)
+			end
+		end
+	end
+
+	if sample.heal > 0 and humanoid.Health > 0 then
+		humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + sample.heal * elapsed)
+	end
+
+	local slow = sample.slow
+	if slow < 1 then
+		StatusService.update(player, function(status, at)
+			return Effects.applySlow(status, slow, Hazards.SLOW_SECONDS, at)
+		end)
+	end
+end
+
+local function runTick(elapsed: number)
+	local now = workspace:GetServerTimeNow()
+	local failures = 0
+	local firstError = ""
+	for _, player in Players:GetPlayers() do
+		local ok, err = pcall(tickPlayer, player, now, elapsed)
+		if not ok then
+			failures += 1
+			if failures == 1 then
+				firstError = tostring(err)
+			end
+		end
+	end
+	-- One warning per tick, however many players failed: this runs four times a second.
+	if failures > 0 then
+		warn(`[IsleOfAvarice] HazardService failed for {failures} player(s): {firstError}`)
+	end
+end
+
+local function onHeartbeat(deltaTime: number)
+	accumulated += deltaTime
+	if accumulated < Hazards.TICK_SECONDS then
+		return
+	end
+	local elapsed = math.min(accumulated, MAX_ELAPSED_SECONDS)
+	accumulated = 0
+	runTick(elapsed)
+end
+
+function HazardService.start()
+	Players.PlayerRemoving:Connect(function(player)
+		lastBurst[player] = nil
+	end)
+	RunService.Heartbeat:Connect(onHeartbeat)
+end
+
+return HazardService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="54">
         <Properties>
           <string name="Name">LedgerService</string>
           <string name="Source"><![CDATA[--!strict
@@ -4415,7 +6220,56 @@ return LedgerService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="38">
+      <Item class="ModuleScript" referent="55">
+        <Properties>
+          <string name="Name">LookPainter</string>
+          <string name="Source"><![CDATA[--!strict
+-- Paints a part from a named look in the Looks catalog.
+--   LookPainter.paint(part, look)
+--       Sets the part's colour, material and transparency. A look the catalog does not have,
+--       or one whose material is not an Enum.Material item, paints opaque grey SmoothPlastic
+--       instead, so a typo shows on the island rather than breaking the build.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Looks = require(ReplicatedStorage.Shared.Catalog.Looks)
+
+local FALLBACK_COLOR = Color3.fromRGB(128, 128, 128)
+
+local LookPainter = {}
+
+-- The Enum.Material item with this name, or nil. Indexing an Enum with a name it does not
+-- have raises, and a name such as "GetEnumItems" finds a method, so both are screened out.
+local function materialNamed(name: string): Enum.Material?
+	local ok, item = pcall(function(): any
+		return (Enum.Material :: any)[name]
+	end)
+	if ok and typeof(item) == "EnumItem" and item.EnumType == Enum.Material then
+		return item
+	end
+	return nil
+end
+
+function LookPainter.paint(part: BasePart, look: string)
+	local spec = Looks.byName[look]
+	if spec ~= nil then
+		local material = materialNamed(spec.material)
+		if material ~= nil then
+			part.Color = Color3.fromRGB(spec.r, spec.g, spec.b)
+			part.Material = material
+			part.Transparency = spec.transparency
+			return
+		end
+	end
+	part.Color = FALLBACK_COLOR
+	part.Material = Enum.Material.SmoothPlastic
+	part.Transparency = 0
+end
+
+return LookPainter
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Script" referent="56">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -4424,6 +6278,7 @@ local AbilityService = require(script.Parent.AbilityService)
 local ClaimService = require(script.Parent.ClaimService)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
+local HazardService = require(script.Parent.HazardService)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
 local ProtectionService = require(script.Parent.ProtectionService)
@@ -4454,6 +6309,7 @@ runStep("CombatService.start", function()
 	CombatService.start(PathService.get, PathService.grant)
 end)
 runStep("AbilityService.start", AbilityService.start)
+runStep("HazardService.start", HazardService.start)
 runStep("ClaimService.start", ClaimService.start)
 runStep("PathService.start", PathService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
@@ -4463,7 +6319,7 @@ print("[IsleOfAvarice] server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="57">
         <Properties>
           <string name="Name">PathService</string>
           <string name="Source"><![CDATA[--!strict
@@ -4676,7 +6532,7 @@ return PathService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="58">
         <Properties>
           <string name="Name">ProtectionService</string>
           <string name="Source"><![CDATA[--!strict
@@ -4954,7 +6810,7 @@ return ProtectionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="59">
         <Properties>
           <string name="Name">Sight</string>
           <string name="Source"><![CDATA[--!strict
@@ -5037,7 +6893,134 @@ return Sight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="60">
+        <Properties>
+          <string name="Name">SiteBuilder</string>
+          <string name="Source"><![CDATA[--!strict
+-- Builds the island's structures and a visual marker for each hazard.
+--   SiteBuilder.build(island)
+--       Adds Folder "Features" (one anchored Part for every Sites.features entry) and Folder
+--       "Hazards" (one marker Part for every Sites.hazards entry that covers an area) to
+--       `island`. Each marker is named with its hazard id, carries the attribute HazardId and
+--       the tag "Hazard", and touches nothing: it is only there to be seen. A region-wide
+--       hazard has no marker. A tide marker also carries the attribute Rise.
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Sites = require(ReplicatedStorage.Shared.Catalog.Sites)
+local Types = require(ReplicatedStorage.Shared.Types)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
+local LookPainter = require(script.Parent.LookPainter)
+
+local SiteBuilder = {}
+
+local MARKER_THICKNESS = 0.3
+-- Markers float a little above the surface they mark so the ground does not hide them.
+local MARKER_LIFT = 0.2
+local TIDE_RISE = 3
+-- A sign's label floats this far above the top of the part that carries it.
+local LABEL_CLEARANCE = 2
+
+-- White bold text over the part (height studs tall), in the style of the training-post label.
+-- It sits above the part's top face so the part itself never hides it.
+local function addLabel(part: BasePart, text: string, height: number)
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(260, 70)
+	gui.StudsOffset = Vector3.new(0, height / 2 + LABEL_CLEARANCE, 0)
+	gui.MaxDistance = 120
+	gui.AlwaysOnTop = false
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.5
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Parent = gui
+	gui.Parent = part
+end
+
+local function buildFeature(parent: Folder, feature: Types.Feature)
+	local part = Instance.new("Part")
+	part.Name = feature.look
+	part.Anchored = true
+	local centre = CFrame.new(feature.x, feature.y, feature.z)
+	if feature.shape == "cylinder" then
+		-- A Roblox cylinder's axis is X: Size is (height, diameter, diameter), and a quarter
+		-- turn about Z stands it upright.
+		part.Shape = Enum.PartType.Cylinder
+		part.Size = Vector3.new(feature.sy, feature.sx, feature.sx)
+		part.CFrame = centre * CFrame.Angles(0, 0, math.rad(90))
+	else
+		-- A bearing runs clockwise from north (-Z), so the turn about Y is its negative.
+		part.Size = Vector3.new(feature.sx, feature.sy, feature.sz)
+		part.CFrame = centre * CFrame.Angles(0, -math.rad(feature.yaw), 0)
+	end
+	LookPainter.paint(part, feature.look)
+	part.CanCollide = feature.solid
+	if not feature.solid then
+		part.CanQuery = false
+		part.CanTouch = false
+	end
+	if feature.text ~= nil then
+		addLabel(part, feature.text, feature.sy)
+	end
+	part.Parent = parent
+end
+
+local function buildMarker(parent: Folder, hazard: Types.Hazard)
+	local shape = hazard.shape
+	if shape.kind == "region" then
+		return
+	end
+	local part = Instance.new("Part")
+	part.Name = hazard.id
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	local centre = CFrame.new(shape.x, (hazard.markerY or World.groundY) + MARKER_LIFT, shape.z)
+	if shape.kind == "circle" then
+		-- A flat disc: the cylinder's axis (its X, the thickness) is turned to point up.
+		part.Shape = Enum.PartType.Cylinder
+		part.Size = Vector3.new(MARKER_THICKNESS, shape.radius * 2, shape.radius * 2)
+		part.CFrame = centre * CFrame.Angles(0, 0, math.rad(90))
+	else
+		part.Size = Vector3.new(2 * shape.halfAcross, MARKER_THICKNESS, 2 * shape.halfAlong)
+		part.CFrame = centre * CFrame.Angles(0, -math.rad(shape.bearing), 0)
+	end
+	LookPainter.paint(part, hazard.look)
+	part:SetAttribute("HazardId", hazard.id)
+	CollectionService:AddTag(part, "Hazard")
+	if hazard.look == "tide" then
+		part:SetAttribute("Rise", TIDE_RISE)
+	end
+	part.Parent = parent
+end
+
+function SiteBuilder.build(island: Folder)
+	local features = Instance.new("Folder")
+	features.Name = "Features"
+	for _, feature in Sites.features do
+		buildFeature(features, feature)
+	end
+	features.Parent = island
+
+	local hazards = Instance.new("Folder")
+	hazards.Name = "Hazards"
+	for _, hazard in Sites.hazards do
+		buildMarker(hazards, hazard)
+	end
+	hazards.Parent = island
+end
+
+return SiteBuilder
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="61">
         <Properties>
           <string name="Name">SourceService</string>
           <string name="Source"><![CDATA[--!strict
@@ -5171,7 +7154,7 @@ return SourceService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="62">
         <Properties>
           <string name="Name">StatusService</string>
           <string name="Source"><![CDATA[--!strict
@@ -5539,7 +7522,80 @@ return StatusService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="63">
+        <Properties>
+          <string name="Name">TerrainBuilder</string>
+          <string name="Source"><![CDATA[--!strict
+-- Builds the island's ground and the sea around it.
+--   TerrainBuilder.build(island)
+--       Adds Folder "Ground" (one Part per strip from Geography.strips(), painted with its
+--       region's ground look) and Folder "Sea" (four Parts) to `island`.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Geography = require(ReplicatedStorage.Shared.Rules.Geography)
+local Regions = require(ReplicatedStorage.Shared.Catalog.Regions)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
+local LookPainter = require(script.Parent.LookPainter)
+
+local TerrainBuilder = {}
+
+local GROUND_THICKNESS = 4
+-- A Part cannot be larger than 2048 studs on a side, so the sea is four of them, one per
+-- quadrant, together covering -2048 to 2048 in x and z.
+local SEA_SIZE = 2048
+local SEA_THICKNESS = 2
+local SEA_CENTER_Y = -4
+local SEA_COLOR = Color3.fromRGB(40, 100, 170)
+local SEA_TRANSPARENCY = 0.3
+
+local function buildGround(island: Folder)
+	local ground = Instance.new("Folder")
+	ground.Name = "Ground"
+	for _, strip in Geography.strips() do
+		local region = Regions.byId[strip.region]
+		local part = Instance.new("Part")
+		part.Name = "Ground"
+		part.Anchored = true
+		part.Size = Vector3.new(strip.x2 - strip.x1, GROUND_THICKNESS, Geography.CELL)
+		-- Block centres are half a height below the top face.
+		part.CFrame =
+			CFrame.new((strip.x1 + strip.x2) / 2, World.groundY - GROUND_THICKNESS / 2, strip.z)
+		LookPainter.paint(part, if region then region.ground else "")
+		part.Parent = ground
+	end
+	ground.Parent = island
+end
+
+local function buildSea(island: Folder)
+	local sea = Instance.new("Folder")
+	sea.Name = "Sea"
+	for _, signX in { -1, 1 } do
+		for _, signZ in { -1, 1 } do
+			local part = Instance.new("Part")
+			part.Name = "Sea"
+			part.Anchored = true
+			part.Size = Vector3.new(SEA_SIZE, SEA_THICKNESS, SEA_SIZE)
+			part.CFrame = CFrame.new(signX * SEA_SIZE / 2, SEA_CENTER_Y, signZ * SEA_SIZE / 2)
+			part.Color = SEA_COLOR
+			part.Material = Enum.Material.Glass
+			part.Transparency = SEA_TRANSPARENCY
+			part.CanCollide = false
+			part.Parent = sea
+		end
+	end
+	sea.Parent = island
+end
+
+function TerrainBuilder.build(island: Folder)
+	buildGround(island)
+	buildSea(island)
+end
+
+return TerrainBuilder
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">VaultService</string>
           <string name="Source"><![CDATA[--!strict
@@ -5622,11 +7678,11 @@ return VaultService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="45">
+      <Item class="Folder" referent="65">
         <Properties>
           <string name="Name">Vendor</string>
         </Properties>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">ProfileStore</string>
             <string name="Source"><![CDATA[--[[
@@ -7747,7 +9803,7 @@ return ProfileStore
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="67">
         <Properties>
           <string name="Name">WorldBuilder</string>
           <string name="Source"><![CDATA[--!strict
@@ -7758,11 +9814,11 @@ local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
 local Tiers = require(ReplicatedStorage.Shared.Catalog.Tiers)
 local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
+local SiteBuilder = require(script.Parent.SiteBuilder)
+local TerrainBuilder = require(script.Parent.TerrainBuilder)
 
 local WorldBuilder = {}
 
-local GRASS = Color3.fromRGB(86, 140, 60)
-local SEA = Color3.fromRGB(40, 100, 170)
 local STONE = Color3.fromRGB(150, 146, 140)
 local ROCK = Color3.fromRGB(110, 110, 112)
 local WOOD = Color3.fromRGB(139, 100, 60)
@@ -7785,28 +9841,6 @@ local function makePart(
 	part.Material = material
 	part.Parent = parent
 	return part
-end
-
-local function buildTerrain(island: Folder)
-	-- Block centres are half a height below the top face.
-	makePart(
-		island,
-		"Ground",
-		Vector3.new(World.islandHalfSize * 2, 4, World.islandHalfSize * 2),
-		Vector3.new(0, World.groundY - 2, 0),
-		GRASS,
-		Enum.Material.Grass
-	)
-	local sea = makePart(
-		island,
-		"Sea",
-		Vector3.new(2048, 2, 2048),
-		Vector3.new(0, -3 - 1, 0),
-		SEA,
-		Enum.Material.Glass
-	)
-	sea.Transparency = 0.3
-	sea.CanCollide = false
 end
 
 local function buildTallyport(island: Folder)
@@ -7868,11 +9902,14 @@ local function buildTallyport(island: Folder)
 	town.Parent = island
 end
 
-local function buildCache(island: Folder, index: number, cache: any)
+local function buildCache(island: Folder, index: number, cache: Types.Cache)
 	local relic = Relics.byId[cache.relicId]
 	local c = Tiers.info[relic.tier].color
 	local color = Color3.fromRGB(c.r, c.g, c.b)
 	local p = cache.position
+	-- The cache is 2 tall and its position is its centre, so the floor it stands on is 1 below.
+	-- Most caches stand on the ground; a few stand on a raised floor of their own.
+	local base = p.y - 1
 
 	local part = makePart(
 		island,
@@ -7885,12 +9922,12 @@ local function buildCache(island: Folder, index: number, cache: any)
 	part:SetAttribute("CacheId", cache.id)
 	CollectionService:AddTag(part, "Cache")
 
-	-- Pillar is 12 tall, standing on the ground 3 studs to the side.
+	-- Pillar is 12 tall, standing on the cache's own floor 3 studs to the side.
 	makePart(
 		part,
 		"Pillar",
 		Vector3.new(1, 12, 1),
-		Vector3.new(p.x + 3, World.groundY + 6, p.z),
+		Vector3.new(p.x + 3, base + 6, p.z),
 		color,
 		Enum.Material.Neon
 	)
@@ -7898,23 +9935,26 @@ local function buildCache(island: Folder, index: number, cache: any)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Open"
 	prompt.ObjectText = "Cache"
-	prompt.HoldDuration = 0.5
+	prompt.HoldDuration = cache.hold or 0.5
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = part
 
-	-- Landmark rock: size depends only on the index, so every build is identical.
-	local w = 4 + (index % 3) * 2
-	local h = 3 + (index % 4)
-	local d = 4 + (index % 2) * 3
-	makePart(
-		island,
-		"Rock" .. cache.id,
-		Vector3.new(w, h, d),
-		Vector3.new(p.x - 8, World.groundY + h / 2, p.z + 5),
-		ROCK,
-		Enum.Material.Slate
-	)
+	-- Landmark rock: size depends only on the index, so every build is identical. Only a cache
+	-- near the ground has one; a raised cache already stands out.
+	if base < 1 then
+		local w = 4 + (index % 3) * 2
+		local h = 3 + (index % 4)
+		local d = 4 + (index % 2) * 3
+		makePart(
+			island,
+			"Rock" .. cache.id,
+			Vector3.new(w, h, d),
+			Vector3.new(p.x - 8, base + h / 2, p.z + 5),
+			ROCK,
+			Enum.Material.Slate
+		)
+	end
 end
 
 local function buildPost(island: Folder, index: number, position: Types.Vec3)
@@ -7950,7 +9990,8 @@ end
 function WorldBuilder.build()
 	local island = Instance.new("Folder")
 	island.Name = "Island"
-	buildTerrain(island)
+	TerrainBuilder.build(island)
+	SiteBuilder.build(island)
 	buildTallyport(island)
 	for i, cache in World.caches do
 		buildCache(island, i, cache)
@@ -7967,19 +10008,19 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="48">
+  <Item class="StarterPlayer" referent="68">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="49">
+    <Item class="StarterPlayerScripts" referent="69">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="50">
+      <Item class="Folder" referent="70">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">AbilityBar</string>
             <string name="Source"><![CDATA[--!strict
@@ -8178,7 +10219,50 @@ return AbilityBar
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="72">
+          <Properties>
+            <string name="Name">Atmosphere</string>
+            <string name="Source"><![CDATA[--!strict
+-- Fades the fog to the colour and range of the region the player is in.
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Regions = require(Shared:WaitForChild("Catalog"):WaitForChild("Regions"))
+
+local FADE_SECONDS = 1.5
+
+local Atmosphere = {}
+
+-- The fade in progress, so a new region can replace it.
+local current: Tween? = nil
+
+-- An unknown region id changes nothing.
+function Atmosphere.set(regionId: string)
+	local region = Regions.byId[regionId]
+	if region == nil then
+		return
+	end
+	local fog = region.fog
+	local previous = current
+	if previous ~= nil then
+		previous:Cancel()
+	end
+	local tween = TweenService:Create(Lighting, TweenInfo.new(FADE_SECONDS), {
+		FogColor = Color3.fromRGB(fog.r, fog.g, fog.b),
+		FogStart = fog.start,
+		FogEnd = fog.finish,
+	})
+	current = tween
+	tween:Play()
+end
+
+return Atmosphere
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">ClaimUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -8468,7 +10552,7 @@ return ClaimUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">CombatController</string>
             <string name="Source"><![CDATA[--!strict
@@ -8533,7 +10617,129 @@ return CombatController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="75">
+          <Properties>
+            <string name="Name">HazardController</string>
+            <string name="Source"><![CDATA[--!strict
+-- Hazard visuals and the one hazard effect the client applies itself: the gust push on the
+-- local character. The server decides every hazard's damage, healing, slow and drowning.
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Catalog = Shared:WaitForChild("Catalog")
+local Hazards = require(Shared:WaitForChild("Rules"):WaitForChild("Hazards"))
+local Looks = require(Catalog:WaitForChild("Looks"))
+local Sites = require(Catalog:WaitForChild("Sites"))
+local Types = require(Shared:WaitForChild("Types"))
+
+local MARKER_TAG = "Hazard"
+local VISUAL_SECONDS = 0.1
+local WARN_BRIGHT = 0.35
+local WARN_DIM = 0.6
+local ACTIVE_TRANSPARENCY = 0.05
+-- The warning flips between bright and dim this many times a second.
+local WARN_FLIPS_PER_SECOND = 4
+
+local HazardController = {}
+
+-- What a marker looked like before the controller touched it.
+type Rest = { cframe: CFrame, transparency: number }
+
+-- The rest is kept on the marker itself, in client-local attributes. A table keyed by the part
+-- can lose its entry when the part's Lua wrapper is collected, and a marker that is lifted at
+-- that moment would then be taken for its resting self and lifted again, pass after pass.
+-- Both values are written together, on the first pass, before anything has moved the marker.
+local function restOf(marker: BasePart, hazard: Types.Hazard): Rest
+	local cframe = marker:GetAttribute("RestCFrame")
+	local transparency = marker:GetAttribute("RestTransparency")
+	if typeof(cframe) == "CFrame" and type(transparency) == "number" then
+		return { cframe = cframe, transparency = transparency }
+	end
+	local look = Looks.byName[hazard.look]
+	local rest: Rest = {
+		cframe = marker.CFrame,
+		transparency = if look ~= nil then look.transparency else marker.Transparency,
+	}
+	marker:SetAttribute("RestCFrame", rest.cframe)
+	marker:SetAttribute("RestTransparency", rest.transparency)
+	return rest
+end
+
+-- Idle markers sit at rest, a warning flashes, and an active hazard is nearly solid. A
+-- marker with a Rise attribute (the tide) lifts by that much as the hazard goes active.
+local function showMarker(marker: BasePart, hazard: Types.Hazard, now: number)
+	local rest = restOf(marker, hazard)
+	local phase, _, elapsed = Hazards.phase(hazard, now)
+	local lift = 0
+	if phase == "idle" then
+		marker.Transparency = rest.transparency
+	elseif phase == "warn" then
+		local bright = math.floor(now * WARN_FLIPS_PER_SECOND) % 2 == 0
+		marker.Transparency = if bright then WARN_BRIGHT else WARN_DIM
+		lift = elapsed
+	else
+		marker.Transparency = ACTIVE_TRANSPARENCY
+		lift = 1
+	end
+	local rise = marker:GetAttribute("Rise")
+	if type(rise) == "number" then
+		marker.CFrame = rest.cframe + Vector3.new(0, rise * lift, 0)
+	end
+end
+
+-- Read the tagged list afresh each pass: a marker may appear after this runs.
+local function showMarkers(now: number)
+	for _, instance in CollectionService:GetTagged(MARKER_TAG) do
+		if instance:IsA("BasePart") then
+			local id = instance:GetAttribute("HazardId")
+			local hazard = if type(id) == "string" then Sites.hazardById[id] else nil
+			-- A hazard without a cycle has nothing to count down to; leave its marker alone.
+			if hazard ~= nil and hazard.cycle ~= nil then
+				showMarker(instance, hazard, now)
+			end
+		end
+	end
+end
+
+-- Moves the local character along any gust it stands in, while it is alive.
+local function pushLocalCharacter(dt: number, now: number)
+	local character = Players.LocalPlayer.Character
+	if character == nil then
+		return
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if humanoid == nil or humanoid.Health <= 0 or root == nil or not root:IsA("BasePart") then
+		return
+	end
+	local position = root.Position
+	local sample = Hazards.sample(Sites.hazards, position.X, position.Z, now)
+	if sample.pushX ~= 0 or sample.pushZ ~= 0 then
+		root.CFrame += Vector3.new(sample.pushX, 0, sample.pushZ) * dt
+	end
+end
+
+function HazardController.start()
+	local sinceVisuals = 0
+	RunService.RenderStepped:Connect(function(dt)
+		local now = workspace:GetServerTimeNow()
+		pushLocalCharacter(dt, now)
+		sinceVisuals += dt
+		if sinceVisuals >= VISUAL_SECONDS then
+			sinceVisuals = 0
+			showMarkers(now)
+		end
+	end)
+end
+
+return HazardController
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">LedgerUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -8873,7 +11079,7 @@ return LedgerUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="55">
+        <Item class="LocalScript" referent="77">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--!strict
@@ -8888,10 +11094,13 @@ local Net = require(Shared:WaitForChild("Net"))
 local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages"))
 local LedgerView = require(Rules:WaitForChild("LedgerView"))
 local PathView = require(Rules:WaitForChild("PathView"))
+local PlaceView = require(Rules:WaitForChild("PlaceView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local StatusView = require(Rules:WaitForChild("StatusView"))
+local Atmosphere = require(script.Parent.Atmosphere)
 local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
+local HazardController = require(script.Parent.HazardController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
 local PathUI = require(script.Parent.PathUI)
@@ -8955,6 +11164,7 @@ end, function(slot)
 end, function()
 	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen()
 end)
+HazardController.start()
 
 ledgerSync.OnClientEvent:Connect(function(ledger, vault)
 	LedgerUI.render(LedgerView.build(ledger, vault))
@@ -9015,15 +11225,36 @@ statusSync.OnClientEvent:Connect(function(status)
 	statusAt = os.clock()
 end)
 
-local function localInSafeZone(): boolean
+local function localRoot(): BasePart?
 	local character = localPlayer.Character
 	local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
 	if root == nil or not root:IsA("BasePart") then
+		return nil
+	end
+	return root
+end
+
+local function localInSafeZone(): boolean
+	local root = localRoot()
+	if root == nil then
 		return false
 	end
 	local p = root.Position
 	return Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z })
 end
+
+-- The region and active hazards at the local character, or nil while it has none.
+local function localPlace(): PlaceView.Place?
+	local root = localRoot()
+	if root == nil then
+		return nil
+	end
+	local p = root.Position
+	return PlaceView.at(p.X, p.Z, workspace:GetServerTimeNow())
+end
+
+-- The region last shown. Entering a new one changes the fog and shows its name and hint.
+local lastRegionId: string? = nil
 
 local function refreshHud()
 	local status = lastStatus
@@ -9036,7 +11267,16 @@ local function refreshHud()
 			markedSeconds = math.max(0, status.markedSeconds - elapsed),
 		}
 	end
-	StatusHUD.render(StatusView.build(shown, localInSafeZone()), shown ~= nil and shown.newShield)
+	local place = localPlace()
+	if place ~= nil and place.regionId ~= lastRegionId then
+		lastRegionId = place.regionId
+		Atmosphere.set(place.regionId)
+		Toast.show(place.name .. ": " .. place.hint)
+	end
+	StatusHUD.render(
+		StatusView.build(shown, localInSafeZone(), place),
+		shown ~= nil and shown.newShield
+	)
 end
 
 task.spawn(function()
@@ -9051,7 +11291,7 @@ ledgerRequest:FireServer()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">PathUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -9659,11 +11899,11 @@ return PathUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="79">
           <Properties>
             <string name="Name">StatusHUD</string>
             <string name="Source"><![CDATA[--!strict
--- Top-left status lines (safe zone, shields, Marked) and the "Drop shield" button.
+-- Top-left status lines (region, safe zone, shields, Marked, hazards) and the "Drop shield" button.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -9675,6 +11915,8 @@ local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local BACKGROUND = Color3.fromRGB(25, 22, 30)
 local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local KIND_COLORS: { [string]: Color3 } = {
+	region = Color3.fromRGB(245, 235, 210),
+	hazard = Color3.fromRGB(255, 170, 60),
 	safe = Color3.fromRGB(90, 200, 110),
 	shield = Color3.fromRGB(110, 170, 255),
 	marked = Color3.fromRGB(235, 70, 70),
@@ -9844,7 +12086,7 @@ return StatusHUD
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="80">
           <Properties>
             <string name="Name">Toast</string>
             <string name="Source"><![CDATA[--!strict
@@ -9919,7 +12161,7 @@ return Toast
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="59">
+  <Item class="Workspace" referent="81">
     <Properties>
       <string name="Name">Workspace</string>
       <float name="FallenPartsDestroyHeight">-60</float>
