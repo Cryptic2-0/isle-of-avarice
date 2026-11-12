@@ -739,7 +739,7 @@ All positions are (along, across) in the site's own region frame unless marked o
 | `CinderFlank1`, `CinderFlank2` | rect 440, 620, -190, -110 and rect 440, 620, 110, 190 | `dps = 30` | — |
 | `CinderPool1`..`4` | circles (340, -120) r 22; (350, 90) r 20; (680, -190) r 26; (700, 200) r 24 | `dps = 30` | — |
 | `CinderLake` | circle (760, 0) r 110; holes: circle (760, 0) r 32, rect 650, 730, -10, 10 | `dps = 30` | — |
-| `CinderCausewayVent1`..`4` | circles (660, 0), (680, 0), (700, 0), (720, 0), radius 11 | `damage = 35` | 4.8, 1.2, 0.8, `(i - 1) × 1.2` |
+| `CinderCausewayVent1`..`4` | circles (660, 0), (680, 0), (700, 0), (720, 0), radius 11 | `damage = 35` | 4.8, 1.2, 0.8, `(4 - i) × 1.2` |
 | `CinderPrizeVent` | circle (760, 0) r 12 | `damage = 35` | 5, 1.5, 1, 0 |
 
 Vents: name `Vent`, look `vent`. Lava: name `Lava`, look `lava`. Features: causeway `Make.block(…, 650, 730, -10, 10, 0, 0.6, "basalt", true)`; islet `Make.disc(…, 760, 0, 32, 0, 0.6, "basalt", true)`. Prize `R011` at (760, 0), `y = 1.6`, `hold = 3`. `keepOut`: rect 420, 640, -200, 200; circle (760, 0) r 120.
@@ -781,7 +781,7 @@ T.test("Cinder Flats", function()
 	T.eq(at("CinderFlats", 760, 60, 0).dps, 30) -- in the lake
 	T.eq(at("CinderFlats", 760, 20, 0).dps, 0) -- on the islet
 	T.eq(at("CinderFlats", 700, 0, 0), { dps = 0, heal = 0, slow = 1, pushX = 0, pushZ = 0, bursts = {}, names = {} })
-	T.eq(at("CinderFlats", 700, 0, 2).bursts, { { id = "CinderCausewayVent3", damage = 35, cycle = 0 } })
+	T.eq(at("CinderFlats", 700, 0, 3).bursts, { { id = "CinderCausewayVent3", damage = 35, cycle = 0 } })
 	T.eq(at("CinderFlats", 760, 0, 4.5).bursts, { { id = "CinderPrizeVent", damage = 35, cycle = 0 } })
 	T.eq(at("CinderFlats", 530, 150, 0).names, { "Lava" })
 	T.eq(#CinderFlats.features, 2)

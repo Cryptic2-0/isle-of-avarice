@@ -75,14 +75,17 @@ table.insert(
 	})
 )
 
--- Four vents on the causeway, firing one after another toward the islet.
+-- Four vents on the causeway, firing one after another toward the islet. A cycle runs on
+-- now + offset, so a larger offset fires earlier: vent 1, at the shore end, is active from 0.4 s
+-- into each 4.8 s cycle, and vents 2, 3 and 4 follow at 1.2 s steps (the last, at the islet end,
+-- from 4.0 s). The wave moves 20 studs per 1.2 s, about as fast as a player walks.
 for i = 1, 4 do
 	table.insert(
 		hazards,
 		vent(
 			`CinderCausewayVent{i}`,
 			Geography.circle(REGION, 640 + 20 * i, 0, 11),
-			{ period = 4.8, warn = 1.2, active = 0.8, offset = (i - 1) * 1.2 }
+			{ period = 4.8, warn = 1.2, active = 0.8, offset = (4 - i) * 1.2 }
 		)
 	)
 end

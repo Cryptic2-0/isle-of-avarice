@@ -394,7 +394,7 @@ T.test("Cinder Flats", function()
 		{ dps = 0, heal = 0, slow = 1, pushX = 0, pushZ = 0, bursts = {}, names = {} }
 	)
 	T.eq(
-		at("CinderFlats", 700, 0, 2).bursts,
+		at("CinderFlats", 700, 0, 3).bursts,
 		{ { id = "CinderCausewayVent3", damage = 35, cycle = 0 } }
 	)
 	T.eq(

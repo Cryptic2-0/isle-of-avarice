@@ -53,7 +53,7 @@ Most steps need one player. Steps marked (two players) need A and B. **A** is Pl
      | Bastion Reach | Bastion Reach: Rocks fall where the ground glows. Shelter under the roofs. |
 
      In Tallyport the status column also shows "Safe zone". Each signpost shows the region's name and the same rule.
-   - Extra check: each wild region has one copper cache just past its signpost, about 315 steps from the centre of town and 60 steps to the left of the road as you walk out. Hold E at one to open it. With the six in the Counting Fields, that makes 18 copper caches.
+   - Extra check: each wild region has one copper cache just past its signpost, about 315 steps from the centre of town and 60 steps to the left of the road as you walk out. Hold E at one to open it. With the six in the Counting Fields, that makes 12 copper caches, and 18 caches with the six prize caches.
 
 2. **A bridge and a river fall**
    - What to do: go to the first bridge over the river between Thornwood and Squall Steps. It lies on the line halfway between those two roads, 420 steps from the centre of town. Walk across the bridge. Then walk back onto it and step off its side.
@@ -81,7 +81,7 @@ Most steps need one player. Steps marked (two players) need A and B. **A** is Pl
 
 8. **Lava and the causeway (Kiln Lake)**
    - What to do: go past the Bellows to Kiln Lake, about 650 steps out. It is a round lake of bright orange lava with an islet in the middle. Cross the dark stone causeway to the islet. On the islet, hold E at the Weeping Strongbox. Then step off the causeway into the lava on purpose.
-   - What should happen: four vents on the causeway erupt one after another toward the islet, each about 1.2 seconds after the one before. Each costs 35 health. You can run behind the wave. A vent at the Strongbox erupts every 5 seconds and leaves about 4 seconds of quiet. The hold takes 3 seconds, so start it just after an eruption. You see "You found Weeping Strongbox!". In the lava the status column shows "Lava". You lose 30 health a second and are defeated in about 3 seconds. You wake up in Tallyport.
+   - What should happen: four vents on the causeway erupt one after another, starting with the vent nearest the shore and ending with the one at the islet, each about 1.2 seconds after the one before. That wave moves about as fast as you walk. Each vent costs 35 health. Wait for the first vent to erupt, then walk just behind the wave. A vent at the Strongbox erupts every 5 seconds and leaves about 4 seconds of quiet. The hold takes 3 seconds, so start it just after an eruption. You see "You found Weeping Strongbox!". In the lava the status column shows "Lava". You lose 30 health a second and are defeated in about 3 seconds. You wake up in Tallyport.
 
 9. **The boardwalk and the rotted gap (Drowned Fen)**
    - What to do: follow the Drowned Fen road south. About 400 steps out a wooden boardwalk starts and runs on through the mud. Walk along it. Step off it into the mud for a few seconds. Then go on to the middle, where the boardwalk breaks off. Wade through the gap. Later, go round it by the side boardwalk that leaves the main one about 120 steps before the gap, on your right.
