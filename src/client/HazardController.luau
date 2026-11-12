@@ -26,20 +26,23 @@ local HazardController = {}
 -- What a marker looked like before the controller touched it.
 type Rest = { cframe: CFrame, transparency: number }
 
--- Keyed weakly, so a marker the server removes is not kept alive here.
-local rests: { [BasePart]: Rest } = setmetatable({}, { __mode = "k" }) :: any
-
+-- The rest is kept on the marker itself, in client-local attributes. A table keyed by the part
+-- can lose its entry when the part's Lua wrapper is collected, and a marker that is lifted at
+-- that moment would then be taken for its resting self and lifted again, pass after pass.
+-- Both values are written together, on the first pass, before anything has moved the marker.
 local function restOf(marker: BasePart, hazard: Types.Hazard): Rest
-	local known = rests[marker]
-	if known ~= nil then
-		return known
+	local cframe = marker:GetAttribute("RestCFrame")
+	local transparency = marker:GetAttribute("RestTransparency")
+	if typeof(cframe) == "CFrame" and type(transparency) == "number" then
+		return { cframe = cframe, transparency = transparency }
 	end
 	local look = Looks.byName[hazard.look]
-	local rest = {
+	local rest: Rest = {
 		cframe = marker.CFrame,
 		transparency = if look ~= nil then look.transparency else marker.Transparency,
 	}
-	rests[marker] = rest
+	marker:SetAttribute("RestCFrame", rest.cframe)
+	marker:SetAttribute("RestTransparency", rest.transparency)
 	return rest
 end
 
