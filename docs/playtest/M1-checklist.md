@@ -52,7 +52,7 @@ Pillar colours show how rare a Relic is: copper (brown-orange) is common, silver
     - What should happen: a message says "Your free slots are full." The cache does not disappear.
 
 11. **Finish the Ledger**
-    - What to do: first claim or discard some spares, so your free slots are not full. Otherwise opening caches will fail with "Your free slots are full." Then find all 12 caches and claim all 12 Relics. Six are copper, three are silver, two are gold and one is platinum. The platinum one is the farthest from town, close to the island's edge, about 370 steps from the spawn point. Its pillar is pale white-blue. Keep walking away from Tallyport in different directions until you find it.
+    - What to do: first claim or discard some spares, so your free slots are not full. Otherwise opening caches will fail with "Your free slots are full." Then claim all 12 Relics. There are 18 caches on the island. The six copper Relics come from the six copper caches in the Counting Fields. The six rarer Relics (three silver, two gold and one platinum) are the prize caches out in the wild regions, each one behind a hazard. The platinum one has a pale white-blue pillar. Step 14 of `docs/playtest/World-checklist.md` lists where each prize cache is and how to get to it. The other six caches, one just past each signpost, hold copper Relics too.
     - What should happen: the top of the book says "Relics: 12 / 12 (complete!)". When you make the last claim, every player sees the message "(your name) has completed the Ledger!".
 
 12. **Check saving** (only if you did "How to make saving work" in the README)
@@ -63,8 +63,8 @@ Pillar colours show how rare a Relic is: copper (brown-orange) is common, silver
     - What to do: in the Test tab, find the Clients and Servers section, set the number of players to 2, and press Start. (Studio's menus change between versions; look for a multi-player or multi-client test option.) Both players go to the same cache and hold E at the same moment.
     - What should happen: only one player gets the card. For the other player the cache disappears. The message "This cache is empty. It will refill soon." appears only if the two opens were almost at the same moment.
 
-14. **Fall off the island**
-    - What to do: walk past the island's edge into the sea.
+14. **Fall into a river**
+    - What to do: walk due west out of town, across the Counting Fields. About 300 steps from the centre of town the ground ends at a river, a gap about 100 steps wide. Step off the edge into it.
     - What should happen: you fall and then come back at the spawn point in Tallyport.
 
 If any step fails, copy the red text from the Output window and send it back.

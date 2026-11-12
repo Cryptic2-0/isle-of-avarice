@@ -8,7 +8,13 @@ local VENT_DAMAGE = 35
 local LAVA_DPS = 30
 local BASALT_TOP = 0.6
 
-local function vent(id: string, shape: Types.Shape, cycle: Types.Cycle): Types.Hazard
+-- A vent on the basalt takes the basalt's top as its markerY, or the stone would hide its marker.
+local function vent(
+	id: string,
+	shape: Types.Shape,
+	cycle: Types.Cycle,
+	markerY: number?
+): Types.Hazard
 	return {
 		id = id,
 		region = REGION,
@@ -17,6 +23,7 @@ local function vent(id: string, shape: Types.Shape, cycle: Types.Cycle): Types.H
 		shape = shape,
 		cycle = cycle,
 		damage = VENT_DAMAGE,
+		markerY = markerY,
 	}
 end
 
@@ -35,14 +42,15 @@ end
 local hazards: { Types.Hazard } = {}
 
 -- A five by five grid of vents; vent 5m + n + 1 is row m, column n, and the grid erupts in a
--- slow diagonal wave.
+-- slow diagonal wave. The vents are 20 studs in radius on a 40-stud spacing, so they touch and no
+-- lane between them is always safe.
 for m = 0, 4 do
 	for n = 0, 4 do
 		table.insert(
 			hazards,
 			vent(
 				`CinderVent{5 * m + n + 1}`,
-				Geography.circle(REGION, 440 + 40 * m, -80 + 40 * n, 15),
+				Geography.circle(REGION, 440 + 40 * m, -80 + 40 * n, 20),
 				{ period = 6, warn = 1.5, active = 1, offset = ((m + 2 * n) % 5) * 1.2 }
 			)
 		)
@@ -50,8 +58,8 @@ for m = 0, 4 do
 end
 
 -- Lava along both flanks of the vent field.
-table.insert(hazards, lava("CinderFlank1", Geography.rect(REGION, 440, 620, -190, -110), nil))
-table.insert(hazards, lava("CinderFlank2", Geography.rect(REGION, 440, 620, 110, 190), nil))
+table.insert(hazards, lava("CinderFlank1", Geography.rect(REGION, 440, 620, -190, -100), nil))
+table.insert(hazards, lava("CinderFlank2", Geography.rect(REGION, 440, 620, 100, 190), nil))
 
 local pools = {
 	{ 340, -120, 22 },
@@ -85,7 +93,8 @@ for i = 1, 4 do
 		vent(
 			`CinderCausewayVent{i}`,
 			Geography.circle(REGION, 640 + 20 * i, 0, 11),
-			{ period = 4.8, warn = 1.2, active = 0.8, offset = (4 - i) * 1.2 }
+			{ period = 4.8, warn = 1.2, active = 0.8, offset = (4 - i) * 1.2 },
+			BASALT_TOP
 		)
 	)
 end
@@ -95,7 +104,8 @@ table.insert(
 	vent(
 		"CinderPrizeVent",
 		Geography.circle(REGION, 760, 0, 12),
-		{ period = 5, warn = 1.5, active = 1, offset = 0 }
+		{ period = 5, warn = 1.5, active = 1, offset = 0 },
+		BASALT_TOP
 	)
 )
 

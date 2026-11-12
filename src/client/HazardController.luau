@@ -41,6 +41,7 @@ local function restOf(marker: BasePart, hazard: Types.Hazard): Rest
 		cframe = marker.CFrame,
 		transparency = if look ~= nil then look.transparency else marker.Transparency,
 	}
+	-- Client-local: lost if the server ever changed a marker's attributes at run time (it does not).
 	marker:SetAttribute("RestCFrame", rest.cframe)
 	marker:SetAttribute("RestTransparency", rest.transparency)
 	return rest

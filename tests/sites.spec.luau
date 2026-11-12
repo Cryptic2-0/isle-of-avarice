@@ -38,6 +38,20 @@ local function footprint(feature: Types.Feature): Types.Shape
 	}
 end
 
+-- The footprint of a cylinder feature as a circle shape.
+local function discFootprint(feature: Types.Feature): Types.Shape
+	return {
+		kind = "circle",
+		x = feature.x,
+		z = feature.z,
+		radius = feature.sx / 2,
+		bearing = 0,
+		halfAlong = 0,
+		halfAcross = 0,
+		region = "",
+	}
+end
+
 -- Every site hazard's combined effect at the world point (along, across) of a region's frame.
 local function at(region: string, along: number, across: number, now: number): Hazards.Sample
 	local x, z = Geography.place(region, along, across)
@@ -85,6 +99,34 @@ T.test("every feature is well formed", function()
 			T.truthy(isFinite(f.yaw), label .. " yaw")
 		end
 	end
+end)
+
+-- A hazard marker floats 0.2 above its markerY (the ground when there is none), centred on the
+-- shape. A solid feature that encloses that point hides the marker, so the warning is unseen.
+-- Only a hazard that acts at its own centre is checked: the centre of a ring (Kiln Lake) is a
+-- hole, covered on purpose by the islet, and the lava round it stays in view.
+T.test("no area hazard's marker is buried inside a solid feature", function()
+	local buried: { string } = {}
+	for _, h in Sites.hazards do
+		if h.shape.kind ~= "region" and Hazards.affects(h, h.shape.x, h.shape.z) then
+			local x, z = h.shape.x, h.shape.z
+			local y = (h.markerY or 0) + 0.2
+			for i, f in Sites.features do
+				if f.solid and f.y - f.sy / 2 < y and y < f.y + f.sy / 2 then
+					local inside = if f.shape == "cylinder"
+						then Hazards.contains(discFootprint(f), x, z)
+						else Hazards.contains(footprint(f), x, z)
+					if inside then
+						table.insert(
+							buried,
+							`{h.id} marker at y {y} is inside feature {i} ({f.look}, y {f.y - f.sy / 2} to {f.y + f.sy / 2})`
+						)
+					end
+				end
+			end
+		end
+	end
+	T.eq(buried, {})
 end)
 
 T.test("every prize is a known Relic on land in its region and can be held", function()
@@ -386,7 +428,7 @@ T.test("Cinder Flats", function()
 	T.eq(#CinderFlats.hazards, 37)
 	T.eq(Sites.hazardById.CinderVent1.cycle, { period = 6, warn = 1.5, active = 1, offset = 0 })
 	T.eq((Sites.hazardById.CinderVent8.cycle :: Types.Cycle).offset, 1.2 * ((1 + 2 * 2) % 5)) -- m = 1, n = 2
-	T.eq(Sites.hazardById.CinderVent25.shape.radius, 15)
+	T.eq(Sites.hazardById.CinderVent25.shape.radius, 20)
 	T.eq(at("CinderFlats", 760, 60, 0).dps, 30) -- in the lake
 	T.eq(at("CinderFlats", 760, 20, 0).dps, 0) -- on the islet
 	T.eq(
@@ -404,6 +446,49 @@ T.test("Cinder Flats", function()
 	T.eq(at("CinderFlats", 530, 150, 0).names, { "Lava" })
 	T.eq(#CinderFlats.features, 2)
 	T.eq((CinderFlats.prize :: Types.SiteCache).y, 1.6)
+end)
+
+-- The causeway vents and the prize vent stand on the basalt, so their markers ride on top of it;
+-- the Bellows vents stay on the ground.
+T.test("Cinder Flats: vent markers on the basalt", function()
+	for i = 1, 4 do
+		T.eq(Sites.hazardById[`CinderCausewayVent{i}`].markerY, 0.6, `CinderCausewayVent{i}`)
+	end
+	T.eq(Sites.hazardById.CinderPrizeVent.markerY, 0.6)
+	for i = 1, 25 do
+		T.eq(Sites.hazardById[`CinderVent{i}`].markerY, nil, `CinderVent{i}`)
+	end
+end)
+
+-- The Bellows has no safe lane: a straight walk along any line from along 420 to 620, across -100
+-- to 100, passes through a vent. Beside the field both flanks are lava.
+T.test("Cinder Flats: the Bellows cannot be crossed in a straight line", function()
+	local vents: { Types.Hazard } = {}
+	for i = 1, 25 do
+		table.insert(vents, Sites.hazardById[`CinderVent{i}`])
+	end
+	for across = -100, 100, 5 do
+		-- The lines at -100 and 100 only graze the outermost vents, at the single point where a
+		-- vent's edge meets the lava flank. Rounding in the region frame can lose that point, so
+		-- those two lines are measured against vents 0.001 wider.
+		local slack = if math.abs(across) == 100 then 0.001 else 0
+		local hit = false
+		for along = 420, 620, 5 do
+			local x, z = Geography.place("CinderFlats", along, across)
+			for _, vent in vents do
+				if slack == 0 then
+					hit = hit or Hazards.affects(vent, x, z)
+				else
+					local wider = table.clone(vent.shape)
+					wider.radius += slack
+					hit = hit or Hazards.contains(wider, x, z)
+				end
+			end
+		end
+		T.truthy(hit, `a straight walk at across {across} meets a vent`)
+	end
+	T.eq(at("CinderFlats", 530, 105, 0).dps, 30)
+	T.eq(at("CinderFlats", 530, -105, 0).dps, 30)
 end)
 
 T.test("Drowned Fen", function()

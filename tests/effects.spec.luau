@@ -53,6 +53,47 @@ T.test("slow and root", function()
 	T.falsy(Effects.isRooted(rooted, 1.5))
 end)
 
+T.test("ambient slow: skips the immune, never cuts a slow short", function()
+	local s0 = Effects.new()
+
+	-- An immune player is not slowed at all.
+	local imm = Effects.applyImmune(s0, 5, 0)
+	T.eq(Effects.applyAmbientSlow(imm, 0.6, 1, 1), imm)
+	T.eq(Effects.speedFactor(Effects.applyAmbientSlow(imm, 0.6, 1, 1), 1.5), 1)
+	-- Once the immunity has ended the slow lands.
+	T.eq(Effects.applyAmbientSlow(imm, 0.6, 1, 5), Effects.applySlow(imm, 0.6, 1, 5))
+
+	-- With no slow in effect it is the plain slow.
+	T.eq(Effects.applyAmbientSlow(s0, 0.6, 1, 1), Effects.applySlow(s0, 0.6, 1, 1))
+	local expired = Effects.applySlow(s0, 0.4, 1, 0)
+	T.eq(Effects.applyAmbientSlow(expired, 0.6, 1, 2), Effects.applySlow(expired, 0.6, 1, 2))
+
+	-- A stronger slow that lasts longer is left alone (an ability's slow, say).
+	local undertow = Effects.applySlow(s0, 0.4, 5, 0)
+	T.eq(Effects.applyAmbientSlow(undertow, 0.6, 1, 1), undertow)
+	-- So is an equal one that lasts longer: the bog must not shorten it.
+	local equalLonger = Effects.applySlow(s0, 0.6, 5, 0)
+	T.eq(Effects.applyAmbientSlow(equalLonger, 0.6, 1, 1), equalLonger)
+	T.eq(Effects.applyAmbientSlow(equalLonger, 0.6, 1, 1).slowUntil, 5)
+
+	-- A weaker slow in effect gives way to the ambient one.
+	local weaker = Effects.applySlow(s0, 0.8, 5, 0)
+	local over = Effects.applyAmbientSlow(weaker, 0.6, 1, 1)
+	T.eq(over, Effects.applySlow(weaker, 0.6, 1, 1))
+	T.eq({ over.slowFactor, over.slowUntil }, { 0.6, 2 })
+
+	-- An equal slow that ends sooner is refreshed.
+	local equalSooner = Effects.applySlow(s0, 0.6, 1.5, 0)
+	local refreshed = Effects.applyAmbientSlow(equalSooner, 0.6, 1, 1)
+	T.eq(refreshed, Effects.applySlow(equalSooner, 0.6, 1, 1))
+	T.eq({ refreshed.slowFactor, refreshed.slowUntil }, { 0.6, 2 })
+
+	-- The status passed in is never changed.
+	local before = table.clone(weaker)
+	Effects.applyAmbientSlow(weaker, 0.6, 1, 1)
+	T.eq(weaker, before)
+end)
+
 T.test("burn and cleanse", function()
 	local s0 = Effects.new()
 	local slow = Effects.applySlow(s0, 0.5, 4, 0)

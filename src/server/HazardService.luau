@@ -78,7 +78,7 @@ local function tickPlayer(player: Player, now: number, elapsed: number)
 	local slow = sample.slow
 	if slow < 1 then
 		StatusService.update(player, function(status, at)
-			return Effects.applySlow(status, slow, Hazards.SLOW_SECONDS, at)
+			return Effects.applyAmbientSlow(status, slow, Hazards.SLOW_SECONDS, at)
 		end)
 	end
 end

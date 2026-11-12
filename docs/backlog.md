@@ -45,3 +45,22 @@ play tests:
   on a phone.
 - Whether dying to the island should cost something. Today it does not, so a
   prize run can end in a free trip home.
+
+Known from the final review of the wide island, and left as they are:
+
+- A prize cache's 3 or 4 second hold is set on the prompt, but the server
+  does not check it (`SourceService` checks distance only).
+- The region banner uses the same single message slot as server messages, so
+  crossing a border can replace a message less than 3 seconds old.
+- Roblox's default health regeneration (about 1 a second) is still on. Decide
+  at the play test whether to turn it off or retune the bog and blight.
+- The gust push moves the character's position directly and ignores
+  collisions, so it may jitter against the sides of pillars.
+- Walking back out along the Kiln Lake causeway has a much shorter safe start
+  window than walking in.
+- The "one hit per activation" rule lives in `HazardService`. Move it into
+  `Hazards` as a pure, tested function.
+- The extra-cache spot (310, -60) is written in both `Sites.luau` and
+  `Scenery.luau`.
+- Hush Gardens blight has no ground marker, only the status line and the
+  entering message.

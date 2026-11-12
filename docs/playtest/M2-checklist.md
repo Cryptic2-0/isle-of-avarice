@@ -84,7 +84,7 @@ Studio's menus change between versions. If you cannot find these options, look f
     - What should happen: A gets the claim screen for B, the same as for a defeat.
 
 16. **Too many copies on one server** (optional: it takes about 20 minutes, because the platinum cache refills only every 10 minutes)
-    - What to do: as A, collect "The Hoarder's Thumbprint". It is the platinum cache with the pale white-blue pillar, the farthest cache from town, close to the island's edge. Ten minutes later, as B, collect it too. Then wait for the cache to refill and try to open it again with either player.
+    - What to do: as A, collect "The Hoarder's Thumbprint". It is the platinum cache with the pale white-blue pillar, in the keep of Bastion Reach (steps 12 to 14 of `docs/playtest/World-checklist.md` show the way). It takes 4 seconds to open. Ten minutes later, as B, collect it too. Then wait for the cache to refill and try to open it again with either player.
     - What should happen: once two copies are held, the pillar stops glowing and the cache prompt reads "Sealed cache". The third attempt gives "The island has sealed this Relic. Too many are already held here."
 
 If any step fails, copy the red text from the Output window and send it back.

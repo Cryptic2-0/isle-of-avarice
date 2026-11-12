@@ -211,7 +211,7 @@ alternating sides, so the way in zigzags through three yards.
 - The status column shows the region name, and the name of any hazard the
   player is standing in ("Briars", "Blight", "High tide").
 - A message appears on entering a region: its name and its rule.
-- Fog and light change per region (thick in the Fen, red haze on the Flats).
+- Fog changes per region (thick in the Fen, red haze on the Flats).
 - Cycling hazards glow dim, then bright as a warning, then brightest when
   active. The tide water visibly rises.
 
@@ -225,7 +225,7 @@ src/shared/Catalog/Regions.luau        the nine regions
 src/shared/Rules/Geography.luau        bearings, coast, rivers, cells, regionAt, isLand, strips
 src/shared/Rules/Hazards.luau          shapes, cycles, sampling a position
 src/shared/Rules/PlaceView.luau        region and hazard names for the HUD
-src/shared/Catalog/Sites/*.luau        one file per wild region: hazards, structures, caches
+src/shared/Catalog/SiteData/*.luau      one file per wild region: hazards, structures, caches
 src/shared/Catalog/Sites.luau          all of them together, plus roads, bridges, signs, scenery
 src/shared/Catalog/World.luau          caches now come from Sites
 src/server/HazardService.luau          4 ticks a second: damage, heal, slow, drown
@@ -233,7 +233,7 @@ src/server/CombatService.luau          + environmentDamage
 src/server/TerrainBuilder.luau         ground strips and sea
 src/server/SiteBuilder.luau            structures and hazard markers
 src/client/HazardController.luau       warning glow, tide height, gust push
-src/client/Atmosphere.luau             fog and light per region
+src/client/Atmosphere.luau             fog per region
 ```
 
 Decisions:
@@ -247,7 +247,7 @@ Decisions:
   drowning stay on the server.
 - **Hazard damage bypasses force fields** (it sets health directly), because
   shields are protection from players only.
-- **No streaming.** The world is about 1,500 anchored parts.
+- **No streaming.** The world is about 750 anchored parts.
 - **No new remotes and no saved data.**
 
 Testing: every rule and catalog invariant has Lune tests (land is one
