@@ -64,7 +64,7 @@ local list: { Ability } = {
 		damage = 12,
 		executeBelow = 35,
 		executeDamage = 40,
-		description = "Strike for 12 damage, or 40 if the enemy is below 35 health.",
+		description = "Strike for 12 damage, or 40 if the enemy has 35 health or less.",
 	},
 	-- Gale
 	{
@@ -98,7 +98,7 @@ local list: { Ability } = {
 		kind = "self",
 		immune = 1.5,
 		empower = { bonus = 20, duration = 4 },
-		description = "Take no damage for 1.5 seconds, then deal 20 extra damage on your hits for 4 seconds.",
+		description = "For 1.5 seconds nothing can hurt or affect you; your next hit within 4 seconds deals 20 extra damage.",
 	},
 	-- Ember
 	{
@@ -170,7 +170,7 @@ local list: { Ability } = {
 		damage = 10,
 		pull = 4,
 		slow = { factor = 0.7, duration = 2 },
-		description = "Hit an enemy up to 25 studs for 10 damage, pull them 4 studs closer and slow them for 2 seconds.",
+		description = "Hit an enemy up to 25 studs for 10 damage, pull them to 4 studs in front of you and slow them for 2 seconds.",
 	},
 	-- Mend
 	{
@@ -207,7 +207,7 @@ local list: { Ability } = {
 		heal = 35,
 		cleanse = true,
 		allyRadius = 15,
-		description = "Heal yourself and allies within 15 studs for 35 health and remove harmful effects.",
+		description = "Heal yourself and allies within 15 studs for 35 health and remove slow, root and burn.",
 	},
 	-- Bulwark
 	{
@@ -2811,9 +2811,11 @@ local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Targeting = require(ReplicatedStorage.Shared.Rules.Targeting)
 local Types = require(ReplicatedStorage.Shared.Types)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
 local CombatService = require(script.Parent.CombatService)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
+local Sight = require(script.Parent.Sight)
 local StatusService = require(script.Parent.StatusService)
 
 type Ability = Types.Ability
@@ -2824,6 +2826,7 @@ type Vec3 = Types.Vec3
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
 local WALL_MARGIN = 2 -- a move stops this many studs short of anything in its way
+local ZONE_WALL_MARGIN = 1 -- a zone's centre stops this far short of a wall
 local GROUND_PROBE = 50 -- how far below a move's end point to look for ground
 local R6_LEG_HEIGHT = 2
 local SHOT_WIDTH = 0.3
@@ -2912,43 +2915,6 @@ end
 -- World rays: movement (dash, pull, knockback) and line of sight
 -- ---------------------------------------------------------------------------------------
 
--- Move and sight rays pass through every player's character and the effects folder, and
--- through anything a character could walk through (non-colliding parts, water).
-local function worldRayParams(): RaycastParams
-	local exclude: { Instance } = { effectsFolder() }
-	for _, other in Players:GetPlayers() do
-		local character = other.Character
-		if character ~= nil then
-			table.insert(exclude, character)
-		end
-	end
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = exclude
-	params.RespectCanCollide = true
-	params.IgnoreWater = true
-	return params
-end
-
--- Where the straight line from `from` to `to` is first blocked, or nil when it is clear.
--- Characters, workspace.Effects and non-colliding parts never block. When the target is a
--- training post, pass its id: the ray ends on that post's own surface, which is not a block.
-local function obstruction(from: Vector3, to: Vector3, postId: number?): Vector3?
-	local delta = to - from
-	-- Written so a NaN or infinite line counts as blocked.
-	if not (delta.Magnitude < math.huge) then
-		return from
-	end
-	local result = workspace:Raycast(from, delta, worldRayParams())
-	if result == nil then
-		return nil
-	end
-	if postId ~= nil and result.Instance:GetAttribute("PostId") == postId then
-		return nil
-	end
-	return result.Position
-end
-
 -- Moves a character towards `target` using only the server's own geometry. `target` always
 -- comes from a server plan, never from a client. A level ray from the root towards the
 -- target's x and z stops WALL_MARGIN short of anything in the way; a ray down from there
@@ -2965,7 +2931,7 @@ local function moveCharacter(humanoid: Humanoid, root: BasePart, target: Vec3): 
 		return 0
 	end
 	local direction = Vector3.new(dx / distance, 0, dz / distance)
-	local params = worldRayParams()
+	local params = Sight.rayParams()
 	local travel = distance
 	local blocked = workspace:Raycast(from, direction * distance, params)
 	if blocked ~= nil then
@@ -3056,7 +3022,7 @@ local function inSight(caster: Fighter, others: { Fighter }, targetId: number): 
 	for _, other in others do
 		if other.id == targetId then
 			local postId = if CombatService.isPost(targetId) then targetId else nil
-			return obstruction(vector(caster.position), vector(other.position), postId) == nil
+			return Sight.obstruction(vector(caster.position), vector(other.position), postId) == nil
 		end
 	end
 	return false
@@ -3219,7 +3185,7 @@ local function showShots(ability: Ability, caster: Fighter, others: { Fighter },
 			end
 		end
 		local postId = if targetId ~= nil and CombatService.isPost(targetId) then targetId else nil
-		showRay(from, obstruction(from, to, postId) or to, color)
+		showRay(from, Sight.obstruction(from, to, postId) or to, color)
 	end
 end
 
@@ -3248,6 +3214,47 @@ end
 -- Casting
 -- ---------------------------------------------------------------------------------------
 
+-- The fighters a plan may pick from. A single-target melee or shot ability only sees what the
+-- caster has a clear line to, so a target behind a corner never swallows the hit (and an
+-- unseen taunter forces nothing). Area abilities keep everyone: applyHits skips unseen hits.
+local function candidates(ability: Ability, caster: Fighter, others: { Fighter }): { Fighter }
+	if ability.kind == "melee" or ability.kind == "shot" then
+		return Sight.filter(vector(caster.position), others)
+	end
+	return others
+end
+
+-- Settles a planned zone on the server's own geometry. The centre never lands past a wall
+-- (a level ray from the caster's root towards it stops ZONE_WALL_MARGIN short of the hit),
+-- and its height is the ground under it, or World.groundY when there is none.
+local function placeZone(zone: Casting.Zone, from: Vector3): Casting.Zone
+	local params = Sight.rayParams()
+	local x, z = zone.center.x, zone.center.z
+	local dx, dz = x - from.X, z - from.Z
+	local distance = math.sqrt(dx * dx + dz * dz)
+	if distance > 0 and distance < math.huge then
+		local blocked = workspace:Raycast(from, Vector3.new(dx, 0, dz), params)
+		if blocked ~= nil then
+			local travel = math.max(0, blocked.Distance - ZONE_WALL_MARGIN)
+			x, z = from.X + dx / distance * travel, from.Z + dz / distance * travel
+		end
+	end
+	-- Probe from above the caster's height so a centre on higher ground still finds its floor.
+	local y = World.groundY
+	local probeTop = from.Y + Combat.STRIKE_MAX_HEIGHT
+	local ground = workspace:Raycast(
+		Vector3.new(x, probeTop, z),
+		Vector3.new(0, -(GROUND_PROBE + Combat.STRIKE_MAX_HEIGHT), 0),
+		params
+	)
+	if ground ~= nil then
+		y = ground.Position.Y
+	end
+	local placed = table.clone(zone)
+	placed.center = { x = x, y = y, z = z }
+	return placed
+end
+
 -- A later wave (Rending Flurry): re-planned from where the caster is now. Skipped if the caster
 -- left, died or respawned since the cast.
 local function runWave(player: Player, character: Model?, ability: Ability)
@@ -3262,7 +3269,7 @@ local function runWave(player: Player, character: Model?, ability: Ability)
 	local others, byId = CombatService.fighters(player)
 	local taunter = Effects.tauntedBy(StatusService.get(player), now)
 	local caster = fighterOf(player, humanoid, root)
-	local plan = Casting.plan(ability, caster, others, taunter)
+	local plan = Casting.plan(ability, caster, candidates(ability, caster, others), taunter)
 	applyHits(player, ability, plan, caster, others, byId)
 end
 
@@ -3307,7 +3314,8 @@ local function handleCast(player: Player, rawSlot: any)
 	local others, byId = CombatService.fighters(player)
 	local taunter = Effects.tauntedBy(status, now)
 	local caster = fighterOf(player, humanoid, root)
-	local plan = Casting.plan(ability, caster, others, taunter)
+	local targets = candidates(ability, caster, others)
+	local plan = Casting.plan(ability, caster, targets, taunter)
 
 	local moveTo = plan.moveTo
 	if moveTo ~= nil then
@@ -3333,12 +3341,12 @@ local function handleCast(player: Player, rawSlot: any)
 	end
 	local zone = plan.zone
 	if zone ~= nil then
-		StatusService.addZone(player, zone, ability.path)
+		StatusService.addZone(player, placeZone(zone, root.Position), ability.path)
 	end
 	applySelfEffects(player, ability)
 
 	if ability.kind == "shot" then
-		showShots(ability, caster, others, taunter)
+		showShots(ability, caster, targets, taunter)
 	elseif ability.kind == "burst" then
 		local p = caster.position
 		local center = Vector3.new(p.x, p.y - standHeight(humanoid, root) + RING_LIFT, p.z)
@@ -3605,9 +3613,10 @@ local World = require(ReplicatedStorage.Shared.Catalog.World)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
 local ProtectionService = require(script.Parent.ProtectionService)
+local Sight = require(script.Parent.Sight)
 local StatusService = require(script.Parent.StatusService)
 
-type DamageOpts = { reflected: boolean?, tick: boolean? }
+type DamageOpts = { reflected: boolean?, tick: boolean?, passive: boolean? }
 
 local POST_TAG = "TrainingPost"
 local POST_XP = 10
@@ -3785,6 +3794,8 @@ end
 -- callers apply statuses, pulls and knockbacks only then.
 -- `reflected`: damage sent back by a reflect, so no protections, Mark or empower.
 -- `tick`: burn or zone damage, so refusals are not notified and no empower is used.
+-- `passive`: a zone tick on someone who walked in after it was placed; the damage and the
+-- protections are unchanged, but the attacker is not Marked and keeps their respawn shield.
 function CombatService.damage(
 	attacker: Player,
 	victim: Player,
@@ -3793,6 +3804,7 @@ function CombatService.damage(
 ): boolean
 	local reflected = opts ~= nil and opts.reflected == true
 	local tick = opts ~= nil and opts.tick == true
+	local passive = opts ~= nil and opts.passive == true
 	if attacker == victim or attacker.Parent ~= Players or victim.Parent ~= Players then
 		return false
 	end
@@ -3829,10 +3841,15 @@ function CombatService.damage(
 			return false
 		end
 
-		ProtectionService.endRespawnShield(attacker)
-		local victimMarked = Protection.isMarked(victimStatus, now)
-		if Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now) then
-			ProtectionService.mark(attacker, now)
+		-- A passive hit (a zone on someone who walked into it) starts no fight for its owner.
+		if not passive then
+			ProtectionService.endRespawnShield(attacker)
+			local victimMarked = Protection.isMarked(victimStatus, now)
+			if
+				Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now)
+			then
+				ProtectionService.mark(attacker, now)
+			end
 		end
 	end
 
@@ -3866,7 +3883,8 @@ function CombatService.damage(
 	end
 	hitFx:FireAllClients(victim.UserId)
 
-	if reflectBack > 0 and not reflected then
+	-- A player the hit defeated reflects nothing.
+	if reflectBack > 0 and not reflected and victimHumanoid.Health > 0 then
 		CombatService.damage(victim, attacker, reflectBack, { reflected = true })
 	end
 	return true
@@ -3887,7 +3905,10 @@ local function handleStrike(player: Player)
 	end
 	lastStrike[player] = now
 
-	local others, byId = CombatService.fighters(player)
+	-- Only what the attacker can see is a candidate, so a target behind a corner never
+	-- swallows the swing, and an unseen taunter forces nothing.
+	local all, byId = CombatService.fighters(player)
+	local others = Sight.filter(attackerRoot.Position, all)
 	local taunter = Effects.tauntedBy(StatusService.get(player), now)
 	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others, nil, taunter)
 	if targetId == nil then
@@ -4935,6 +4956,89 @@ return ProtectionService
       </Item>
       <Item class="ModuleScript" referent="41">
         <Properties>
+          <string name="Name">Sight</string>
+          <string name="Source"><![CDATA[--!strict
+-- Server-side world rays shared by AbilityService and CombatService.
+--   Sight.rayParams(): RaycastParams
+--       Rays pass through every player's character, workspace.Effects and anything a
+--       character could walk through (non-colliding parts, water).
+--   Sight.obstruction(from, to, postId?): Vector3?
+--       Where the straight line from `from` to `to` is first blocked, or nil when clear.
+--       When the target is a training post, pass its id: the ray ending on that post's own
+--       surface is not a block. A NaN or infinite line counts as blocked.
+--   Sight.inSight(from, to, postId?): boolean
+--       True when nothing solid stands between the two points.
+--   Sight.filter(from, fighters): { Fighter }
+--       The fighters (players and posts) the point `from` has a clear line to, in order.
+--       Used before choosing a nearest target, so one behind a corner never takes the hit.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
+
+type Fighter = Combat.Fighter
+
+local Sight = {}
+
+function Sight.rayParams(): RaycastParams
+	local exclude: { Instance } = {}
+	local effects = workspace:FindFirstChild("Effects")
+	if effects ~= nil then
+		table.insert(exclude, effects)
+	end
+	for _, other in Players:GetPlayers() do
+		local character = other.Character
+		if character ~= nil then
+			table.insert(exclude, character)
+		end
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = exclude
+	params.RespectCanCollide = true
+	params.IgnoreWater = true
+	return params
+end
+
+function Sight.obstruction(from: Vector3, to: Vector3, postId: number?): Vector3?
+	local delta = to - from
+	-- Written so a NaN or infinite line counts as blocked.
+	if not (delta.Magnitude < math.huge) then
+		return from
+	end
+	local result = workspace:Raycast(from, delta, Sight.rayParams())
+	if result == nil then
+		return nil
+	end
+	if postId ~= nil and result.Instance:GetAttribute("PostId") == postId then
+		return nil
+	end
+	return result.Position
+end
+
+function Sight.inSight(from: Vector3, to: Vector3, postId: number?): boolean
+	return Sight.obstruction(from, to, postId) == nil
+end
+
+function Sight.filter(from: Vector3, fighters: { Fighter }): { Fighter }
+	local kept: { Fighter } = {}
+	for _, fighter in fighters do
+		local p = fighter.position
+		local postId = if World.postIndex(fighter.id) ~= nil then fighter.id else nil
+		if Sight.inSight(from, Vector3.new(p.x, p.y, p.z), postId) then
+			table.insert(kept, fighter)
+		end
+	end
+	return kept
+end
+
+return Sight
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="42">
+        <Properties>
           <string name="Name">SourceService</string>
           <string name="Source"><![CDATA[--!strict
 local CollectionService = game:GetService("CollectionService")
@@ -5067,7 +5171,7 @@ return SourceService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">StatusService</string>
           <string name="Source"><![CDATA[--!strict
@@ -5080,6 +5184,7 @@ local RunService = game:GetService("RunService")
 local StarterPlayer = game:GetService("StarterPlayer")
 
 local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
+local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
 local Types = require(ReplicatedStorage.Shared.Types)
@@ -5091,13 +5196,16 @@ type DamageFn = (
 	attacker: Player,
 	victim: Player,
 	amount: number,
-	opts: { reflected: boolean?, tick: boolean? }?
+	opts: { reflected: boolean?, tick: boolean?, passive: boolean? }?
 ) -> boolean
 type HitPostFn = (attacker: Player, postId: number, path: string) -> ()
 
 type ZoneEntry = {
 	owner: Player,
 	x: number,
+	y: number,
+	-- Players inside when the zone was placed; others who walk in later are passive targets.
+	inside: { [Player]: boolean },
 	z: number,
 	radius: number,
 	dps: number,
@@ -5179,8 +5287,7 @@ local function makeZonePart(entry: ZoneEntry): BasePart
 	part.Transparency = ZONE_TRANSPARENCY
 	-- A cylinder's axis is its X axis: stand it on end, then lay it flat.
 	part.Size = Vector3.new(ZONE_THICKNESS, entry.radius * 2, entry.radius * 2)
-	part.CFrame = CFrame.new(entry.x, World.groundY + 0.25, entry.z)
-		* CFrame.Angles(0, 0, math.pi / 2)
+	part.CFrame = CFrame.new(entry.x, entry.y + 0.25, entry.z) * CFrame.Angles(0, 0, math.pi / 2)
 	part.Parent = effectsFolder()
 	return part
 end
@@ -5214,6 +5321,13 @@ local function guarded(name: string, step: () -> ())
 	if not ok then
 		warn(`[IsleOfAvarice] StatusService {name} failed: {err}`)
 	end
+end
+
+-- True when a root at `p` is inside the zone: within its radius on the ground plane and
+-- within the height tolerance every other targeting rule uses.
+local function zoneContains(entry: ZoneEntry, p: Vector3): boolean
+	return horizontalDistance(p.X, p.Z, entry.x, entry.z) <= entry.radius
+		and math.abs(p.Y - entry.y) <= Combat.STRIKE_MAX_HEIGHT
 end
 
 local function tickBurns(now: number, damage: DamageFn)
@@ -5250,12 +5364,14 @@ local function tickZone(entry: ZoneEntry, damage: DamageFn, hitPost: HitPostFn?)
 		if root == nil then
 			continue
 		end
-		local p = root.Position
-		if not (horizontalDistance(p.X, p.Z, entry.x, entry.z) <= entry.radius) then
+		if not zoneContains(entry, root.Position) then
 			continue
 		end
+		-- Someone who walked in after placement is hurt and slowed, but the owner is not
+		-- marked, loses no respawn shield and starts no fight by it.
+		local passive = not entry.inside[victim]
 		-- The slow is only refreshed on a victim the damage actually reached.
-		local landed = damage(owner, victim, entry.dps, { tick = true })
+		local landed = damage(owner, victim, entry.dps, { tick = true, passive = passive })
 		local slow = entry.slow
 		if landed and slow ~= nil then
 			local factor: number = slow
@@ -5381,7 +5497,9 @@ function StatusService.addZone(owner: Player, zone: Casting.Zone, path: string)
 	local entry: ZoneEntry = {
 		owner = owner,
 		x = zone.center.x,
+		y = zone.center.y,
 		z = zone.center.z,
+		inside = {},
 		radius = radius,
 		dps = dps,
 		slow = zone.slow,
@@ -5389,6 +5507,15 @@ function StatusService.addZone(owner: Player, zone: Casting.Zone, path: string)
 		expiresAt = os.clock() + duration,
 		part = nil,
 	}
+	if not (math.abs(zone.center.y) < math.huge) then
+		return
+	end
+	for _, other in Players:GetPlayers() do
+		local _, otherRoot = living(other)
+		if other ~= owner and otherRoot ~= nil and zoneContains(entry, otherRoot.Position) then
+			entry.inside[other] = true
+		end
+	end
 	entry.part = makeZonePart(entry)
 	table.insert(zones, entry)
 end
@@ -5412,7 +5539,7 @@ return StatusService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">VaultService</string>
           <string name="Source"><![CDATA[--!strict
@@ -5495,11 +5622,11 @@ return VaultService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="44">
+      <Item class="Folder" referent="45">
         <Properties>
           <string name="Name">Vendor</string>
         </Properties>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">ProfileStore</string>
             <string name="Source"><![CDATA[--[[
@@ -7620,7 +7747,7 @@ return ProfileStore
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">WorldBuilder</string>
           <string name="Source"><![CDATA[--!strict
@@ -7840,19 +7967,19 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="47">
+  <Item class="StarterPlayer" referent="48">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="48">
+    <Item class="StarterPlayerScripts" referent="49">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="49">
+      <Item class="Folder" referent="50">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">AbilityBar</string>
             <string name="Source"><![CDATA[--!strict
@@ -8051,7 +8178,7 @@ return AbilityBar
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">ClaimUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -8341,7 +8468,7 @@ return ClaimUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">CombatController</string>
             <string name="Source"><![CDATA[--!strict
@@ -8406,7 +8533,7 @@ return CombatController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">LedgerUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -8746,7 +8873,7 @@ return LedgerUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="54">
+        <Item class="LocalScript" referent="55">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--!strict
@@ -8924,7 +9051,7 @@ ledgerRequest:FireServer()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">PathUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -8934,6 +9061,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Paths = require(Shared:WaitForChild("Catalog"):WaitForChild("Paths"))
+local PathProgress = require(Shared:WaitForChild("Rules"):WaitForChild("PathProgress"))
 local PathView = require(Shared:WaitForChild("Rules"):WaitForChild("PathView"))
 local Types = require(Shared:WaitForChild("Types"))
 
@@ -8971,6 +9099,7 @@ local slotStrip: Frame? = nil
 local callingLabel: TextLabel? = nil
 local lastView: View? = nil
 local pendingChange = ""
+local pendingPick = ""
 local dismissedPicker = false
 
 local function pathColor(path: string): Color3
@@ -9065,11 +9194,58 @@ local function askChange(row: RowView)
 	if dialog == nil or question == nil then
 		return
 	end
+	pendingPick = ""
 	pendingChange = row.path
 	question.Text = "Change your Calling to "
 		.. row.name
 		.. "? Levels are kept; learning rates change."
 	dialog.Visible = true
+end
+
+local function askPick(row: RowView)
+	local dialog = confirm
+	local question = confirmQuestion
+	if dialog == nil or question == nil then
+		return
+	end
+	pendingChange = ""
+	pendingPick = row.path
+	question.Text = "Make " .. row.name .. " your Calling?"
+	dialog.Visible = true
+end
+
+-- "Learns: Gale, Bulwark 80% · Ember, Mend 60% · Mire 40%": the shared learning rate from this
+-- Calling to every other Path, grouped by rate, nearest first.
+local function learnsText(path: string): string
+	local groups: { { rate: number, names: { string } } } = {}
+	for _, other in Paths.order do
+		if other == path then
+			continue
+		end
+		local rate = PathProgress.learningRate(path, other)
+		local group = nil
+		for _, existing in groups do
+			if existing.rate == rate then
+				group = existing
+			end
+		end
+		if group == nil then
+			group = { rate = rate, names = {} }
+			table.insert(groups, group)
+		end
+		table.insert(group.names, Paths.info[other].name)
+	end
+	table.sort(groups, function(a, b)
+		return a.rate > b.rate
+	end)
+	local parts: { string } = {}
+	for _, group in groups do
+		table.insert(
+			parts,
+			table.concat(group.names, ", ") .. " " .. math.floor(group.rate * 100 + 0.5) .. "%"
+		)
+	end
+	return "Learns: " .. table.concat(parts, " · ")
 end
 
 local function makeAbility(row: RowView, index: number): Frame
@@ -9148,7 +9324,7 @@ local function makeRow(row: RowView, order: number, needsCalling: boolean): Fram
 		choose.AnchorPoint = Vector2.new(1, 0)
 		choose.Position = UDim2.new(0.98, 0, 0, 6)
 		choose.Activated:Connect(function()
-			handlers.pick(row.path)
+			askPick(row)
 		end)
 		choose.Parent = frame
 	elseif row.changeText ~= "" then
@@ -9198,17 +9374,24 @@ local function makeCard(row: RowView, order: number): Frame
 		table.insert(lines, ability.name .. ": " .. ability.description)
 	end
 	local abilities =
-		makeLabel("Abilities", UDim2.new(0.92, 0, 1, -98), UDim2.new(0.04, 0, 0, 56), 15)
+		makeLabel("Abilities", UDim2.new(0.92, 0, 1, -128), UDim2.new(0.04, 0, 0, 56), 15)
 	abilities.TextYAlignment = Enum.TextYAlignment.Top
 	abilities.TextColor3 = DARK_TEXT
 	abilities.Text = table.concat(lines, "\n")
 	abilities.Parent = card
 
+	local learns = makeLabel("Learns", UDim2.new(0.92, 0, 0, 30), UDim2.new(0.04, 0, 1, -68), 13)
+	learns.AnchorPoint = Vector2.new(0, 0)
+	learns.TextYAlignment = Enum.TextYAlignment.Top
+	learns.TextColor3 = DARK_TEXT
+	learns.Text = learnsText(row.path)
+	learns.Parent = card
+
 	local choose = makeButton("Choose", "Choose", UDim2.new(0.92, 0, 0, 30))
 	choose.AnchorPoint = Vector2.new(0.5, 1)
 	choose.Position = UDim2.new(0.5, 0, 1, -6)
 	choose.Activated:Connect(function()
-		handlers.pick(row.path)
+		askPick(row)
 	end)
 	choose.Parent = card
 	return card
@@ -9237,9 +9420,13 @@ local function buildConfirm(gui: ScreenGui)
 	yes.ZIndex = 51
 	yes.Activated:Connect(function()
 		frame.Visible = false
+		local pick = pendingPick
 		local path = pendingChange
+		pendingPick = ""
 		pendingChange = ""
-		if path ~= "" then
+		if pick ~= "" then
+			handlers.pick(pick)
+		elseif path ~= "" then
 			handlers.change(path)
 		end
 	end)
@@ -9251,6 +9438,7 @@ local function buildConfirm(gui: ScreenGui)
 	no.Activated:Connect(function()
 		frame.Visible = false
 		pendingChange = ""
+		pendingPick = ""
 	end)
 	no.Parent = frame
 
@@ -9388,6 +9576,13 @@ function PathUI.render(view: View)
 		callingLabel.Text = view.callingText
 	end
 
+	-- A pending first pick closes once a Calling has been chosen.
+	local pickDialog = confirm
+	if pendingPick ~= "" and not view.needsCalling and pickDialog ~= nil then
+		pickDialog.Visible = false
+		pendingPick = ""
+	end
+
 	-- A pending Calling change only stays open while the new view still allows it.
 	local dialog = confirm
 	local question = confirmQuestion
@@ -9464,7 +9659,7 @@ return PathUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">StatusHUD</string>
             <string name="Source"><![CDATA[--!strict
@@ -9649,7 +9844,7 @@ return StatusHUD
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">Toast</string>
             <string name="Source"><![CDATA[--!strict
@@ -9724,7 +9919,7 @@ return Toast
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="58">
+  <Item class="Workspace" referent="59">
     <Properties>
       <string name="Name">Workspace</string>
       <float name="FallenPartsDestroyHeight">-60</float>

@@ -444,9 +444,14 @@ local function placeZone(zone: Casting.Zone, from: Vector3): Casting.Zone
 			x, z = from.X + dx / distance * travel, from.Z + dz / distance * travel
 		end
 	end
+	-- Probe from above the caster's height so a centre on higher ground still finds its floor.
 	local y = World.groundY
-	local ground =
-		workspace:Raycast(Vector3.new(x, from.Y, z), Vector3.new(0, -GROUND_PROBE, 0), params)
+	local probeTop = from.Y + Combat.STRIKE_MAX_HEIGHT
+	local ground = workspace:Raycast(
+		Vector3.new(x, probeTop, z),
+		Vector3.new(0, -(GROUND_PROBE + Combat.STRIKE_MAX_HEIGHT), 0),
+		params
+	)
 	if ground ~= nil then
 		y = ground.Position.Y
 	end
