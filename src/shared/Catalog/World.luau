@@ -36,7 +36,29 @@ for i, xz in layout do
 	cacheById[cache.id] = cache
 end
 
+local trainingPosts: { Types.Vec3 } = {
+	{ x = 55, y = 0, z = 0 },
+	{ x = 28, y = 0, z = 48 },
+	{ x = -28, y = 0, z = 48 },
+	{ x = -55, y = 0, z = 0 },
+	{ x = -28, y = 0, z = -48 },
+	{ x = 28, y = 0, z = -48 },
+}
+-- Post i has id POST_ID_BASE - i; negative, so it never collides with a player UserId.
+local POST_ID_BASE = -1000000
+
+local function postIndex(id: number): number?
+	local i = POST_ID_BASE - id
+	if i >= 1 and i <= #trainingPosts and i == math.floor(i) then
+		return i
+	end
+	return nil
+end
+
 return {
+	trainingPosts = trainingPosts,
+	POST_ID_BASE = POST_ID_BASE,
+	postIndex = postIndex,
 	islandHalfSize = islandHalfSize,
 	groundY = groundY,
 	spawn = spawn,

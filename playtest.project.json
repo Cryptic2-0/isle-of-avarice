@@ -3,6 +3,7 @@
   "tree": {
     "$className": "DataModel",
     "Workspace": { "$properties": { "FallenPartsDestroyHeight": -60 } },
+    "Lighting": { "$properties": { "Technology": "Voxel" } },
     "ReplicatedStorage": { "Shared": { "$path": "src/shared" } },
     "ServerScriptService": {
       "Server": { "$path": "src/server" },

@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 4)
+**Date:** 2026-11-10 (revision 5, 2026-11-12: M3 decisions in section 4, parties added to the roadmap)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -168,9 +168,10 @@ rules address them:
 - **Marked.** A player who starts a fight is Marked for 5 minutes: a red
   marker above them is visible to everyone, and the safe zone does not
   protect them. Fighting back does not Mark you.
-- **Basic combat (until the Six Paths arrive in M3).** Every player has
-  100 health and one Strike: 20 damage, 0.8 seconds between Strikes,
-  8 studs reach, aimed by facing the target.
+- **Basic combat.** Every player has 100 health and one Strike: 20
+  damage, 0.8 seconds between Strikes, 8 studs reach, aimed by facing the
+  target. From M3 the Strike stays as everyone's basic attack, next to the
+  4 equipped abilities (section 4).
 - **Tone.** Cartoon knock-outs. No blood, no gore. This keeps the game
   inside Roblox's lower maturity labels.
 
@@ -237,8 +238,11 @@ Opposites: Fang–Mire, Gale–Mend, Ember–Bulwark.
 
 ### 4.2 Choosing and learning
 
-- After a short tutorial the player **chooses** one Path as their
-  **Calling**. There is no random roll, so nothing to pay to re-roll.
+- The player **chooses** one Path as their **Calling**. There is no
+  random roll, so nothing to pay to re-roll. In M3 a picker opens on first
+  join, showing the hexagon and each Path's style and abilities; a guided
+  tutorial comes later. A player without a Calling has only the Strike and
+  earns no Path experience.
 - Every Path has its own level. All six can be trained by anyone.
 - Experience earned in a Path is multiplied by its distance from your
   Calling:
@@ -250,14 +254,29 @@ Opposites: Fang–Mire, Gale–Mend, Ember–Bulwark.
   | Two steps away (2 Paths) | 60% |
   | Opposite (1 Path) | 40% |
 
-- A Path's abilities unlock at set levels of that Path.
+- **Levels.** Each Path has levels 1 to 20. Going from level L to L+1
+  takes 100 x L experience, so level 20 needs 19,000 in total. Every
+  Path starts at level 1, except the first Calling, which starts at
+  level 3.
+- Experience gained = base amount x learning rate, rounded down.
+- A Path's 3 abilities unlock at levels **3, 10 and 18** of that Path.
 - A player equips **4 abilities** at a time, from any Paths they have
-  unlocked, plus a basic attack. Loadouts change only in a safe zone.
-- **Changing Calling** costs Coin and has a 7-day cooldown. Levels are
-  kept; only the learning rates change.
+  unlocked, plus the Strike. Loadouts change only in a safe zone. A newly
+  unlocked ability goes into an empty slot by itself.
+- **Changing Calling:** the first change is free, later changes cost 500
+  Coin. Every change starts a 7-day cooldown (real time, saved). Levels
+  are kept; only the learning rates change.
 
 Experience comes from creatures, trials and winning fights. It is never
-lost on defeat.
+lost on defeat. Until creatures and trials exist (M4):
+
+- **Training posts** stand at 6 spots around the island, outside
+  Tallyport. A hit on a post gives 10 base experience to the Path of the
+  ability used; the Strike trains the Calling. A post pays each player at
+  most once every 0.5 seconds and cannot be defeated.
+- **Defeating a player** gives 150 base experience to the Calling, but
+  only when that defeat opens a blind claim, so the one-hour repeat-kill
+  limit also stops experience farming.
 
 ### 4.3 Balance rules
 
@@ -266,6 +285,39 @@ lost on defeat.
 - Counters give an edge, not a guaranteed win.
 - Launch with **3 abilities per Path** (18 total). More come later as
   data, not new systems.
+- **Support reaches allies.** Heals and shields work on "you and your
+  allies". Until parties exist (section 6) your only ally is you.
+
+### 4.4 The 18 abilities (M3 starting values)
+
+Health is 100. Each ability has its own cooldown, plus 0.3 seconds after
+any ability before the next. Abilities aim by facing, like the Strike.
+Shots hit instantly (checked on the server) with a visual bolt.
+
+| Path | Level 3 | Level 10 | Level 18 |
+|---|---|---|---|
+| Fang | **Lunge**: dash 12 studs; the first enemy passed takes 22. 6 s | **Rending Flurry**: 3 hits 0.25 s apart, 8 studs, Strike arc, 10 each. 8 s | **Final Toll**: 8-stud hit, 12 damage, or 40 if the target has 35 health or less. 14 s |
+| Gale | **Slipstream**: dash 20 studs; the first enemy passed takes 10. 5 s | **Gust Blade**: shot, 35 studs, 18 damage. 4 s | **Afterimage**: 1.5 s immune to damage and effects; your next hit within 4 s deals +20. 16 s |
+| Ember | **Cinder Bolt**: shot, 50 studs, 16 damage + burn 3 per second for 3 s. 3.5 s | **Scattershot**: 5 shots in a 40-degree fan, 30 studs, 8 each. 7 s | **Ashfield**: burning ground, radius 8, centred 25 studs ahead, 7 per second for 5 s. 15 s |
+| Mire | **Bog Snare**: shot, 30 studs, 6 damage + root 1.5 s. 9 s | **Sinking Field**: zone of radius 10 where cast, 4 s; enemies inside are slowed 50% and take 3 per second. 14 s | **Undertow**: shot, 25 studs, pulls the target to 4 studs in front of you, 10 damage + slow 30% for 2 s. 12 s |
+| Mend | **Siphon**: 8-stud hit, 14 damage; on a hit, heals you and allies 14. 6 s | **Ward**: 30-point shield for 6 s on you and allies within 15 studs. 14 s | **Renewal**: heals you and allies within 15 studs by 35 and removes slow, root and burn. 18 s |
+| Bulwark | **Shield Bash**: 8-stud hit, 14 damage, knocks the target back 10 studs; you take 40% less damage for 2 s. 7 s | **Rebuke**: for 2 s, half of the player damage you take is dealt back to its attacker. 14 s | **Challenge**: shockwave of radius 12, 12 damage, taunts for 3 s: a taunted player's Strikes and single-target abilities can only target you while you are in their reach. 16 s |
+
+How effects combine:
+
+- **Immune** cancels a hit and any effect it carries.
+- Otherwise **damage reduction** applies first, then the **shield**
+  absorbs what it can, and the rest comes off health.
+- **Rebuke** reflects half of the damage after reduction. Reflected
+  damage is never reflected again and never Marks anyone.
+- **Slows** do not stack: the strongest wins. **Root** overrides slow. A
+  rooted player cannot dash.
+- Applying a status again **refreshes** its timer.
+- Every damaging hit on a player follows the protection rules exactly
+  like the Strike (shields, safe zone, Marked, kill credit). Heals and
+  shields on yourself work anywhere.
+- **Training posts** take hits from every ability, for experience, and
+  ignore all effects.
 
 ## 5. Technical design
 
@@ -364,14 +416,15 @@ plan.
 | M3 | The Six Paths | Choose a Calling, level Paths at different rates, equip 4 of 18 abilities |
 | M4 | Creatures and trials | Earn experience and higher-tier Relics from the island |
 | M5 | Edicts and trading | Track holders, hide, teleport, and swap cards safely |
-| M6 | Endgame and launch | Be Crowned, see the leaderboard; 50 Relics |
+| M6 | Parties | Group up; allies cannot hurt each other and support abilities reach them |
+| M7 | Endgame and launch | Be Crowned, see the leaderboard; 50 Relics |
 
 The first build plan covers **M0 and M1**.
 
 ### Not in scope for now
 
 - Global (cross-server) scarcity.
-- Guilds or parties.
+- Guilds. (Parties are planned: M6.)
 - Paid items. If added later: cosmetic only, no paid Relics, no paid
   re-rolls.
 

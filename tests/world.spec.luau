@@ -37,3 +37,17 @@ T.test("constants and spot checks", function()
 	T.eq(World.cacheById.C012.position, { x = -40, y = 1, z = 370 })
 	T.eq(World.cacheById.C001.position, { x = 60, y = 1, z = 40 })
 end)
+
+T.test("six training posts outside Tallyport, inside the island, with stable ids", function()
+	T.eq(#World.trainingPosts, 6)
+	for i, post in World.trainingPosts do
+		local d = math.sqrt(post.x ^ 2 + post.z ^ 2)
+		T.truthy(d > World.townRadius and d <= 380, "post " .. i .. " placement")
+		T.eq(post.y, 0)
+	end
+	T.eq(World.POST_ID_BASE, -1000000)
+	T.eq(World.postIndex(World.POST_ID_BASE - 4), 4)
+	T.eq(World.postIndex(World.POST_ID_BASE - 1), 1)
+	T.eq(World.postIndex(World.POST_ID_BASE - 7), nil)
+	T.eq(World.postIndex(-3), nil)
+end)

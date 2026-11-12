@@ -44,6 +44,21 @@ local codes = {
 	"ALREADY_PICKED",
 	"TIER_LIMIT",
 	"BAD_SLOT",
+	"CALLING_CHOSEN",
+	"CALLING_CHANGED",
+	"CALLING_ALREADY_SET",
+	"CALLING_SAME",
+	"CALLING_COOLDOWN",
+	"NOT_ENOUGH_COIN",
+	"NO_CALLING",
+	"LEVEL_UP",
+	"ABILITY_UNLOCKED",
+	"LOADOUT_CHANGED",
+	"LOADOUT_SAFE_ZONE",
+	"NOT_UNLOCKED",
+	"NO_ABILITY",
+	"ON_COOLDOWN",
+	"ROOTED",
 }
 
 T.test("every message code has text", function()
@@ -57,4 +72,8 @@ T.test("format fills in placeholders", function()
 		Messages.format("CLAIM_LOST", { player = "Ann", names = "Barnacle Key, Bottled Squall" }),
 		"Ann took from you: Barnacle Key, Bottled Squall."
 	)
+end)
+
+T.test("format fills in path and level", function()
+	T.eq(Messages.format("LEVEL_UP", { path = "Gale", level = "10" }), "Gale reached level 10.")
 end)
