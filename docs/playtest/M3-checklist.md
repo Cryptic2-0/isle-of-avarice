@@ -4,6 +4,8 @@ Milestone 3 adds the Six Paths: Fang, Gale, Ember, Mire, Mend and Bulwark. You c
 
 Most steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
+Automated run (2026-11-12, Studio, two players): `[PLAYTEST] DONE passed=230 failed=0`, no script errors. The steps below are the hand checks for feel, visuals and phone layout.
+
 Each test starts fresh, so every new test gives both players the Calling picker again. Saving between tests works only after the steps in the README under "How to make saving work".
 
 ## Words used here

@@ -1467,6 +1467,14 @@ local function run()
 			challengeCast and taunt.tauntBy == B.UserId and taunt.tauntUntil > os.clock(),
 			`accepted={tostring(challengeCast)}, taunt by {taunt.tauntBy} for {tauntLeft} s; B got {challengeCodes}`
 		)
+		-- B's Ward shield from the step above may still be up; clear it so the Strike's full
+		-- 20 reaches B's health.
+		StatusService.update(B, function(s, _now)
+			local out = table.clone(s)
+			out.shield = 0
+			out.shieldUntil = 0
+			return out
+		end)
 		local fangTaunted, bTaunted = xpOf(A, "Fang"), health(B)
 		send(A, "strike")
 		task.wait(0.5)

@@ -1,17 +1,276 @@
 <roblox version="4">
-  <Item class="ReplicatedStorage" referent="0">
+  <Item class="Lighting" referent="0">
+    <Properties>
+      <string name="Name">Lighting</string>
+      <token name="Technology">1</token>
+    </Properties>
+  </Item>
+  <Item class="ReplicatedStorage" referent="1">
     <Properties>
       <string name="Name">ReplicatedStorage</string>
     </Properties>
-    <Item class="Folder" referent="1">
+    <Item class="Folder" referent="2">
       <Properties>
         <string name="Name">Shared</string>
       </Properties>
-      <Item class="Folder" referent="2">
+      <Item class="Folder" referent="3">
         <Properties>
           <string name="Name">Catalog</string>
         </Properties>
-        <Item class="ModuleScript" referent="3">
+        <Item class="ModuleScript" referent="4">
+          <Properties>
+            <string name="Name">Abilities</string>
+            <string name="Source"><![CDATA[--!strict
+local Types = require("../Types")
+
+type Ability = Types.Ability
+type PathId = Types.PathId
+
+-- Ordered by Path (hexagon order), then unlock level.
+local list: { Ability } = {
+	-- Fang
+	{
+		id = "lunge",
+		name = "Lunge",
+		path = "Fang",
+		unlockLevel = 3,
+		cooldown = 6,
+		kind = "dash",
+		distance = 12,
+		damage = 22,
+		description = "Dash 12 studs; the first enemy you pass takes 22 damage.",
+	},
+	{
+		id = "rending_flurry",
+		name = "Rending Flurry",
+		path = "Fang",
+		unlockLevel = 10,
+		cooldown = 8,
+		kind = "melee",
+		range = 8,
+		damage = 10,
+		hits = 3,
+		interval = 0.25,
+		description = "Strike the nearest enemy in front of you three times for 10 damage each.",
+	},
+	{
+		id = "final_toll",
+		name = "Final Toll",
+		path = "Fang",
+		unlockLevel = 18,
+		cooldown = 14,
+		kind = "melee",
+		range = 8,
+		damage = 12,
+		executeBelow = 35,
+		executeDamage = 40,
+		description = "Strike for 12 damage, or 40 if the enemy is below 35 health.",
+	},
+	-- Gale
+	{
+		id = "slipstream",
+		name = "Slipstream",
+		path = "Gale",
+		unlockLevel = 3,
+		cooldown = 5,
+		kind = "dash",
+		distance = 20,
+		damage = 10,
+		description = "Dash 20 studs; the first enemy you pass takes 10 damage.",
+	},
+	{
+		id = "gust_blade",
+		name = "Gust Blade",
+		path = "Gale",
+		unlockLevel = 10,
+		cooldown = 4,
+		kind = "shot",
+		range = 35,
+		damage = 18,
+		description = "Fire a blade of wind up to 35 studs that deals 18 damage.",
+	},
+	{
+		id = "afterimage",
+		name = "Afterimage",
+		path = "Gale",
+		unlockLevel = 18,
+		cooldown = 16,
+		kind = "self",
+		immune = 1.5,
+		empower = { bonus = 20, duration = 4 },
+		description = "Take no damage for 1.5 seconds, then deal 20 extra damage on your hits for 4 seconds.",
+	},
+	-- Ember
+	{
+		id = "cinder_bolt",
+		name = "Cinder Bolt",
+		path = "Ember",
+		unlockLevel = 3,
+		cooldown = 3.5,
+		kind = "shot",
+		range = 50,
+		damage = 16,
+		burn = { dps = 3, duration = 3 },
+		description = "Fire a bolt up to 50 studs that deals 16 damage and burns for 3 damage a second for 3 seconds.",
+	},
+	{
+		id = "scattershot",
+		name = "Scattershot",
+		path = "Ember",
+		unlockLevel = 10,
+		cooldown = 7,
+		kind = "shot",
+		range = 30,
+		damage = 8,
+		shots = 5,
+		spread = 40,
+		description = "Fire five sparks in a 40 degree fan, each dealing 8 damage up to 30 studs.",
+	},
+	{
+		id = "ashfield",
+		name = "Ashfield",
+		path = "Ember",
+		unlockLevel = 18,
+		cooldown = 15,
+		kind = "zone",
+		zone = { radius = 8, duration = 5, dps = 7, ahead = 25 },
+		description = "Scorch the ground 25 studs ahead; enemies inside take 7 damage a second for 5 seconds.",
+	},
+	-- Mire
+	{
+		id = "bog_snare",
+		name = "Bog Snare",
+		path = "Mire",
+		unlockLevel = 3,
+		cooldown = 9,
+		kind = "shot",
+		range = 30,
+		damage = 6,
+		root = 1.5,
+		description = "Fire a snare up to 30 studs that deals 6 damage and roots the target for 1.5 seconds.",
+	},
+	{
+		id = "sinking_field",
+		name = "Sinking Field",
+		path = "Mire",
+		unlockLevel = 10,
+		cooldown = 14,
+		kind = "zone",
+		zone = { radius = 10, duration = 4, dps = 3, slow = 0.5, ahead = 0 },
+		description = "Turn the ground around you to mud for 4 seconds, slowing enemies by half and dealing 3 damage a second.",
+	},
+	{
+		id = "undertow",
+		name = "Undertow",
+		path = "Mire",
+		unlockLevel = 18,
+		cooldown = 12,
+		kind = "shot",
+		range = 25,
+		damage = 10,
+		pull = 4,
+		slow = { factor = 0.7, duration = 2 },
+		description = "Hit an enemy up to 25 studs for 10 damage, pull them 4 studs closer and slow them for 2 seconds.",
+	},
+	-- Mend
+	{
+		id = "siphon",
+		name = "Siphon",
+		path = "Mend",
+		unlockLevel = 3,
+		cooldown = 6,
+		kind = "melee",
+		range = 8,
+		damage = 14,
+		heal = 14,
+		healOnHit = true,
+		description = "Strike for 14 damage and heal 14 health if it hits.",
+	},
+	{
+		id = "ward",
+		name = "Ward",
+		path = "Mend",
+		unlockLevel = 10,
+		cooldown = 14,
+		kind = "self",
+		shield = { amount = 30, duration = 6 },
+		allyRadius = 15,
+		description = "Shield yourself and allies within 15 studs against 30 damage for 6 seconds.",
+	},
+	{
+		id = "renewal",
+		name = "Renewal",
+		path = "Mend",
+		unlockLevel = 18,
+		cooldown = 18,
+		kind = "self",
+		heal = 35,
+		cleanse = true,
+		allyRadius = 15,
+		description = "Heal yourself and allies within 15 studs for 35 health and remove harmful effects.",
+	},
+	-- Bulwark
+	{
+		id = "shield_bash",
+		name = "Shield Bash",
+		path = "Bulwark",
+		unlockLevel = 3,
+		cooldown = 7,
+		kind = "melee",
+		range = 8,
+		damage = 14,
+		knockback = 10,
+		reduction = { factor = 0.6, duration = 2 },
+		description = "Strike for 14 damage, knock the enemy back 10 studs and take 40% less damage for 2 seconds.",
+	},
+	{
+		id = "rebuke",
+		name = "Rebuke",
+		path = "Bulwark",
+		unlockLevel = 10,
+		cooldown = 14,
+		kind = "self",
+		reflect = { factor = 0.5, duration = 2 },
+		description = "For 2 seconds, reflect half of the damage you take back to the attacker.",
+	},
+	{
+		id = "challenge",
+		name = "Challenge",
+		path = "Bulwark",
+		unlockLevel = 18,
+		cooldown = 16,
+		kind = "burst",
+		radius = 12,
+		damage = 12,
+		taunt = 3,
+		description = "Enemies within 12 studs take 12 damage and are forced to target you for 3 seconds.",
+	},
+}
+
+local byId: { [string]: Ability } = {}
+for _, ability in list do
+	byId[ability.id] = ability
+end
+
+local function forPath(path: PathId): { Ability }
+	local result: { Ability } = {}
+	for _, ability in list do
+		if ability.path == path then
+			table.insert(result, ability)
+		end
+	end
+	return result
+end
+
+return {
+	list = list,
+	byId = byId,
+	forPath = forPath,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="5">
           <Properties>
             <string name="Name">Messages</string>
             <string name="Source"><![CDATA[--!strict
@@ -57,6 +316,21 @@ local templates: { [string]: string } = {
 	ALREADY_PICKED = "You already picked that slot.",
 	TIER_LIMIT = "You cannot take any more Relics of that rarity.",
 	BAD_SLOT = "That did not work.",
+	CALLING_CHOSEN = "{path} is now your Calling.",
+	CALLING_CHANGED = "{path} is now your Calling.",
+	CALLING_ALREADY_SET = "You already have a Calling.",
+	CALLING_SAME = "That is already your Calling.",
+	CALLING_COOLDOWN = "You can change your Calling again in {days} days.",
+	NOT_ENOUGH_COIN = "You need {cost} Coin.",
+	NO_CALLING = "Choose a Calling first.",
+	LEVEL_UP = "{path} reached level {level}.",
+	ABILITY_UNLOCKED = "You learned {name}!",
+	LOADOUT_CHANGED = "Abilities updated.",
+	LOADOUT_SAFE_ZONE = "You can change abilities only in Tallyport.",
+	NOT_UNLOCKED = "You have not learned that ability yet.",
+	NO_ABILITY = "Nothing is equipped in that slot.",
+	ON_COOLDOWN = "That ability is not ready yet.",
+	ROOTED = "You are rooted and cannot dash.",
 }
 
 local function format(code: string, args: { [string]: string }?): string
@@ -80,7 +354,63 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="4">
+        <Item class="ModuleScript" referent="6">
+          <Properties>
+            <string name="Name">Paths</string>
+            <string name="Source"><![CDATA[--!strict
+local Types = require("../Types")
+
+type PathId = Types.PathId
+
+local order: { PathId } = { "Fang", "Gale", "Ember", "Mire", "Mend", "Bulwark" }
+
+local info: { [PathId]: { name: string, style: string, color: { r: number, g: number, b: number } } } =
+	{
+		Fang = {
+			name = "Fang",
+			style = "Close-range burst damage",
+			color = { r = 200, g = 50, b = 50 },
+		},
+		Gale = { name = "Gale", style = "Speed and evasion", color = { r = 120, g = 210, b = 230 } },
+		Ember = {
+			name = "Ember",
+			style = "Ranged and area damage",
+			color = { r = 240, g = 140, b = 40 },
+		},
+		Mire = { name = "Mire", style = "Control", color = { r = 100, g = 140, b = 60 } },
+		Mend = {
+			name = "Mend",
+			style = "Healing and support",
+			color = { r = 240, g = 230, b = 150 },
+		},
+		Bulwark = {
+			name = "Bulwark",
+			style = "Defence and counter",
+			color = { r = 90, g = 100, b = 180 },
+		},
+	}
+
+local function isPath(value: any): boolean
+	if type(value) ~= "string" then
+		return false
+	end
+	for _, path in order do
+		if path == value then
+			return true
+		end
+	end
+	return false
+end
+
+return {
+	order = order,
+	info = info,
+	isPath = isPath,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="7">
           <Properties>
             <string name="Name">Relics</string>
             <string name="Source"><![CDATA[--!strict
@@ -188,7 +518,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="5">
+        <Item class="ModuleScript" referent="8">
           <Properties>
             <string name="Name">Tiers</string>
             <string name="Source"><![CDATA[--!strict
@@ -219,7 +549,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="6">
+        <Item class="ModuleScript" referent="9">
           <Properties>
             <string name="Name">World</string>
             <string name="Source"><![CDATA[--!strict
@@ -260,7 +590,29 @@ for i, xz in layout do
 	cacheById[cache.id] = cache
 end
 
+local trainingPosts: { Types.Vec3 } = {
+	{ x = 55, y = 0, z = 0 },
+	{ x = 28, y = 0, z = 48 },
+	{ x = -28, y = 0, z = 48 },
+	{ x = -55, y = 0, z = 0 },
+	{ x = -28, y = 0, z = -48 },
+	{ x = 28, y = 0, z = -48 },
+}
+-- Post i has id POST_ID_BASE - i; negative, so it never collides with a player UserId.
+local POST_ID_BASE = -1000000
+
+local function postIndex(id: number): number?
+	local i = POST_ID_BASE - id
+	if i >= 1 and i <= #trainingPosts and i == math.floor(i) then
+		return i
+	end
+	return nil
+end
+
 return {
+	trainingPosts = trainingPosts,
+	POST_ID_BASE = POST_ID_BASE,
+	postIndex = postIndex,
 	islandHalfSize = islandHalfSize,
 	groundY = groundY,
 	spawn = spawn,
@@ -272,7 +624,7 @@ return {
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="7">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">Net</string>
           <string name="Source"><![CDATA[--!strict
@@ -301,15 +653,27 @@ return {
 	ClaimUpdate = "ClaimUpdate",
 	-- client -> server: (slot: number)
 	ClaimPick = "ClaimPick",
+	-- server -> one client: (progress: PathProgress, coin: number, now: number) now = server os.time()
+	PathSync = "PathSync",
+	-- client -> server: (pathId: string)
+	PickCalling = "PickCalling",
+	-- client -> server: (pathId: string)
+	ChangeCalling = "ChangeCalling",
+	-- client -> server: (request: { slot: number, abilityId: string })
+	LoadoutAction = "LoadoutAction",
+	-- client -> server: (slot: number)
+	CastAbility = "CastAbility",
+	-- server -> one client: (slot: number, seconds: number)
+	AbilityCooldown = "AbilityCooldown",
 }
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="8">
+      <Item class="Folder" referent="11">
         <Properties>
           <string name="Name">Rules</string>
         </Properties>
-        <Item class="ModuleScript" referent="9">
+        <Item class="ModuleScript" referent="12">
           <Properties>
             <string name="Name">BlindClaim</string>
             <string name="Source"><![CDATA[--!strict
@@ -417,7 +781,205 @@ return BlindClaim
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="10">
+        <Item class="ModuleScript" referent="13">
+          <Properties>
+            <string name="Name">Casting</string>
+            <string name="Source"><![CDATA[--!strict
+local Abilities = require("../Catalog/Abilities")
+local Combat = require("./Combat")
+local PathProgress = require("./PathProgress")
+local Targeting = require("./Targeting")
+local Types = require("../Types")
+
+type Vec3 = Types.Vec3
+type Ability = Types.Ability
+type PathProgress = Types.PathProgress
+type Fighter = Combat.Fighter
+
+export type CastState = { cooldowns: { [string]: number }, lastCast: number } -- ability id -> time it is ready
+export type Hit = { targetId: number, damage: number }
+export type Zone = { center: Vec3, radius: number, duration: number, dps: number, slow: number? }
+export type Plan = {
+	hits: { Hit },
+	waves: number,
+	interval: number,
+	moveTo: Vec3?,
+	pullTo: Vec3?,
+	knockbackTo: Vec3?,
+	zone: Zone?,
+}
+
+local Casting = {}
+
+Casting.GLOBAL_GAP = 0.3
+
+function Casting.new(): CastState
+	return { cooldowns = {}, lastCast = -math.huge }
+end
+
+function Casting.canCast(
+	state: CastState,
+	progress: PathProgress,
+	rawSlot: any,
+	now: number,
+	rooted: boolean
+): (string?, string)
+	if
+		type(rawSlot) ~= "number"
+		or rawSlot ~= rawSlot
+		or rawSlot ~= math.floor(rawSlot)
+		or rawSlot < 1
+		or rawSlot > 4
+	then
+		return nil, "BAD_REQUEST"
+	end
+	local id = progress.loadout[rawSlot :: number]
+	if id == nil or id == "" then
+		return nil, "NO_ABILITY"
+	end
+	local ability = Abilities.byId[id]
+	if ability == nil or table.find(PathProgress.unlocked(progress), id) == nil then
+		return nil, "NOT_UNLOCKED"
+	end
+	-- Written so NaN fails safe: only a clearly elapsed time passes.
+	local readyAt = state.cooldowns[id] or -math.huge
+	if not (now >= readyAt) or not (now - state.lastCast >= Casting.GLOBAL_GAP) then
+		return nil, "ON_COOLDOWN"
+	end
+	if rooted and ability.kind == "dash" then
+		return nil, "ROOTED"
+	end
+	return id, "OK"
+end
+
+function Casting.commit(state: CastState, abilityId: string, now: number): CastState
+	local cooldowns = table.clone(state.cooldowns)
+	local ability = Abilities.byId[abilityId]
+	if ability ~= nil then
+		cooldowns[abilityId] = now + ability.cooldown
+	end
+	return { cooldowns = cooldowns, lastCast = now }
+end
+
+local function fighterById(others: { Fighter }, id: number): Fighter?
+	for _, other in others do
+		if other.id == id then
+			return other
+		end
+	end
+	return nil
+end
+
+local function emptyPlan(): Plan
+	return { hits = {}, waves = 1, interval = 0 }
+end
+
+local function planMelee(
+	ability: Ability,
+	caster: Fighter,
+	others: { Fighter },
+	taunter: number?
+): Plan
+	local plan = emptyPlan()
+	plan.waves = ability.hits or 1
+	plan.interval = ability.interval or 0
+	local targetId = Combat.pickTarget(caster, others, ability.range, taunter)
+	if targetId == nil then
+		return plan
+	end
+	local target = fighterById(others, targetId)
+	local damage = ability.damage or 0
+	if
+		target ~= nil
+		and target.health ~= nil
+		and ability.executeBelow ~= nil
+		and ability.executeDamage ~= nil
+		and target.health <= ability.executeBelow
+	then
+		damage = ability.executeDamage
+	end
+	table.insert(plan.hits, { targetId = targetId, damage = damage })
+	if target ~= nil and ability.knockback ~= nil then
+		local lx, lz = caster.look.x, caster.look.z
+		local length = math.sqrt(lx * lx + lz * lz)
+		if length > 0 and length < math.huge then
+			plan.knockbackTo = {
+				x = target.position.x + lx / length * ability.knockback,
+				y = target.position.y,
+				z = target.position.z + lz / length * ability.knockback,
+			}
+		end
+	end
+	return plan
+end
+
+local function planShot(
+	ability: Ability,
+	caster: Fighter,
+	others: { Fighter },
+	taunter: number?
+): Plan
+	local plan = emptyPlan()
+	local shots = ability.shots or 1
+	local spread = ability.spread or 0
+	for i = 1, shots do
+		local angle = 0
+		if shots > 1 then
+			angle = -spread / 2 + spread * (i - 1) / (shots - 1)
+		end
+		local targetId = Targeting.shot(caster, others, ability.range or 0, angle, taunter)
+		if targetId ~= nil then
+			table.insert(plan.hits, { targetId = targetId, damage = ability.damage or 0 })
+		end
+	end
+	if ability.pull ~= nil then
+		plan.pullTo = Targeting.ahead(caster, ability.pull)
+	end
+	return plan
+end
+
+function Casting.plan(
+	ability: Ability,
+	caster: Fighter,
+	others: { Fighter },
+	taunter: number?
+): Plan
+	local kind = ability.kind
+	if kind == "melee" then
+		return planMelee(ability, caster, others, taunter)
+	elseif kind == "shot" then
+		return planShot(ability, caster, others, taunter)
+	end
+	local plan = emptyPlan()
+	if kind == "dash" then
+		local distance = ability.distance or 0
+		plan.moveTo = Targeting.ahead(caster, distance)
+		local targetId = Targeting.dashHit(caster, others, distance)
+		if targetId ~= nil then
+			table.insert(plan.hits, { targetId = targetId, damage = ability.damage or 0 })
+		end
+	elseif kind == "zone" and ability.zone ~= nil then
+		local z = ability.zone
+		plan.zone = {
+			center = Targeting.ahead(caster, z.ahead),
+			radius = z.radius,
+			duration = z.duration,
+			dps = z.dps,
+			slow = z.slow,
+		}
+	elseif kind == "burst" then
+		for _, id in Targeting.inRadius(caster.position, others, ability.radius or 0, caster.id) do
+			table.insert(plan.hits, { targetId = id, damage = ability.damage or 0 })
+		end
+	end
+	return plan
+end
+
+return Casting
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="14">
           <Properties>
             <string name="Name">ClaimView</string>
             <string name="Source"><![CDATA[--!strict
@@ -484,7 +1046,7 @@ return ClaimView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="11">
+        <Item class="ModuleScript" referent="15">
           <Properties>
             <string name="Name">Combat</string>
             <string name="Source"><![CDATA[--!strict
@@ -492,7 +1054,7 @@ local Types = require("../Types")
 
 type Vec3 = Types.Vec3
 
-export type Fighter = { id: number, position: Vec3, look: Vec3 }
+export type Fighter = { id: number, position: Vec3, look: Vec3, health: number? }
 -- key: tostring(victim id)
 export type HitLog = { [string]: { attackerId: number, at: number } }
 
@@ -512,7 +1074,13 @@ function Combat.canStrike(lastStrikeAt: number?, now: number): boolean
 end
 
 -- Distance and direction ignore the y axis. Returns the id of the nearest fighter in reach and arc.
-function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
+-- range defaults to STRIKE_RANGE. A taunter that passes every check wins over a nearer fighter.
+function Combat.pickTarget(
+	attacker: Fighter,
+	others: { Fighter },
+	range: number?,
+	taunter: number?
+): number?
 	local lookLength =
 		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
 	if not (lookLength > 0 and lookLength < math.huge) then
@@ -521,6 +1089,7 @@ function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
 	local lookX = attacker.look.x / lookLength
 	local lookZ = attacker.look.z / lookLength
 
+	local reach = range or Combat.STRIKE_RANGE
 	local bestId: number? = nil
 	local bestDistance = math.huge
 	for _, other in others do
@@ -533,12 +1102,15 @@ function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
 		local dx = other.position.x - attacker.position.x
 		local dz = other.position.z - attacker.position.z
 		local distance = math.sqrt(dx * dx + dz * dz)
-		if not (distance <= Combat.STRIKE_RANGE) then
+		if not (distance <= reach) then
 			continue
 		end
 		-- Standing on the attacker counts as in the arc.
 		if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
 			continue
+		end
+		if taunter ~= nil and other.id == taunter then
+			return other.id
 		end
 		if distance < bestDistance then
 			bestDistance = distance
@@ -577,7 +1149,228 @@ return Combat
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="12">
+        <Item class="ModuleScript" referent="16">
+          <Properties>
+            <string name="Name">Effects</string>
+            <string name="Source"><![CDATA[--!strict
+-- Pure status-effect rules. Every "until" is exclusive: active while now < until.
+-- Comparisons are written so a NaN time reads as "not active" and never grants anything.
+export type Status = {
+	immuneUntil: number,
+	reduceUntil: number,
+	reduceFactor: number,
+	shield: number,
+	shieldUntil: number,
+	reflectUntil: number,
+	reflectFactor: number,
+	slowUntil: number,
+	slowFactor: number,
+	rootUntil: number,
+	burnUntil: number,
+	burnDps: number,
+	burnBy: number,
+	tauntUntil: number,
+	tauntBy: number,
+	empowerUntil: number,
+	empowerBonus: number,
+}
+
+local Effects = {}
+
+function Effects.new(): Status
+	return {
+		immuneUntil = 0,
+		reduceUntil = 0,
+		reduceFactor = 1,
+		shield = 0,
+		shieldUntil = 0,
+		reflectUntil = 0,
+		reflectFactor = 1,
+		slowUntil = 0,
+		slowFactor = 1,
+		rootUntil = 0,
+		burnUntil = 0,
+		burnDps = 0,
+		burnBy = 0,
+		tauntUntil = 0,
+		tauntBy = 0,
+		empowerUntil = 0,
+		empowerBonus = 0,
+	}
+end
+
+function Effects.isImmune(s: Status, now: number): boolean
+	return now < s.immuneUntil
+end
+
+function Effects.resolveDamage(s: Status, amount: number, now: number): (Status, number, number)
+	-- Written positively so NaN, zero, negative and infinite amounts all fall out as no damage.
+	if not (amount > 0 and amount < math.huge) then
+		return s, 0, 0
+	end
+	if now < s.immuneUntil then
+		return s, 0, 0
+	end
+	local after = amount
+	if now < s.reduceUntil then
+		after = amount * s.reduceFactor
+	end
+	local reflected = 0
+	if now < s.reflectUntil then
+		reflected = after * s.reflectFactor
+	end
+	local health = after
+	local out = s
+	if now < s.shieldUntil and s.shield > 0 then
+		local absorbed = math.min(after, s.shield)
+		health = after - absorbed
+		out = table.clone(s)
+		out.shield = s.shield - absorbed
+	end
+	-- A NaN factor would poison the result; fail to zero rather than to extra damage.
+	if not (health >= 0) then
+		health = 0
+	end
+	if not (reflected >= 0) then
+		reflected = 0
+	end
+	return out, health, reflected
+end
+
+function Effects.applyImmune(s: Status, duration: number, now: number): Status
+	local out = table.clone(s)
+	out.immuneUntil = now + duration
+	return out
+end
+
+function Effects.applyReduction(s: Status, factor: number, duration: number, now: number): Status
+	local out = table.clone(s)
+	out.reduceFactor = factor
+	out.reduceUntil = now + duration
+	return out
+end
+
+-- Replaces any current shield.
+function Effects.applyShield(s: Status, amount: number, duration: number, now: number): Status
+	local out = table.clone(s)
+	out.shield = amount
+	out.shieldUntil = now + duration
+	return out
+end
+
+function Effects.applyReflect(s: Status, factor: number, duration: number, now: number): Status
+	local out = table.clone(s)
+	out.reflectFactor = factor
+	out.reflectUntil = now + duration
+	return out
+end
+
+-- Strongest (lowest factor) slow wins. An equal or stronger one replaces and refreshes;
+-- a weaker one neither replaces nor extends the active slow.
+function Effects.applySlow(s: Status, factor: number, duration: number, now: number): Status
+	local out = table.clone(s)
+	-- A NaN factor is rejected (it would otherwise read as stronger than anything).
+	if not (factor >= 0) then
+		return out
+	end
+	if now < s.slowUntil and not (factor <= s.slowFactor) then
+		return out
+	end
+	out.slowFactor = factor
+	out.slowUntil = now + duration
+	return out
+end
+
+function Effects.applyRoot(s: Status, duration: number, now: number): Status
+	local out = table.clone(s)
+	out.rootUntil = now + duration
+	return out
+end
+
+function Effects.applyBurn(
+	s: Status,
+	dps: number,
+	duration: number,
+	byId: number,
+	now: number
+): Status
+	local out = table.clone(s)
+	out.burnDps = dps
+	out.burnBy = byId
+	out.burnUntil = now + duration
+	return out
+end
+
+function Effects.applyTaunt(s: Status, byId: number, duration: number, now: number): Status
+	local out = table.clone(s)
+	out.tauntBy = byId
+	out.tauntUntil = now + duration
+	return out
+end
+
+function Effects.applyEmpower(s: Status, bonus: number, duration: number, now: number): Status
+	local out = table.clone(s)
+	out.empowerBonus = bonus
+	out.empowerUntil = now + duration
+	return out
+end
+
+-- Clears slow, root and burn.
+function Effects.cleanse(s: Status): Status
+	local out = table.clone(s)
+	out.slowUntil = 0
+	out.slowFactor = 1
+	out.rootUntil = 0
+	out.burnUntil = 0
+	out.burnDps = 0
+	out.burnBy = 0
+	return out
+end
+
+function Effects.isRooted(s: Status, now: number): boolean
+	return now < s.rootUntil
+end
+
+function Effects.speedFactor(s: Status, now: number): number
+	if now < s.rootUntil then
+		return 0
+	end
+	if now < s.slowUntil then
+		return s.slowFactor
+	end
+	return 1
+end
+
+function Effects.burnTick(s: Status, now: number): (number, number)
+	if now < s.burnUntil then
+		return s.burnDps, s.burnBy
+	end
+	return 0, 0
+end
+
+function Effects.tauntedBy(s: Status, now: number): number?
+	if now < s.tauntUntil then
+		return s.tauntBy
+	end
+	return nil
+end
+
+-- Returns the bonus while active and consumes it.
+function Effects.takeEmpower(s: Status, now: number): (Status, number)
+	if now < s.empowerUntil then
+		local out = table.clone(s)
+		out.empowerUntil = 0
+		out.empowerBonus = 0
+		return out, s.empowerBonus
+	end
+	return s, 0
+end
+
+return Effects
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="17">
           <Properties>
             <string name="Name">Ledger</string>
             <string name="Source"><![CDATA[--!strict
@@ -713,7 +1506,7 @@ return Ledger
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="13">
+        <Item class="ModuleScript" referent="18">
           <Properties>
             <string name="Name">LedgerActions</string>
             <string name="Source"><![CDATA[--!strict
@@ -784,7 +1577,7 @@ return LedgerActions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="14">
+        <Item class="ModuleScript" referent="19">
           <Properties>
             <string name="Name">LedgerView</string>
             <string name="Source"><![CDATA[--!strict
@@ -875,7 +1668,481 @@ return LedgerView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="15">
+        <Item class="ModuleScript" referent="20">
+          <Properties>
+            <string name="Name">Loadout</string>
+            <string name="Source"><![CDATA[--!strict
+local Abilities = require("../Catalog/Abilities")
+local PathProgress = require("./PathProgress")
+local Types = require("../Types")
+
+type PathProgress = Types.PathProgress
+
+local MAX_ABILITY_ID_LENGTH = 16
+
+local Loadout = {}
+
+Loadout.SLOTS = 4
+
+local function copy(progress: PathProgress): PathProgress
+	return {
+		calling = progress.calling,
+		xp = table.clone(progress.xp),
+		loadout = table.clone(progress.loadout),
+		callingChanges = progress.callingChanges,
+		callingChangedAt = progress.callingChangedAt,
+	}
+end
+
+-- request: { slot = number, abilityId = string }; "" clears the slot.
+function Loadout.apply(
+	progress: PathProgress?,
+	raw: any,
+	inSafeZone: boolean
+): (PathProgress?, string)
+	if progress == nil then
+		return nil, "DATA_NOT_LOADED"
+	end
+	if type(raw) ~= "table" then
+		return nil, "BAD_REQUEST"
+	end
+	local slot, abilityId = raw.slot, raw.abilityId
+	if
+		type(slot) ~= "number"
+		or slot ~= slot
+		or slot ~= math.floor(slot)
+		or slot < 1
+		or slot > Loadout.SLOTS
+	then
+		return nil, "BAD_REQUEST"
+	end
+	if type(abilityId) ~= "string" or #abilityId > MAX_ABILITY_ID_LENGTH then
+		return nil, "BAD_REQUEST"
+	end
+	if abilityId ~= "" and Abilities.byId[abilityId] == nil then
+		return nil, "BAD_REQUEST"
+	end
+	if progress.calling == "" then
+		return nil, "NO_CALLING"
+	end
+	if not inSafeZone then
+		return nil, "LOADOUT_SAFE_ZONE"
+	end
+	if abilityId ~= "" and not table.find(PathProgress.unlocked(progress), abilityId) then
+		return nil, "NOT_UNLOCKED"
+	end
+	local result = copy(progress)
+	if abilityId ~= "" then
+		for i, id in result.loadout do
+			if id == abilityId then
+				result.loadout[i] = ""
+			end
+		end
+	end
+	result.loadout[slot] = abilityId
+	return result, "LOADOUT_CHANGED"
+end
+
+-- Each id not yet equipped goes into the first empty slot, if any.
+function Loadout.autoFill(progress: PathProgress, ids: { string }): PathProgress
+	local result = copy(progress)
+	for _, id in ids do
+		if not table.find(result.loadout, id) then
+			local empty = table.find(result.loadout, "")
+			if empty ~= nil then
+				result.loadout[empty] = id
+			end
+		end
+	end
+	return result
+end
+
+return Loadout
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="21">
+          <Properties>
+            <string name="Name">PathProgress</string>
+            <string name="Source"><![CDATA[--!strict
+local Abilities = require("../Catalog/Abilities")
+local Paths = require("../Catalog/Paths")
+local Types = require("../Types")
+
+type PathProgress = Types.PathProgress
+type PathId = Types.PathId
+
+local PathProgress = {}
+
+PathProgress.MAX_LEVEL = 20
+PathProgress.CALLING_START_LEVEL = 3
+PathProgress.CHANGE_COST = 500
+PathProgress.CHANGE_COOLDOWN = 604800
+
+local RATES = { 1, 0.8, 0.6, 0.4 }
+local LOADOUT_SIZE = 4
+
+local function indexOf(path: string): number?
+	for i, id in Paths.order do
+		if id == path then
+			return i
+		end
+	end
+	return nil
+end
+
+local function finite(value: any): boolean
+	return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+function PathProgress.distance(a: PathId, b: PathId): number
+	local ia, ib = indexOf(a), indexOf(b)
+	if ia == nil or ib == nil then
+		return 3
+	end
+	local d = math.abs(ia - ib)
+	return math.min(d, #Paths.order - d)
+end
+
+function PathProgress.learningRate(calling: string, path: string): number
+	if not Paths.isPath(calling) or not Paths.isPath(path) then
+		return 0
+	end
+	return RATES[PathProgress.distance(calling :: PathId, path :: PathId) + 1] or 0
+end
+
+function PathProgress.totalXpForLevel(level: number): number
+	return 100 * (level - 1) * level / 2
+end
+
+function PathProgress.maxXp(): number
+	return PathProgress.totalXpForLevel(PathProgress.MAX_LEVEL)
+end
+
+function PathProgress.levelForXp(xp: number): number
+	if type(xp) ~= "number" or not (xp > 0) then
+		return 1
+	end
+	for level = PathProgress.MAX_LEVEL, 2, -1 do
+		if xp >= PathProgress.totalXpForLevel(level) then
+			return level
+		end
+	end
+	return 1
+end
+
+function PathProgress.level(progress: PathProgress, path: string): number
+	local xp = progress.xp[path]
+	if xp == nil then
+		return 1
+	end
+	return PathProgress.levelForXp(xp)
+end
+
+function PathProgress.new(): PathProgress
+	local xp: { [string]: number } = {}
+	for _, path in Paths.order do
+		xp[path] = 0
+	end
+	return {
+		calling = "",
+		xp = xp,
+		loadout = table.create(LOADOUT_SIZE, ""),
+		callingChanges = 0,
+		callingChangedAt = 0,
+	}
+end
+
+local function copy(progress: PathProgress): PathProgress
+	return {
+		calling = progress.calling,
+		xp = table.clone(progress.xp),
+		loadout = table.clone(progress.loadout),
+		callingChanges = progress.callingChanges,
+		callingChangedAt = progress.callingChangedAt,
+	}
+end
+
+function PathProgress.unlocked(progress: PathProgress): { string }
+	local result = {}
+	for _, ability in Abilities.list do
+		if PathProgress.level(progress, ability.path) >= ability.unlockLevel then
+			table.insert(result, ability.id)
+		end
+	end
+	return result
+end
+
+local function unlockedBetween(path: string, before: number, after: number): { string }
+	local result = {}
+	for _, ability in Abilities.forPath(path :: PathId) do
+		if ability.unlockLevel > before and ability.unlockLevel <= after then
+			table.insert(result, ability.id)
+		end
+	end
+	return result
+end
+
+function PathProgress.chooseCalling(
+	progress: PathProgress,
+	raw: any
+): (PathProgress?, string, { string })
+	if not Paths.isPath(raw) then
+		return nil, "BAD_REQUEST", {}
+	end
+	if progress.calling ~= "" then
+		return nil, "CALLING_ALREADY_SET", {}
+	end
+	local path = raw :: string
+	local result = copy(progress)
+	local before = PathProgress.level(progress, path)
+	result.calling = path
+	local start = PathProgress.totalXpForLevel(PathProgress.CALLING_START_LEVEL)
+	result.xp[path] = math.max(result.xp[path] or 0, start)
+	local after = PathProgress.level(result, path)
+	return result, "CALLING_CHOSEN", unlockedBetween(path, before, after)
+end
+
+function PathProgress.changeCalling(
+	progress: PathProgress,
+	raw: any,
+	coin: number,
+	now: number
+): (PathProgress?, string, number)
+	if not Paths.isPath(raw) then
+		return nil, "BAD_REQUEST", 0
+	end
+	if progress.calling == "" then
+		return nil, "NO_CALLING", 0
+	end
+	if progress.calling == raw then
+		return nil, "CALLING_SAME", 0
+	end
+	-- Written so NaN fails safe: only a clearly elapsed cooldown passes.
+	if
+		progress.callingChangedAt > 0
+		and not (now - progress.callingChangedAt >= PathProgress.CHANGE_COOLDOWN)
+	then
+		return nil, "CALLING_COOLDOWN", 0
+	end
+	local cost = if progress.callingChanges == 0 then 0 else PathProgress.CHANGE_COST
+	if not (coin >= cost) then
+		return nil, "NOT_ENOUGH_COIN", 0
+	end
+	local result = copy(progress)
+	result.calling = raw :: string
+	result.callingChanges = progress.callingChanges + 1
+	result.callingChangedAt = now
+	return result, "CALLING_CHANGED", cost
+end
+
+function PathProgress.addXp(
+	progress: PathProgress,
+	path: string,
+	base: number
+): (PathProgress, number, number, { string })
+	if not Paths.isPath(path) or progress.calling == "" or not finite(base) or not (base > 0) then
+		return progress, 0, 0, {}
+	end
+	local rate = PathProgress.learningRate(progress.calling, path)
+	local current = progress.xp[path] or 0
+	local room = math.max(0, PathProgress.maxXp() - current)
+	local gained = math.min(math.max(0, math.floor(base * rate)), room)
+	if not (gained > 0) then
+		return progress, 0, 0, {}
+	end
+	local result = copy(progress)
+	result.xp[path] = current + gained
+	local before = PathProgress.levelForXp(current)
+	local after = PathProgress.levelForXp(current + gained)
+	return result, gained, after - before, unlockedBetween(path, before, after)
+end
+
+-- Turns arbitrary saved data into valid PathProgress. Never errors.
+function PathProgress.sanitize(raw: any): PathProgress
+	local result = PathProgress.new()
+	if type(raw) ~= "table" then
+		return result
+	end
+	if Paths.isPath(raw.calling) then
+		result.calling = raw.calling
+	end
+	local rawXp = raw.xp
+	if type(rawXp) == "table" then
+		for _, path in Paths.order do
+			local value = rawXp[path]
+			if finite(value) then
+				result.xp[path] = math.clamp(value, 0, PathProgress.maxXp())
+			end
+		end
+	end
+	if finite(raw.callingChanges) and raw.callingChanges >= 0 then
+		result.callingChanges = raw.callingChanges
+	end
+	if finite(raw.callingChangedAt) and raw.callingChangedAt >= 0 then
+		result.callingChangedAt = raw.callingChangedAt
+	end
+	local rawLoadout = raw.loadout
+	if type(rawLoadout) == "table" then
+		local owned = {}
+		for _, id in PathProgress.unlocked(result) do
+			owned[id] = true
+		end
+		local used = {}
+		for i = 1, LOADOUT_SIZE do
+			local id = rawLoadout[i]
+			if type(id) == "string" and owned[id] and not used[id] then
+				used[id] = true
+				result.loadout[i] = id
+			end
+		end
+	end
+	return result
+end
+
+return PathProgress
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="22">
+          <Properties>
+            <string name="Name">PathView</string>
+            <string name="Source"><![CDATA[--!strict
+local Abilities = require("../Catalog/Abilities")
+local Loadout = require("./Loadout")
+local PathProgress = require("./PathProgress")
+local Paths = require("../Catalog/Paths")
+local Types = require("../Types")
+
+type PathProgress = Types.PathProgress
+
+export type AbilityView = {
+	id: string,
+	name: string,
+	description: string,
+	unlockLevel: number,
+	unlocked: boolean,
+	equippedSlot: number,
+}
+export type RowView = {
+	path: string,
+	name: string,
+	style: string,
+	level: number,
+	xpText: string,
+	rateText: string,
+	isCalling: boolean,
+	abilities: { AbilityView },
+	changeText: string,
+	canChange: boolean,
+}
+export type SlotView = { slot: number, abilityId: string, name: string }
+export type View = {
+	needsCalling: boolean,
+	callingText: string,
+	rows: { RowView },
+	slots: { SlotView },
+}
+
+local SECONDS_PER_DAY = 86400
+
+local PathView = {}
+
+local function xpText(xp: number, level: number): string
+	if level >= PathProgress.MAX_LEVEL then
+		return "MAX"
+	end
+	local floor = PathProgress.totalXpForLevel(level)
+	local into = math.floor(xp - floor)
+	local needed = PathProgress.totalXpForLevel(level + 1) - floor
+	return `{into} / {needed}`
+end
+
+local function changeState(progress: PathProgress, coin: number, now: number): (string, boolean)
+	-- Mirrors PathProgress.changeCalling: the cooldown applies once a change has been made.
+	if
+		progress.callingChangedAt > 0
+		and not (now - progress.callingChangedAt >= PathProgress.CHANGE_COOLDOWN)
+	then
+		local left = progress.callingChangedAt + PathProgress.CHANGE_COOLDOWN - now
+		return `Available in {math.ceil(left / SECONDS_PER_DAY)} days`, false
+	end
+	if progress.callingChanges == 0 then
+		return "Free", true
+	end
+	return `{PathProgress.CHANGE_COST} Coin`, coin >= PathProgress.CHANGE_COST
+end
+
+function PathView.build(progress: PathProgress, coin: number, now: number): View
+	local hasCalling = progress.calling ~= ""
+	local slotOf: { [string]: number } = {}
+	for slot, id in progress.loadout do
+		if id ~= "" then
+			slotOf[id] = slot
+		end
+	end
+
+	local rows: { RowView } = {}
+	for _, path in Paths.order do
+		local info = Paths.info[path]
+		local level = PathProgress.level(progress, path)
+		local abilities: { AbilityView } = {}
+		for _, ability in Abilities.forPath(path) do
+			table.insert(abilities, {
+				id = ability.id,
+				name = ability.name,
+				description = ability.description,
+				unlockLevel = ability.unlockLevel,
+				unlocked = level >= ability.unlockLevel,
+				equippedSlot = slotOf[ability.id] or 0,
+			})
+		end
+		local isCalling = hasCalling and progress.calling == path
+		local changeText, canChange = "", false
+		if hasCalling and not isCalling then
+			changeText, canChange = changeState(progress, coin, now)
+		end
+		table.insert(rows, {
+			path = path,
+			name = info.name,
+			style = info.style,
+			level = level,
+			xpText = xpText(progress.xp[path] or 0, level),
+			rateText = if hasCalling
+				then `{math.floor(PathProgress.learningRate(progress.calling, path) * 100 + 0.5)}%`
+				else "—",
+			isCalling = isCalling,
+			abilities = abilities,
+			changeText = changeText,
+			canChange = canChange,
+		})
+	end
+
+	local slots: { SlotView } = {}
+	for slot = 1, Loadout.SLOTS do
+		local id = progress.loadout[slot] or ""
+		local ability = Abilities.byId[id]
+		table.insert(
+			slots,
+			{ slot = slot, abilityId = id, name = if ability then ability.name else "" }
+		)
+	end
+
+	return {
+		needsCalling = not hasCalling,
+		callingText = if hasCalling
+			then `Calling: {Paths.info[progress.calling :: Types.PathId].name}`
+			else "Choose your Calling",
+		rows = rows,
+		slots = slots,
+	}
+end
+
+return PathView
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="23">
           <Properties>
             <string name="Name">Protection</string>
             <string name="Source"><![CDATA[--!strict
@@ -996,7 +2263,7 @@ return Protection
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="16">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">RateLimiter</string>
             <string name="Source"><![CDATA[--!strict
@@ -1031,7 +2298,7 @@ return RateLimiter
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="17">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">Scarcity</string>
             <string name="Source"><![CDATA[--!strict
@@ -1069,7 +2336,7 @@ return Scarcity
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="18">
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">Sources</string>
             <string name="Source"><![CDATA[--!strict
@@ -1146,7 +2413,7 @@ return Sources
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="19">
+        <Item class="ModuleScript" referent="27">
           <Properties>
             <string name="Name">StatusView</string>
             <string name="Source"><![CDATA[--!strict
@@ -1189,7 +2456,138 @@ return StatusView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="20">
+        <Item class="ModuleScript" referent="28">
+          <Properties>
+            <string name="Name">Targeting</string>
+            <string name="Source"><![CDATA[--!strict
+local Types = require("../Types")
+local Combat = require("./Combat")
+
+type Vec3 = Types.Vec3
+type Fighter = Combat.Fighter
+
+local Targeting = {}
+
+Targeting.SHOT_RADIUS = 2.5
+Targeting.DASH_WIDTH = 3
+
+-- Normalised horizontal look, or nil for a zero-length or non-finite look.
+local function horizontalLook(attacker: Fighter): (number?, number?)
+	local x, z = attacker.look.x, attacker.look.z
+	local length = math.sqrt(x * x + z * z)
+	if not (length > 0 and length < math.huge) then
+		return nil, nil
+	end
+	return x / length, z / length
+end
+
+function Targeting.ahead(attacker: Fighter, distance: number): Vec3
+	local x, z = horizontalLook(attacker)
+	if x == nil or z == nil then
+		return { x = attacker.position.x, y = attacker.position.y, z = attacker.position.z }
+	end
+	return {
+		x = attacker.position.x + x * distance,
+		y = attacker.position.y,
+		z = attacker.position.z + z * distance,
+	}
+end
+
+-- Fighters within reach of a ray (direction dirX, dirZ) from the attacker: distance along the
+-- ray in (0, length], distance from the ray at most width. Returns the nearest along the ray, or
+-- the taunter when it qualifies. Comparisons are written so NaN fails closed.
+local function scanRay(
+	attacker: Fighter,
+	others: { Fighter },
+	dirX: number,
+	dirZ: number,
+	length: number,
+	width: number,
+	taunter: number?
+): number?
+	local bestId: number? = nil
+	local bestAlong = math.huge
+	for _, other in others do
+		if other.id == attacker.id then
+			continue
+		end
+		if not (math.abs(other.position.y - attacker.position.y) <= Combat.STRIKE_MAX_HEIGHT) then
+			continue
+		end
+		local dx = other.position.x - attacker.position.x
+		local dz = other.position.z - attacker.position.z
+		local along = dx * dirX + dz * dirZ
+		local across = math.abs(dx * dirZ - dz * dirX)
+		if not (along > 0 and along <= length and across <= width) then
+			continue
+		end
+		if taunter ~= nil and other.id == taunter then
+			return other.id
+		end
+		if along < bestAlong then
+			bestAlong = along
+			bestId = other.id
+		end
+	end
+	return bestId
+end
+
+-- Positive angleDegrees turns the look clockwise seen from above (from -z towards +x).
+function Targeting.shot(
+	attacker: Fighter,
+	others: { Fighter },
+	range: number,
+	angleDegrees: number,
+	taunter: number?
+): number?
+	local lookX, lookZ = horizontalLook(attacker)
+	if lookX == nil or lookZ == nil then
+		return nil
+	end
+	local angle = math.rad(angleDegrees)
+	local sin, cos = math.sin(angle), math.cos(angle)
+	local dirX = lookX * cos - lookZ * sin
+	local dirZ = lookX * sin + lookZ * cos
+	return scanRay(attacker, others, dirX, dirZ, range, Targeting.SHOT_RADIUS, taunter)
+end
+
+function Targeting.inRadius(
+	center: Vec3,
+	others: { Fighter },
+	radius: number,
+	excludeId: number?
+): { number }
+	local ids: { number } = {}
+	for _, other in others do
+		if excludeId ~= nil and other.id == excludeId then
+			continue
+		end
+		if not (math.abs(other.position.y - center.y) <= Combat.STRIKE_MAX_HEIGHT) then
+			continue
+		end
+		local dx = other.position.x - center.x
+		local dz = other.position.z - center.z
+		if dx * dx + dz * dz <= radius * radius then
+			table.insert(ids, other.id)
+		end
+	end
+	table.sort(ids)
+	return ids
+end
+
+function Targeting.dashHit(attacker: Fighter, others: { Fighter }, distance: number): number?
+	local lookX, lookZ = horizontalLook(attacker)
+	if lookX == nil or lookZ == nil then
+		return nil
+	end
+	return scanRay(attacker, others, lookX, lookZ, distance, Targeting.DASH_WIDTH, nil)
+end
+
+return Targeting
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">Vault</string>
             <string name="Source"><![CDATA[--!strict
@@ -1315,7 +2713,7 @@ return Vault
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Types</string>
           <string name="Source"><![CDATA[--!strict
@@ -1326,12 +2724,56 @@ export type Ledger = { claimed: { [CardId]: boolean }, free: { CardId } }
 export type Vec3 = { x: number, y: number, z: number }
 export type Cache = { id: string, relicId: CardId, position: Vec3 }
 export type Vault = { [CardId]: boolean }
+export type PathId = "Fang" | "Gale" | "Ember" | "Mire" | "Mend" | "Bulwark"
+export type PathProgress = {
+	calling: string, -- a PathId, or "" before the first choice
+	xp: { [string]: number }, -- one entry per PathId
+	loadout: { string }, -- exactly 4 entries; "" = empty slot
+	callingChanges: number,
+	callingChangedAt: number, -- os.time() of the last change, 0 if never
+}
+export type Ability = {
+	id: string,
+	name: string,
+	path: PathId,
+	unlockLevel: number,
+	cooldown: number,
+	description: string,
+	kind: "melee" | "shot" | "dash" | "zone" | "self" | "burst",
+	range: number?,
+	damage: number?,
+	hits: number?,
+	interval: number?,
+	shots: number?,
+	spread: number?, -- shot fan: count, total angle in degrees
+	distance: number?, -- dash length
+	executeBelow: number?,
+	executeDamage: number?,
+	burn: { dps: number, duration: number }?,
+	root: number?,
+	slow: { factor: number, duration: number }?, -- factor = speed multiplier (0.7 = 30% slower)
+	pull: number?,
+	knockback: number?,
+	taunt: number?,
+	zone: { radius: number, duration: number, dps: number, slow: number?, ahead: number }?,
+	radius: number?, -- burst radius
+	heal: number?,
+	healOnHit: boolean?,
+	cleanse: boolean?,
+	shield: { amount: number, duration: number }?,
+	immune: number?,
+	empower: { bonus: number, duration: number }?,
+	reduction: { factor: number, duration: number }?, -- factor = damage multiplier (0.6 = 40% less)
+	reflect: { factor: number, duration: number }?,
+	allyRadius: number?,
+}
 export type PlayerData = {
 	schemaVersion: number,
 	ledger: Ledger,
 	coin: number,
 	vault: Vault,
 	shieldEnded: boolean,
+	paths: PathProgress,
 }
 
 return {}
@@ -1340,15 +2782,586 @@ return {}
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="22">
+  <Item class="ServerScriptService" referent="31">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="23">
+    <Item class="Folder" referent="32">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="33">
+        <Properties>
+          <string name="Name">AbilityService</string>
+          <string name="Source"><![CDATA[--!strict
+-- Turns a client's "cast slot N" into the effects of the 18 abilities. The client names only
+-- a slot: the ability, targets, damage, movement and timing are all decided here, from the pure
+-- Casting plan and the server's own view of the world. Every player hit goes through
+-- CombatService.damage, and a hit's statuses, pull or knockback follow only when it landed.
+local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Abilities = require(ReplicatedStorage.Shared.Catalog.Abilities)
+local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
+local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
+local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
+local Net = require(ReplicatedStorage.Shared.Net)
+local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
+local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Targeting = require(ReplicatedStorage.Shared.Rules.Targeting)
+local Types = require(ReplicatedStorage.Shared.Types)
+local CombatService = require(script.Parent.CombatService)
+local LedgerService = require(script.Parent.LedgerService)
+local PathService = require(script.Parent.PathService)
+local StatusService = require(script.Parent.StatusService)
+
+type Ability = Types.Ability
+type Fighter = Combat.Fighter
+type Plan = Casting.Plan
+type Vec3 = Types.Vec3
+
+local BUCKET_CAPACITY = 10
+local BUCKET_REFILL_PER_SECOND = 5
+local WALL_MARGIN = 2 -- a move stops this many studs short of anything in its way
+local GROUND_PROBE = 50 -- how far below a move's end point to look for ground
+local R6_LEG_HEIGHT = 2
+local SHOT_WIDTH = 0.3
+local SHOT_SECONDS = 0.15
+local RING_SECONDS = 0.3
+local RING_SEGMENTS = 24
+local RING_WIDTH = 0.6
+local RING_HEIGHT = 0.2
+local RING_LIFT = 0.2 -- above the caster's feet
+local DEFAULT_COLOR = Color3.fromRGB(200, 200, 200)
+
+local AbilityService = {}
+
+-- Cooldowns per player, on os.clock(). Kept across respawns, dropped when the player leaves.
+local castStates: { [Player]: Casting.CastState } = {}
+local buckets: { [Player]: RateLimiter.Bucket } = {}
+local cooldownRemote: RemoteEvent
+
+-- True if the player has a token left in their rate-limit bucket (takes one).
+local function allowed(player: Player): boolean
+	local now = os.clock()
+	local bucket = buckets[player]
+	if bucket == nil then
+		bucket = RateLimiter.new(BUCKET_CAPACITY, now)
+		buckets[player] = bucket
+	end
+	return RateLimiter.allow(bucket, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_SECOND)
+end
+
+-- The Humanoid and HumanoidRootPart of a living character, or nil.
+local function living(player: Player): (Humanoid?, BasePart?)
+	local character = player.Character
+	if character == nil then
+		return nil, nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil or humanoid.Health <= 0 then
+		return nil, nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
+		return nil, nil
+	end
+	return humanoid, root
+end
+
+local function fighterOf(player: Player, humanoid: Humanoid, root: BasePart): Fighter
+	local p = root.Position
+	local look = root.CFrame.LookVector
+	return {
+		id = player.UserId,
+		position = { x = p.X, y = p.Y, z = p.Z },
+		look = { x = look.X, y = look.Y, z = look.Z },
+		health = humanoid.Health,
+	}
+end
+
+local function effectsFolder(): Folder
+	local existing = workspace:FindFirstChild("Effects")
+	if existing ~= nil and existing:IsA("Folder") then
+		return existing
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "Effects"
+	folder.Parent = workspace
+	return folder
+end
+
+local function pathColor(path: string): Color3
+	local info = Paths.info[path :: Types.PathId]
+	if info == nil then
+		return DEFAULT_COLOR
+	end
+	return Color3.fromRGB(info.color.r, info.color.g, info.color.b)
+end
+
+-- Height of the root's centre above the feet of a standing character.
+local function standHeight(humanoid: Humanoid, root: BasePart): number
+	if humanoid.RigType == Enum.HumanoidRigType.R15 then
+		return humanoid.HipHeight + root.Size.Y / 2
+	end
+	return R6_LEG_HEIGHT + root.Size.Y / 2
+end
+
+-- ---------------------------------------------------------------------------------------
+-- World rays: movement (dash, pull, knockback) and line of sight
+-- ---------------------------------------------------------------------------------------
+
+-- Move and sight rays pass through every player's character and the effects folder, and
+-- through anything a character could walk through (non-colliding parts, water).
+local function worldRayParams(): RaycastParams
+	local exclude: { Instance } = { effectsFolder() }
+	for _, other in Players:GetPlayers() do
+		local character = other.Character
+		if character ~= nil then
+			table.insert(exclude, character)
+		end
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = exclude
+	params.RespectCanCollide = true
+	params.IgnoreWater = true
+	return params
+end
+
+-- Where the straight line from `from` to `to` is first blocked, or nil when it is clear.
+-- Characters, workspace.Effects and non-colliding parts never block. When the target is a
+-- training post, pass its id: the ray ends on that post's own surface, which is not a block.
+local function obstruction(from: Vector3, to: Vector3, postId: number?): Vector3?
+	local delta = to - from
+	-- Written so a NaN or infinite line counts as blocked.
+	if not (delta.Magnitude < math.huge) then
+		return from
+	end
+	local result = workspace:Raycast(from, delta, worldRayParams())
+	if result == nil then
+		return nil
+	end
+	if postId ~= nil and result.Instance:GetAttribute("PostId") == postId then
+		return nil
+	end
+	return result.Position
+end
+
+-- Moves a character towards `target` using only the server's own geometry. `target` always
+-- comes from a server plan, never from a client. A level ray from the root towards the
+-- target's x and z stops WALL_MARGIN short of anything in the way; a ray down from there
+-- stands the character on the ground, or keeps its current height if there is none. The
+-- facing is kept and the velocity zeroed. Returns the level distance actually travelled
+-- (0 when nothing moved).
+local function moveCharacter(humanoid: Humanoid, root: BasePart, target: Vec3): number
+	local from = root.Position
+	local dx = target.x - from.X
+	local dz = target.z - from.Z
+	local distance = math.sqrt(dx * dx + dz * dz)
+	-- Written so NaN or infinite targets move nobody.
+	if not (distance > 0 and distance < math.huge) then
+		return 0
+	end
+	local direction = Vector3.new(dx / distance, 0, dz / distance)
+	local params = worldRayParams()
+	local travel = distance
+	local blocked = workspace:Raycast(from, direction * distance, params)
+	if blocked ~= nil then
+		travel = math.max(0, blocked.Distance - WALL_MARGIN)
+	end
+	local stop = from + direction * travel
+	local y = from.Y
+	local ground = workspace:Raycast(stop, Vector3.new(0, -GROUND_PROBE, 0), params)
+	if ground ~= nil then
+		y = ground.Position.Y + standHeight(humanoid, root)
+	end
+	root.CFrame = CFrame.new(stop.X, y, stop.Z) * root.CFrame.Rotation
+	root.AssemblyLinearVelocity = Vector3.zero
+	return travel
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Effects on players
+-- ---------------------------------------------------------------------------------------
+
+local function heal(player: Player, amount: number)
+	local humanoid = living(player)
+	if humanoid == nil or not (amount > 0) then
+		return
+	end
+	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + amount)
+end
+
+-- Who a support effect reaches: the caster and the caster's allies (in M3 only the caster;
+-- parties come later), each alive and, when the ability has an ally radius, within it.
+local function alliesOf(player: Player, ability: Ability): { Player }
+	local _, casterRoot = living(player)
+	if casterRoot == nil then
+		return {}
+	end
+	local reach = ability.allyRadius
+	local result: { Player } = {}
+	for _, ally in { player } do
+		local _, allyRoot = living(ally)
+		if allyRoot == nil then
+			continue
+		end
+		if
+			ally ~= player
+			and reach ~= nil
+			and not ((allyRoot.Position - casterRoot.Position).Magnitude <= reach)
+		then
+			continue
+		end
+		table.insert(result, ally)
+	end
+	return result
+end
+
+-- The hit's statuses on a victim the damage reached. Only called after damage() returned true.
+local function applyHitStatuses(player: Player, ability: Ability, victim: Player)
+	local burn, rootFor, slow, taunt = ability.burn, ability.root, ability.slow, ability.taunt
+	if burn == nil and rootFor == nil and slow == nil and taunt == nil then
+		return
+	end
+	local byId = player.UserId
+	StatusService.update(victim, function(status, now)
+		local out = status
+		if burn ~= nil then
+			out = Effects.applyBurn(out, burn.dps, burn.duration, byId, now)
+		end
+		if rootFor ~= nil then
+			out = Effects.applyRoot(out, rootFor, now)
+		end
+		if slow ~= nil then
+			out = Effects.applySlow(out, slow.factor, slow.duration, now)
+		end
+		if taunt ~= nil then
+			out = Effects.applyTaunt(out, byId, taunt, now)
+		end
+		return out
+	end)
+end
+
+local function vector(v: Vec3): Vector3
+	return Vector3.new(v.x, v.y, v.z)
+end
+
+-- True when nothing solid stands between the caster and the fighter `targetId`: one ray from
+-- the root position the plan was made from (for a dash, where it started) to the target's
+-- root or post position.
+local function inSight(caster: Fighter, others: { Fighter }, targetId: number): boolean
+	for _, other in others do
+		if other.id == targetId then
+			local postId = if CombatService.isPost(targetId) then targetId else nil
+			return obstruction(vector(caster.position), vector(other.position), postId) == nil
+		end
+	end
+	return false
+end
+
+-- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. A post
+-- trains the ability's Path (posts ignore every effect); a player takes the hit through
+-- CombatService.damage, and its statuses and its pull or knockback follow only when that
+-- returned true. Heal-on-hit heals the caster and allies when any player hit landed or a post
+-- was hit.
+local function applyHits(
+	player: Player,
+	ability: Ability,
+	plan: Plan,
+	caster: Fighter,
+	others: { Fighter },
+	byId: { [number]: Player }
+)
+	local connected = false
+	for _, hit in plan.hits do
+		if not inSight(caster, others, hit.targetId) then
+			continue
+		end
+		if CombatService.isPost(hit.targetId) then
+			CombatService.hitPost(player, hit.targetId, ability.path)
+			connected = true
+			continue
+		end
+		local victim = byId[hit.targetId]
+		if victim == nil or not CombatService.damage(player, victim, hit.damage) then
+			continue
+		end
+		connected = true
+		applyHitStatuses(player, ability, victim)
+		-- No ability both pulls and knocks back; each point is for the plan's one target.
+		local destination = plan.pullTo or plan.knockbackTo
+		if destination ~= nil then
+			local humanoid, root = living(victim)
+			if humanoid ~= nil and root ~= nil then
+				moveCharacter(humanoid, root, destination)
+			end
+		end
+	end
+	local amount = ability.heal
+	if connected and ability.healOnHit == true and amount ~= nil then
+		for _, ally in alliesOf(player, ability) do
+			heal(ally, amount)
+		end
+	end
+end
+
+-- Heal (unless it is a heal-on-hit), cleanse, shield, immune, empower, reduction and reflect
+-- on the caster and allies.
+local function applySelfEffects(player: Player, ability: Ability)
+	local amount = if ability.healOnHit == true then nil else ability.heal
+	local cleanse = ability.cleanse == true
+	local shield, immune, empower = ability.shield, ability.immune, ability.empower
+	local reduction, reflect = ability.reduction, ability.reflect
+	local anyStatus = cleanse
+		or shield ~= nil
+		or immune ~= nil
+		or empower ~= nil
+		or reduction ~= nil
+		or reflect ~= nil
+	if amount == nil and not anyStatus then
+		return
+	end
+	for _, ally in alliesOf(player, ability) do
+		if amount ~= nil then
+			heal(ally, amount)
+		end
+		if not anyStatus then
+			continue
+		end
+		StatusService.update(ally, function(status, now)
+			local out = status
+			if cleanse then
+				out = Effects.cleanse(out)
+			end
+			if shield ~= nil then
+				out = Effects.applyShield(out, shield.amount, shield.duration, now)
+			end
+			if immune ~= nil then
+				out = Effects.applyImmune(out, immune, now)
+			end
+			if empower ~= nil then
+				out = Effects.applyEmpower(out, empower.bonus, empower.duration, now)
+			end
+			if reduction ~= nil then
+				out = Effects.applyReduction(out, reduction.factor, reduction.duration, now)
+			end
+			if reflect ~= nil then
+				out = Effects.applyReflect(out, reflect.factor, reflect.duration, now)
+			end
+			return out
+		end)
+	end
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Visuals (server-made, short-lived, in workspace.Effects)
+-- ---------------------------------------------------------------------------------------
+
+local function effectPart(name: string, color: Color3): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	return part
+end
+
+local function showRay(from: Vector3, to: Vector3, color: Color3)
+	local length = (to - from).Magnitude
+	if not (length > 0 and length < math.huge) then
+		return
+	end
+	local part = effectPart("Shot", color)
+	part.Size = Vector3.new(SHOT_WIDTH, SHOT_WIDTH, length)
+	part.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -length / 2)
+	part.Parent = effectsFolder()
+	Debris:AddItem(part, SHOT_SECONDS)
+end
+
+-- One ray per shot, from the caster to the fighter that shot found, or to full range, cut
+-- short where something solid blocks it (as the hit is). The fan and the target use the same
+-- rules as the plan (Casting and Targeting.shot).
+local function showShots(ability: Ability, caster: Fighter, others: { Fighter }, taunter: number?)
+	local lx, lz = caster.look.x, caster.look.z
+	local length = math.sqrt(lx * lx + lz * lz)
+	if not (length > 0 and length < math.huge) then
+		return
+	end
+	lx, lz = lx / length, lz / length
+	local range = ability.range or 0
+	local shots = ability.shots or 1
+	local spread = ability.spread or 0
+	local color = pathColor(ability.path)
+	local from = Vector3.new(caster.position.x, caster.position.y, caster.position.z)
+	for i = 1, shots do
+		local angle = 0
+		if shots > 1 then
+			angle = -spread / 2 + spread * (i - 1) / (shots - 1)
+		end
+		-- Positive angles turn clockwise seen from above, as in Targeting.shot.
+		local radians = math.rad(angle)
+		local sin, cos = math.sin(radians), math.cos(radians)
+		local to = from + Vector3.new(lx * cos - lz * sin, 0, lx * sin + lz * cos) * range
+		local targetId = Targeting.shot(caster, others, range, angle, taunter)
+		if targetId ~= nil then
+			for _, other in others do
+				if other.id == targetId then
+					to = vector(other.position)
+					break
+				end
+			end
+		end
+		local postId = if targetId ~= nil and CombatService.isPost(targetId) then targetId else nil
+		showRay(from, obstruction(from, to, postId) or to, color)
+	end
+end
+
+-- A flat ring of the burst's radius around the caster's feet.
+local function showRing(center: Vector3, radius: number, color: Color3)
+	if not (radius > 0 and radius < math.huge) then
+		return
+	end
+	local ring = Instance.new("Model")
+	ring.Name = "Ring"
+	local segment = 2 * radius * math.sin(math.pi / RING_SEGMENTS) + RING_WIDTH
+	for i = 1, RING_SEGMENTS do
+		local part = effectPart("Segment", color)
+		-- Local X points outwards from the centre, local Z along the ring.
+		part.Size = Vector3.new(RING_WIDTH, RING_HEIGHT, segment)
+		part.CFrame = CFrame.new(center)
+			* CFrame.Angles(0, (i - 1) / RING_SEGMENTS * 2 * math.pi, 0)
+			* CFrame.new(radius, 0, 0)
+		part.Parent = ring
+	end
+	ring.Parent = effectsFolder()
+	Debris:AddItem(ring, RING_SECONDS)
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Casting
+-- ---------------------------------------------------------------------------------------
+
+-- A later wave (Rending Flurry): re-planned from where the caster is now. Skipped if the caster
+-- left, died or respawned since the cast.
+local function runWave(player: Player, character: Model?, ability: Ability)
+	if player.Parent ~= Players or player.Character ~= character then
+		return
+	end
+	local humanoid, root = living(player)
+	if humanoid == nil or root == nil then
+		return
+	end
+	local now = os.clock()
+	local others, byId = CombatService.fighters(player)
+	local taunter = Effects.tauntedBy(StatusService.get(player), now)
+	local caster = fighterOf(player, humanoid, root)
+	local plan = Casting.plan(ability, caster, others, taunter)
+	applyHits(player, ability, plan, caster, others, byId)
+end
+
+local function handleCast(player: Player, rawSlot: any)
+	if player.Parent ~= Players then
+		return
+	end
+	local humanoid, root = living(player)
+	if humanoid == nil or root == nil or not allowed(player) then
+		return
+	end
+	local progress = PathService.get(player)
+	if progress == nil then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
+	if progress.calling == "" then
+		LedgerService.notify(player, "NO_CALLING")
+		return
+	end
+
+	-- No yielding call from here to the commit: the cooldown check cannot go stale.
+	local now = os.clock()
+	local status = StatusService.get(player)
+	local state = castStates[player] or Casting.new()
+	local id, code = Casting.canCast(state, progress, rawSlot, now, Effects.isRooted(status, now))
+	if id == nil then
+		if code ~= "ON_COOLDOWN" then
+			LedgerService.notify(player, code)
+		end
+		return
+	end
+	local ability = Abilities.byId[id]
+	if ability == nil then
+		return
+	end
+	castStates[player] = Casting.commit(state, id, now)
+	-- canCast accepted the slot, so it is a whole number from 1 to 4.
+	cooldownRemote:FireClient(player, rawSlot :: number, ability.cooldown)
+
+	local character = player.Character
+	local others, byId = CombatService.fighters(player)
+	local taunter = Effects.tauntedBy(status, now)
+	local caster = fighterOf(player, humanoid, root)
+	local plan = Casting.plan(ability, caster, others, taunter)
+
+	local moveTo = plan.moveTo
+	if moveTo ~= nil then
+		local clear = moveCharacter(humanoid, root, moveTo)
+		if ability.kind == "dash" then
+			-- The plan scanned the dash's full length; a wall can stop it short. Only an enemy
+			-- inside the stretch actually travelled, plus the gap to what stopped it (the move
+			-- halts WALL_MARGIN short of it, and a post's centre is a further stud in), is
+			-- passed, scanned from the start point. Line of sight still rules out anything
+			-- behind a wall.
+			local hits: { Casting.Hit } = {}
+			local reach = math.min(ability.distance or 0, clear + WALL_MARGIN + 1.5)
+			local targetId = Targeting.dashHit(caster, others, reach)
+			if targetId ~= nil then
+				table.insert(hits, { targetId = targetId, damage = ability.damage or 0 })
+			end
+			plan.hits = hits
+		end
+	end
+	applyHits(player, ability, plan, caster, others, byId)
+	for k = 1, plan.waves - 1 do
+		task.delay(plan.interval * k, runWave, player, character, ability)
+	end
+	local zone = plan.zone
+	if zone ~= nil then
+		StatusService.addZone(player, zone, ability.path)
+	end
+	applySelfEffects(player, ability)
+
+	if ability.kind == "shot" then
+		showShots(ability, caster, others, taunter)
+	elseif ability.kind == "burst" then
+		local p = caster.position
+		local center = Vector3.new(p.x, p.y - standHeight(humanoid, root) + RING_LIFT, p.z)
+		showRing(center, ability.radius or 0, pathColor(ability.path))
+	end
+end
+
+function AbilityService.start()
+	cooldownRemote = LedgerService.makeRemote(Net.AbilityCooldown)
+	LedgerService.makeRemote(Net.CastAbility).OnServerEvent:Connect(handleCast)
+	effectsFolder()
+
+	Players.PlayerRemoving:Connect(function(player)
+		castStates[player] = nil
+		buckets[player] = nil
+	end)
+end
+
+return AbilityService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">ClaimService</string>
           <string name="Source"><![CDATA[--!strict
@@ -1368,6 +3381,13 @@ local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
 
 local ClaimService = {}
+
+local startedCallbacks: { (killer: Player, victim: Player) -> () } = {}
+
+-- Registers a callback that runs (each in pcall) right after a claim opens.
+function ClaimService.onClaimStarted(callback: (killer: Player, victim: Player) -> ())
+	table.insert(startedCallbacks, callback)
+end
 
 -- One open claim, made by `killer` on `victim`. Names are kept because either may leave.
 type Session = {
@@ -1478,6 +3498,12 @@ local function onDefeat(killer: Player, victim: Player)
 	end
 	LedgerService.notify(killer, "CLAIM_STARTED", { player = session.victimName })
 	sendUpdate(session)
+	for _, callback in startedCallbacks do
+		local ok, err = pcall(callback, killer, victim)
+		if not ok then
+			warn(`[IsleOfAvarice] onClaimStarted callback failed: {err}`)
+		end
+	end
 
 	task.delay(BlindClaim.DURATION, close, session)
 end
@@ -1562,19 +3588,32 @@ return ClaimService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">CombatService</string>
           <string name="Source"><![CDATA[--!strict
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
+local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local Types = require(ReplicatedStorage.Shared.Types)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
 local ProtectionService = require(script.Parent.ProtectionService)
+local StatusService = require(script.Parent.StatusService)
+
+type DamageOpts = { reflected: boolean?, tick: boolean? }
+
+local POST_TAG = "TrainingPost"
+local POST_XP = 10
+local POST_XP_GAP = 0.5 -- seconds between paid hits, per post per attacker
+local POST_FLASH_SECONDS = 0.15
+local POST_FLASH_COLOR = Color3.fromRGB(255, 235, 150)
 
 local CombatService = {}
 
@@ -1583,6 +3622,15 @@ local hitLog: Combat.HitLog = {}
 local lastStrike: { [Player]: number } = {}
 local defeatCallbacks: { (killer: Player, victim: Player) -> () } = {}
 local hitFx: RemoteEvent
+-- Last paid hit per attacker per post id, on os.clock().
+local postHits: { [Player]: { [number]: number } } = {}
+local postBaseColor: { [BasePart]: Color3 } = {}
+local postFlashToken: { [BasePart]: number } = {}
+
+-- PathService.get and PathService.grant, passed in by Main.server.luau. PathService
+-- requires ClaimService, which requires this module, so requiring it here would be a cycle.
+local getPaths: ((Player) -> Types.PathProgress?)? = nil
+local grantXp: ((Player, string, number) -> ())? = nil
 
 -- The Humanoid and HumanoidRootPart of a living character, or nil.
 local function living(player: Player): (Humanoid?, BasePart?)
@@ -1601,14 +3649,50 @@ local function living(player: Player): (Humanoid?, BasePart?)
 	return humanoid, root
 end
 
-local function fighterOf(id: number, root: BasePart): Combat.Fighter
+local function fighterOf(id: number, root: BasePart, health: number?): Combat.Fighter
 	local p = root.Position
 	local look = root.CFrame.LookVector
 	return {
 		id = id,
 		position = { x = p.X, y = p.Y, z = p.Z },
 		look = { x = look.X, y = look.Y, z = look.Z },
+		health = health,
 	}
+end
+
+-- Every training post part in the world, by post id.
+local function postParts(): { [number]: BasePart }
+	local parts: { [number]: BasePart } = {}
+	for _, instance in CollectionService:GetTagged(POST_TAG) do
+		local id = instance:GetAttribute("PostId")
+		if
+			instance:IsA("BasePart")
+			and instance:IsDescendantOf(workspace)
+			and type(id) == "number"
+			and World.postIndex(id) ~= nil
+		then
+			parts[id] = instance
+		end
+	end
+	return parts
+end
+
+-- A short flash on the post part. A newer flash takes over the restore.
+local function flashPost(postId: number)
+	local part = postParts()[postId]
+	if part == nil then
+		return
+	end
+	local base = postBaseColor[part] or part.Color
+	postBaseColor[part] = base
+	local token = (postFlashToken[part] or 0) + 1
+	postFlashToken[part] = token
+	part.Color = POST_FLASH_COLOR
+	task.delay(POST_FLASH_SECONDS, function()
+		if postFlashToken[part] == token then
+			part.Color = base
+		end
+	end)
 end
 
 -- Runs every defeat callback now, in this thread, so a callback can take a DataService hold
@@ -1636,6 +3720,158 @@ local function creditDefeat(victim: Player, windowSeconds: number)
 	end
 end
 
+function CombatService.isPost(id: number): boolean
+	return World.postIndex(id) ~= nil
+end
+
+-- Every other living player's fighter (with health) plus every training post, and a map
+-- from player fighter id (UserId) to the Player.
+function CombatService.fighters(except: Player): ({ Combat.Fighter }, { [number]: Player })
+	local list: { Combat.Fighter } = {}
+	local byId: { [number]: Player } = {}
+	for _, other in Players:GetPlayers() do
+		if other == except then
+			continue
+		end
+		local humanoid, root = living(other)
+		if humanoid ~= nil and root ~= nil then
+			table.insert(list, fighterOf(other.UserId, root, humanoid.Health))
+			byId[other.UserId] = other
+		end
+	end
+	local parts = postParts()
+	for i = 1, #World.trainingPosts do
+		local id = World.POST_ID_BASE - i
+		local part = parts[id]
+		if part ~= nil then
+			local p = part.Position
+			table.insert(list, {
+				id = id,
+				position = { x = p.X, y = p.Y, z = p.Z },
+				look = { x = 0, y = 0, z = 1 },
+			})
+		end
+	end
+	return list, byId
+end
+
+-- Path XP for hitting a training post: at most once per POST_XP_GAP per post per attacker.
+-- Posts have no protections. Callers pass the Path to train; nothing is paid without one.
+function CombatService.hitPost(attacker: Player, postId: number, path: string)
+	if attacker.Parent ~= Players or World.postIndex(postId) == nil then
+		return
+	end
+	flashPost(postId)
+	local now = os.clock()
+	local hits = postHits[attacker]
+	if hits == nil then
+		hits = {}
+		postHits[attacker] = hits
+	end
+	local last = hits[postId]
+	-- Written so a NaN time pays nothing.
+	if last ~= nil and not (now - last >= POST_XP_GAP) then
+		return
+	end
+	hits[postId] = now
+	local grant = grantXp
+	if grant ~= nil then
+		grant(attacker, path, POST_XP)
+	end
+end
+
+-- The one way a player takes damage: the Strike, abilities, burns, zones and reflects.
+-- True only when the hit landed (it passed the protections and the victim was not immune);
+-- callers apply statuses, pulls and knockbacks only then.
+-- `reflected`: damage sent back by a reflect, so no protections, Mark or empower.
+-- `tick`: burn or zone damage, so refusals are not notified and no empower is used.
+function CombatService.damage(
+	attacker: Player,
+	victim: Player,
+	amount: number,
+	opts: DamageOpts?
+): boolean
+	local reflected = opts ~= nil and opts.reflected == true
+	local tick = opts ~= nil and opts.tick == true
+	if attacker == victim or attacker.Parent ~= Players or victim.Parent ~= Players then
+		return false
+	end
+	local victimHumanoid = living(victim)
+	if victimHumanoid == nil then
+		return false
+	end
+	local now = os.clock()
+
+	-- No yielding call from here to TakeDamage: statuses cannot go stale.
+	if not reflected then
+		local attackerStatus = ProtectionService.status(attacker, now)
+		if attackerStatus == nil then
+			-- A living attacker without loaded data is told; one without a living character
+			-- (a burn or zone outliving its owner) cannot pass the protections either.
+			if not tick and DataService.get(attacker) == nil then
+				LedgerService.notify(attacker, "DATA_NOT_LOADED")
+			end
+			return false
+		end
+		local victimStatus = ProtectionService.status(victim, now)
+		if victimStatus == nil then
+			-- Victim's data is not loaded yet: treat them as shielded.
+			if not tick then
+				LedgerService.notify(attacker, "TARGET_SHIELDED")
+			end
+			return false
+		end
+		local ok, code = Protection.canDamage(attackerStatus, victimStatus, now)
+		if not ok then
+			if not tick then
+				LedgerService.notify(attacker, code or "BAD_REQUEST")
+			end
+			return false
+		end
+
+		ProtectionService.endRespawnShield(attacker)
+		local victimMarked = Protection.isMarked(victimStatus, now)
+		if Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now) then
+			ProtectionService.mark(attacker, now)
+		end
+	end
+
+	local total = amount
+	if not reflected and not tick then
+		local bonus = 0
+		StatusService.update(attacker, function(status, at)
+			local out, taken = Effects.takeEmpower(status, at)
+			bonus = taken
+			return out
+		end)
+		total += bonus
+	end
+
+	local immune, health, reflectBack = false, 0, 0
+	StatusService.update(victim, function(status, at)
+		immune = Effects.isImmune(status, at)
+		local out, toHealth, toReflect = Effects.resolveDamage(status, total, at)
+		health, reflectBack = toHealth, toReflect
+		return out
+	end)
+	if immune and not (health > 0) then
+		return false
+	end
+
+	-- Record the hit before the damage: with immediate signal behaviour, Died can fire
+	-- inside TakeDamage, and the kill must already be credited by then.
+	hitLog = Combat.recordHit(hitLog, victim.UserId, attacker.UserId, now)
+	if health > 0 then
+		victimHumanoid:TakeDamage(health)
+	end
+	hitFx:FireAllClients(victim.UserId)
+
+	if reflectBack > 0 and not reflected then
+		CombatService.damage(victim, attacker, reflectBack, { reflected = true })
+	end
+	return true
+end
+
 -- The client only says "I swung". Target, reach, damage and timing are all decided here.
 local function handleStrike(player: Player)
 	if player.Parent ~= Players then
@@ -1651,57 +3887,28 @@ local function handleStrike(player: Player)
 	end
 	lastStrike[player] = now
 
-	local others: { Combat.Fighter } = {}
-	local byId: { [number]: { player: Player, humanoid: Humanoid } } = {}
-	for _, other in Players:GetPlayers() do
-		if other == player then
-			continue
-		end
-		local humanoid, root = living(other)
-		if humanoid ~= nil and root ~= nil then
-			table.insert(others, fighterOf(other.UserId, root))
-			byId[other.UserId] = { player = other, humanoid = humanoid }
-		end
-	end
-
-	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others)
+	local others, byId = CombatService.fighters(player)
+	local taunter = Effects.tauntedBy(StatusService.get(player), now)
+	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others, nil, taunter)
 	if targetId == nil then
 		return
 	end
-	local target = byId[targetId]
-	if target == nil then
-		return
-	end
-	local victim = target.player
 
-	-- No yielding call from here to TakeDamage: statuses cannot go stale.
-	local attackerStatus = ProtectionService.status(player, now)
-	if attackerStatus == nil then
-		LedgerService.notify(player, "DATA_NOT_LOADED")
-		return
-	end
-	local victimStatus = ProtectionService.status(victim, now)
-	if victimStatus == nil then
-		-- Victim's data is not loaded yet: treat them as shielded.
-		LedgerService.notify(player, "TARGET_SHIELDED")
-		return
-	end
-	local ok, code = Protection.canDamage(attackerStatus, victimStatus, now)
-	if not ok then
-		LedgerService.notify(player, code or "BAD_REQUEST")
+	if CombatService.isPost(targetId) then
+		-- A post trains the Calling; without a Calling the swing does nothing.
+		local paths = getPaths
+		local progress = if paths ~= nil then paths(player) else nil
+		if progress ~= nil and progress.calling ~= "" then
+			CombatService.hitPost(player, targetId, progress.calling)
+		end
 		return
 	end
 
-	ProtectionService.endRespawnShield(player)
-	local victimMarked = Protection.isMarked(victimStatus, now)
-	if Protection.isAggressor(hitLog, player.UserId, victim.UserId, victimMarked, now) then
-		ProtectionService.mark(player, now)
+	local victim = byId[targetId]
+	if victim == nil then
+		return
 	end
-	-- Record the hit before the damage: with immediate signal behaviour, Died can fire
-	-- inside TakeDamage, and the kill must already be credited by then.
-	hitLog = Combat.recordHit(hitLog, victim.UserId, player.UserId, now)
-	target.humanoid:TakeDamage(Combat.STRIKE_DAMAGE)
-	hitFx:FireAllClients(victim.UserId)
+	CombatService.damage(player, victim, Combat.STRIKE_DAMAGE)
 end
 
 local function onCharacterAdded(player: Player, character: Model)
@@ -1731,7 +3938,13 @@ function CombatService.onDefeat(callback: (killer: Player, victim: Player) -> ()
 	table.insert(defeatCallbacks, callback)
 end
 
-function CombatService.start()
+-- `paths` and `grant` are PathService.get and PathService.grant (see getPaths above).
+function CombatService.start(
+	paths: (Player) -> Types.PathProgress?,
+	grant: (Player, string, number) -> ()
+)
+	getPaths = paths
+	grantXp = grant
 	hitFx = LedgerService.makeRemote(Net.HitFx)
 	local strike = LedgerService.makeRemote(Net.Strike)
 	strike.OnServerEvent:Connect(handleStrike)
@@ -1747,6 +3960,7 @@ function CombatService.start()
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		lastStrike[player] = nil
+		postHits[player] = nil
 	end)
 end
 
@@ -1754,7 +3968,7 @@ return CombatService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[--!strict
@@ -1762,6 +3976,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Ledger = require(ReplicatedStorage.Shared.Rules.Ledger)
+local PathProgress = require(ReplicatedStorage.Shared.Rules.PathProgress)
 local Types = require(ReplicatedStorage.Shared.Types)
 local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
 local ProfileStore = require(script.Parent.Vendor.ProfileStore)
@@ -1776,6 +3991,7 @@ local TEMPLATE = {
 	coin = 0,
 	vault = {},
 	shieldEnded = false,
+	paths = PathProgress.new(),
 }
 
 -- Longest a leaving player's profile stays open for holds.
@@ -1832,6 +4048,7 @@ local function loadProfile(player: Player)
 	profile:Reconcile()
 	profile.Data.ledger = Ledger.sanitize(profile.Data.ledger)
 	profile.Data.vault = Vault.sanitize(profile.Data.vault, profile.Data.ledger)
+	profile.Data.paths = PathProgress.sanitize(profile.Data.paths)
 	if type(profile.Data.shieldEnded) ~= "boolean" then
 		profile.Data.shieldEnded = false
 	end
@@ -1946,7 +4163,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">LedgerService</string>
           <string name="Source"><![CDATA[--!strict
@@ -2177,17 +4394,20 @@ return LedgerService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="28">
+      <Item class="Script" referent="38">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
           <string name="Source"><![CDATA[--!strict
+local AbilityService = require(script.Parent.AbilityService)
 local ClaimService = require(script.Parent.ClaimService)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
+local PathService = require(script.Parent.PathService)
 local ProtectionService = require(script.Parent.ProtectionService)
 local SourceService = require(script.Parent.SourceService)
+local StatusService = require(script.Parent.StatusService)
 local VaultService = require(script.Parent.VaultService)
 local WorldBuilder = require(script.Parent.WorldBuilder)
 
@@ -2204,8 +4424,17 @@ runStep("LedgerService.start", LedgerService.start)
 runStep("SourceService.start", SourceService.start)
 runStep("VaultService.start", VaultService.start)
 runStep("ProtectionService.start", ProtectionService.start)
-runStep("CombatService.start", CombatService.start)
+-- StatusService never requires CombatService, and CombatService never requires PathService
+-- (PathService -> ClaimService -> CombatService): the functions are passed in here instead.
+runStep("StatusService.start", function()
+	StatusService.start(CombatService.damage, CombatService.hitPost)
+end)
+runStep("CombatService.start", function()
+	CombatService.start(PathService.get, PathService.grant)
+end)
+runStep("AbilityService.start", AbilityService.start)
 runStep("ClaimService.start", ClaimService.start)
+runStep("PathService.start", PathService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 
@@ -2213,7 +4442,220 @@ print("[IsleOfAvarice] server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="39">
+        <Properties>
+          <string name="Name">PathService</string>
+          <string name="Source"><![CDATA[--!strict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Abilities = require(ReplicatedStorage.Shared.Catalog.Abilities)
+local Loadout = require(ReplicatedStorage.Shared.Rules.Loadout)
+local Net = require(ReplicatedStorage.Shared.Net)
+local PathProgress = require(ReplicatedStorage.Shared.Rules.PathProgress)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Types = require(ReplicatedStorage.Shared.Types)
+local ClaimService = require(script.Parent.ClaimService)
+local DataService = require(script.Parent.DataService)
+local LedgerService = require(script.Parent.LedgerService)
+
+type PathProgress = Types.PathProgress
+
+local BUCKET_CAPACITY = 10
+local BUCKET_REFILL_PER_SECOND = 5
+local DEFEAT_XP = 150
+local SECONDS_PER_DAY = 86400
+
+local PathService = {}
+
+local buckets: { [Player]: RateLimiter.Bucket } = {}
+local changedCallbacks: { (player: Player, progress: PathProgress) -> () } = {}
+local pathSync: RemoteEvent
+
+-- True if the player has a token left in their rate-limit bucket (takes one).
+local function allowed(player: Player): boolean
+	local now = os.clock()
+	local bucket = buckets[player]
+	if bucket == nil then
+		bucket = RateLimiter.new(BUCKET_CAPACITY, now)
+		buckets[player] = bucket
+	end
+	return RateLimiter.allow(bucket, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_SECOND)
+end
+
+-- The server reads the position itself. No character counts as outside the safe zone.
+local function playerInSafeZone(player: Player): boolean
+	local character = player.Character
+	local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+	if root == nil or not root:IsA("BasePart") then
+		return false
+	end
+	local p = root.Position
+	return Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z })
+end
+
+local function sync(player: Player, data: Types.PlayerData)
+	if player.Parent ~= Players then
+		return
+	end
+	pathSync:FireClient(player, data.paths, data.coin, os.time())
+end
+
+-- The player's saved Path progress, or nil until loaded and after they left.
+function PathService.get(player: Player): PathProgress?
+	local data = DataService.get(player)
+	if data == nil then
+		return nil
+	end
+	return data.paths
+end
+
+function PathService.onChanged(callback: (player: Player, progress: PathProgress) -> ())
+	table.insert(changedCallbacks, callback)
+end
+
+local function fireChanged(player: Player, progress: PathProgress)
+	for _, callback in changedCallbacks do
+		local ok, err = pcall(callback, player, progress)
+		if not ok then
+			warn(`[IsleOfAvarice] onChanged callback failed: {err}`)
+		end
+	end
+end
+
+local function abilityName(id: string): string
+	local ability = Abilities.byId[id]
+	return if ability ~= nil then ability.name else id
+end
+
+-- Adds Path XP at the learning rate for the player's Calling. Does nothing for a player whose
+-- data is not loaded or who has left. No yielding call between the read and the write.
+function PathService.grant(player: Player, path: string, base: number)
+	if player.Parent ~= Players then
+		return
+	end
+	local data = DataService.get(player)
+	if data == nil then
+		return
+	end
+	local newProgress, gained, levelsGained, unlocked = PathProgress.addXp(data.paths, path, base)
+	if not (gained > 0) then
+		return
+	end
+	newProgress = Loadout.autoFill(newProgress, unlocked)
+	data.paths = newProgress
+
+	if levelsGained > 0 then
+		LedgerService.notify(player, "LEVEL_UP", {
+			path = path,
+			level = tostring(PathProgress.level(newProgress, path)),
+		})
+	end
+	for _, id in unlocked do
+		LedgerService.notify(player, "ABILITY_UNLOCKED", { name = abilityName(id) })
+	end
+	sync(player, data)
+	fireChanged(player, newProgress)
+end
+
+local function handlePick(player: Player, pathId: any)
+	if player.Parent ~= Players or not allowed(player) then
+		return
+	end
+	local data = DataService.get(player)
+	if data == nil then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
+	local newProgress, code, unlocked = PathProgress.chooseCalling(data.paths, pathId)
+	if newProgress == nil then
+		LedgerService.notify(player, code)
+		return
+	end
+	data.paths = Loadout.autoFill(newProgress, unlocked)
+	LedgerService.notify(player, "CALLING_CHOSEN", { path = newProgress.calling })
+	sync(player, data)
+	fireChanged(player, data.paths)
+end
+
+local function handleChange(player: Player, pathId: any)
+	if player.Parent ~= Players or not allowed(player) then
+		return
+	end
+	local data = DataService.get(player)
+	if data == nil then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
+	local now = os.time()
+	local newProgress, code, cost = PathProgress.changeCalling(data.paths, pathId, data.coin, now)
+	if newProgress == nil then
+		if code == "CALLING_COOLDOWN" then
+			local left = data.paths.callingChangedAt + PathProgress.CHANGE_COOLDOWN - now
+			LedgerService.notify(
+				player,
+				code,
+				{ days = tostring(math.max(1, math.ceil(left / SECONDS_PER_DAY))) }
+			)
+		elseif code == "NOT_ENOUGH_COIN" then
+			LedgerService.notify(player, code, { cost = tostring(PathProgress.CHANGE_COST) })
+		else
+			LedgerService.notify(player, code)
+		end
+		return
+	end
+	data.coin = data.coin - cost
+	data.paths = newProgress
+	LedgerService.notify(player, "CALLING_CHANGED", { path = newProgress.calling })
+	sync(player, data)
+	fireChanged(player, newProgress)
+end
+
+local function handleLoadout(player: Player, request: any)
+	if player.Parent ~= Players or not allowed(player) then
+		return
+	end
+	local data = DataService.get(player)
+	local newProgress, code =
+		Loadout.apply(if data ~= nil then data.paths else nil, request, playerInSafeZone(player))
+	if newProgress == nil or data == nil then
+		LedgerService.notify(player, code)
+		return
+	end
+	data.paths = newProgress
+	LedgerService.notify(player, code)
+	sync(player, data)
+	fireChanged(player, newProgress)
+end
+
+function PathService.start()
+	pathSync = LedgerService.makeRemote(Net.PathSync)
+	LedgerService.makeRemote(Net.PickCalling).OnServerEvent:Connect(handlePick)
+	LedgerService.makeRemote(Net.ChangeCalling).OnServerEvent:Connect(handleChange)
+	LedgerService.makeRemote(Net.LoadoutAction).OnServerEvent:Connect(handleLoadout)
+
+	DataService.onLoaded(function(player, data)
+		sync(player, data)
+	end)
+
+	ClaimService.onClaimStarted(function(killer)
+		local progress = PathService.get(killer)
+		if progress ~= nil and progress.calling ~= "" then
+			PathService.grant(killer, progress.calling, DEFEAT_XP)
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		buckets[player] = nil
+	end)
+end
+
+return PathService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">ProtectionService</string>
           <string name="Source"><![CDATA[--!strict
@@ -2491,7 +4933,7 @@ return ProtectionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">SourceService</string>
           <string name="Source"><![CDATA[--!strict
@@ -2625,7 +5067,352 @@ return SourceService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="42">
+        <Properties>
+          <string name="Name">StatusService</string>
+          <string name="Source"><![CDATA[--!strict
+-- Owns every player's effect status (slow, root, burn, shield, ...) and the ground zones.
+-- Never requires CombatService: Main passes its damage and hitPost functions into start(),
+-- so every burn and zone tick goes through the one damage pipeline.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local StarterPlayer = game:GetService("StarterPlayer")
+
+local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
+local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
+local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
+local Types = require(ReplicatedStorage.Shared.Types)
+local World = require(ReplicatedStorage.Shared.Catalog.World)
+
+type Status = Effects.Status
+-- CombatService.damage: true when the hit landed.
+type DamageFn = (
+	attacker: Player,
+	victim: Player,
+	amount: number,
+	opts: { reflected: boolean?, tick: boolean? }?
+) -> boolean
+type HitPostFn = (attacker: Player, postId: number, path: string) -> ()
+
+type ZoneEntry = {
+	owner: Player,
+	x: number,
+	z: number,
+	radius: number,
+	dps: number,
+	slow: number?,
+	path: string,
+	expiresAt: number,
+	part: BasePart?,
+}
+
+local BASE_WALK_SPEED = 16
+local TICK_SECONDS = 1
+local ZONE_SLOW_SECONDS = 1.2
+local ZONE_THICKNESS = 0.3
+local ZONE_TRANSPARENCY = 0.6
+local ZONE_DEFAULT_COLOR = Color3.fromRGB(200, 200, 200)
+
+local StatusService = {}
+
+-- Time from os.clock() everywhere.
+local statuses: { [Player]: Status } = {}
+local zones: { ZoneEntry } = {}
+-- The Humanoid whose jump we zeroed for a root, so it can be restored afterwards.
+local jumpBlocked: { [Player]: Humanoid } = {}
+local damageFn: DamageFn? = nil
+local hitPostFn: HitPostFn? = nil
+local nextTick = 0
+
+-- Read-only defaults for a player with no entry. Never written to.
+local FRESH: Status = Effects.new()
+
+-- The Humanoid and HumanoidRootPart of a living character, or nil.
+local function living(player: Player): (Humanoid?, BasePart?)
+	local character = player.Character
+	if character == nil then
+		return nil, nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil or humanoid.Health <= 0 then
+		return nil, nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
+		return nil, nil
+	end
+	return humanoid, root
+end
+
+local function effectsFolder(): Folder
+	local existing = workspace:FindFirstChild("Effects")
+	if existing ~= nil and existing:IsA("Folder") then
+		return existing
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "Effects"
+	folder.Parent = workspace
+	return folder
+end
+
+local function pathColor(path: string): Color3
+	local info = Paths.info[path :: Types.PathId]
+	if info == nil then
+		return ZONE_DEFAULT_COLOR
+	end
+	return Color3.fromRGB(info.color.r, info.color.g, info.color.b)
+end
+
+-- A translucent neon disc of the zone's radius lying on the ground.
+local function makeZonePart(entry: ZoneEntry): BasePart
+	local part = Instance.new("Part")
+	part.Name = "Zone"
+	part.Shape = Enum.PartType.Cylinder
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = pathColor(entry.path)
+	part.Transparency = ZONE_TRANSPARENCY
+	-- A cylinder's axis is its X axis: stand it on end, then lay it flat.
+	part.Size = Vector3.new(ZONE_THICKNESS, entry.radius * 2, entry.radius * 2)
+	part.CFrame = CFrame.new(entry.x, World.groundY + 0.25, entry.z)
+		* CFrame.Angles(0, 0, math.pi / 2)
+	part.Parent = effectsFolder()
+	return part
+end
+
+local function removeZone(index: number)
+	local entry = table.remove(zones, index)
+	if entry ~= nil and entry.part ~= nil then
+		entry.part:Destroy()
+	end
+end
+
+local function removeExpiredZones(now: number)
+	for i = #zones, 1, -1 do
+		local entry = zones[i]
+		-- Written so a NaN time removes the zone rather than keeping it forever.
+		if not (now < entry.expiresAt) or entry.owner.Parent ~= Players then
+			removeZone(i)
+		end
+	end
+end
+
+local function horizontalDistance(ax: number, az: number, bx: number, bz: number): number
+	local dx = ax - bx
+	local dz = az - bz
+	return math.sqrt(dx * dx + dz * dz)
+end
+
+-- Runs one tick step; a failure is reported and does not stop the other steps.
+local function guarded(name: string, step: () -> ())
+	local ok, err = pcall(step)
+	if not ok then
+		warn(`[IsleOfAvarice] StatusService {name} failed: {err}`)
+	end
+end
+
+local function tickBurns(now: number, damage: DamageFn)
+	-- Snapshot first: damage writes statuses while we would otherwise be iterating them.
+	local burns: { { victim: Player, dps: number, burnBy: number } } = {}
+	for victim, status in statuses do
+		local dps, burnBy = Effects.burnTick(status, now)
+		if dps > 0 and burnBy ~= 0 then
+			table.insert(burns, { victim = victim, dps = dps, burnBy = burnBy })
+		end
+	end
+	for _, burn in burns do
+		local found = Players:GetPlayerByUserId(burn.burnBy)
+		if found == nil then
+			continue
+		end
+		local burner: Player = found
+		guarded("burn tick", function()
+			damage(burner, burn.victim, burn.dps, { tick = true })
+		end)
+	end
+end
+
+local function tickZone(entry: ZoneEntry, damage: DamageFn, hitPost: HitPostFn?)
+	local owner = entry.owner
+	if owner.Parent ~= Players then
+		return
+	end
+	for _, victim in Players:GetPlayers() do
+		if victim == owner then
+			continue
+		end
+		local _, root = living(victim)
+		if root == nil then
+			continue
+		end
+		local p = root.Position
+		if not (horizontalDistance(p.X, p.Z, entry.x, entry.z) <= entry.radius) then
+			continue
+		end
+		-- The slow is only refreshed on a victim the damage actually reached.
+		local landed = damage(owner, victim, entry.dps, { tick = true })
+		local slow = entry.slow
+		if landed and slow ~= nil then
+			local factor: number = slow
+			StatusService.update(victim, function(status, at)
+				return Effects.applySlow(status, factor, ZONE_SLOW_SECONDS, at)
+			end)
+		end
+	end
+	if hitPost ~= nil then
+		for i, post in World.trainingPosts do
+			if horizontalDistance(post.x, post.z, entry.x, entry.z) <= entry.radius then
+				hitPost(owner, World.POST_ID_BASE - i, entry.path)
+			end
+		end
+	end
+end
+
+local function tick(now: number)
+	local configured = damageFn
+	if configured == nil then
+		return
+	end
+	local damage: DamageFn = configured
+	local hitPost = hitPostFn
+	tickBurns(now, damage)
+	-- A copy: a zone's owner leaving mid-tick must not shift the list under us.
+	for _, entry in table.clone(zones) do
+		if now < entry.expiresAt then
+			guarded("zone tick", function()
+				tickZone(entry, damage, hitPost)
+			end)
+		end
+	end
+end
+
+-- Walk speed follows slow and root; jumping is off while rooted.
+local function applyMovement(now: number)
+	for _, player in Players:GetPlayers() do
+		local humanoid = living(player)
+		if humanoid == nil then
+			continue
+		end
+		local status = statuses[player] or FRESH
+		local speed = BASE_WALK_SPEED * Effects.speedFactor(status, now)
+		if humanoid.WalkSpeed ~= speed then
+			humanoid.WalkSpeed = speed
+		end
+		local blocked = jumpBlocked[player]
+		if Effects.isRooted(status, now) then
+			if blocked ~= humanoid then
+				humanoid.JumpPower = 0
+				humanoid.JumpHeight = 0
+				jumpBlocked[player] = humanoid
+			end
+		elseif blocked ~= nil then
+			if blocked == humanoid then
+				humanoid.JumpPower = StarterPlayer.CharacterJumpPower
+				humanoid.JumpHeight = StarterPlayer.CharacterJumpHeight
+			end
+			jumpBlocked[player] = nil
+		end
+	end
+end
+
+local function onHeartbeat()
+	local now = os.clock()
+	applyMovement(now)
+	removeExpiredZones(now)
+	if now >= nextTick then
+		nextTick = now + TICK_SECONDS
+		tick(now)
+	end
+end
+
+local function watchPlayer(player: Player)
+	statuses[player] = Effects.new()
+	player.CharacterAdded:Connect(function()
+		statuses[player] = Effects.new()
+		jumpBlocked[player] = nil
+	end)
+end
+
+local function dropPlayer(player: Player)
+	statuses[player] = nil
+	jumpBlocked[player] = nil
+	for i = #zones, 1, -1 do
+		if zones[i].owner == player then
+			removeZone(i)
+		end
+	end
+end
+
+-- The player's status; a fresh one when they have none. Treat it as read-only.
+function StatusService.get(player: Player): Status
+	return statuses[player] or Effects.new()
+end
+
+-- Replaces the player's status with fn(status, now). No yielding inside fn. A player who
+-- has left (no entry) is not given a new one.
+function StatusService.update(player: Player, fn: (Status, number) -> Status)
+	local current = statuses[player]
+	local nextStatus = fn(current or Effects.new(), os.clock())
+	if current ~= nil then
+		statuses[player] = nextStatus
+	end
+end
+
+-- A ground zone owned by `owner`: once a second it damages every other living player
+-- inside and pays `path` XP for every training post inside, until it expires.
+function StatusService.addZone(owner: Player, zone: Casting.Zone, path: string)
+	if owner.Parent ~= Players then
+		return
+	end
+	local radius, duration, dps = zone.radius, zone.duration, zone.dps
+	if
+		not (radius > 0 and radius < math.huge)
+		or not (duration > 0 and duration < math.huge)
+		or not (dps >= 0 and dps < math.huge)
+		or not (math.abs(zone.center.x) < math.huge and math.abs(zone.center.z) < math.huge)
+	then
+		return
+	end
+	local entry: ZoneEntry = {
+		owner = owner,
+		x = zone.center.x,
+		z = zone.center.z,
+		radius = radius,
+		dps = dps,
+		slow = zone.slow,
+		path = path,
+		expiresAt = os.clock() + duration,
+		part = nil,
+	}
+	entry.part = makeZonePart(entry)
+	table.insert(zones, entry)
+end
+
+function StatusService.start(damage: DamageFn, hitPost: HitPostFn)
+	damageFn = damage
+	hitPostFn = hitPost
+	effectsFolder()
+
+	Players.PlayerAdded:Connect(watchPlayer)
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
+	end
+	Players.PlayerRemoving:Connect(dropPlayer)
+
+	nextTick = os.clock() + TICK_SECONDS
+	RunService.Heartbeat:Connect(onHeartbeat)
+end
+
+return StatusService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">VaultService</string>
           <string name="Source"><![CDATA[--!strict
@@ -2708,11 +5495,11 @@ return VaultService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="32">
+      <Item class="Folder" referent="44">
         <Properties>
           <string name="Name">Vendor</string>
         </Properties>
-        <Item class="ModuleScript" referent="33">
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">ProfileStore</string>
             <string name="Source"><![CDATA[--[[
@@ -4833,7 +7620,7 @@ return ProfileStore
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">WorldBuilder</string>
           <string name="Source"><![CDATA[--!strict
@@ -4842,6 +7629,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
 local Tiers = require(ReplicatedStorage.Shared.Catalog.Tiers)
+local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 
 local WorldBuilder = {}
@@ -4850,6 +7638,7 @@ local GRASS = Color3.fromRGB(86, 140, 60)
 local SEA = Color3.fromRGB(40, 100, 170)
 local STONE = Color3.fromRGB(150, 146, 140)
 local ROCK = Color3.fromRGB(110, 110, 112)
+local WOOD = Color3.fromRGB(139, 100, 60)
 local WALL = Color3.fromRGB(170, 150, 120)
 
 local function makePart(
@@ -5001,6 +7790,36 @@ local function buildCache(island: Folder, index: number, cache: any)
 	)
 end
 
+local function buildPost(island: Folder, index: number, position: Types.Vec3)
+	-- 6 tall, standing on the ground.
+	local part = makePart(
+		island,
+		"Post" .. index,
+		Vector3.new(2, 6, 2),
+		Vector3.new(position.x, World.groundY + 3, position.z),
+		WOOD,
+		Enum.Material.Wood
+	)
+	part:SetAttribute("PostId", World.POST_ID_BASE - index)
+	CollectionService:AddTag(part, "TrainingPost")
+
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(140, 30)
+	gui.StudsOffset = Vector3.new(0, 4.5, 0)
+	gui.MaxDistance = 60
+	gui.AlwaysOnTop = true
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = "Training post"
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.5
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Parent = gui
+	gui.Parent = part
+end
+
 function WorldBuilder.build()
 	local island = Instance.new("Folder")
 	island.Name = "Island"
@@ -5008,6 +7827,9 @@ function WorldBuilder.build()
 	buildTallyport(island)
 	for i, cache in World.caches do
 		buildCache(island, i, cache)
+	end
+	for i, position in World.trainingPosts do
+		buildPost(island, i, position)
 	end
 	island.Parent = workspace
 end
@@ -5018,19 +7840,218 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="35">
+  <Item class="StarterPlayer" referent="47">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="36">
+    <Item class="StarterPlayerScripts" referent="48">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="37">
+      <Item class="Folder" referent="49">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="38">
+        <Item class="ModuleScript" referent="50">
+          <Properties>
+            <string name="Name">AbilityBar</string>
+            <string name="Source"><![CDATA[--!strict
+-- Bottom-centre ability bar: four slots (keys 1-4), tap or click to cast.
+-- The server decides whether a cast works; the cooldown overlay here is display only.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local PathView = require(Shared:WaitForChild("Rules"):WaitForChild("PathView"))
+
+local AbilityBar = {}
+
+local SLOT_COUNT = 4
+local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
+local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
+local DIM_COLOR = Color3.fromRGB(45, 42, 52)
+local OVERLAY_COLOR = Color3.fromRGB(10, 8, 14)
+
+type Slot = {
+	button: TextButton,
+	overlay: Frame,
+	timeLabel: TextLabel,
+	nameLabel: TextLabel,
+	endsAt: number,
+	total: number,
+}
+
+local slots: { [number]: Slot } = {}
+local ticking: RBXScriptConnection? = nil
+
+local function addCorner(parent: Instance, radius: number)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = parent
+end
+
+local function limitText(parent: Instance, minSize: number, maxSize: number)
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MinTextSize = minSize
+	constraint.MaxTextSize = maxSize
+	constraint.Parent = parent
+end
+
+local function tick()
+	local now = os.clock()
+	local anyActive = false
+	for _, slot in slots do
+		local remaining = slot.endsAt - now
+		if remaining > 0 and slot.total > 0 then
+			anyActive = true
+			slot.overlay.Visible = true
+			slot.overlay.Size = UDim2.fromScale(1, math.min(1, remaining / slot.total))
+			slot.timeLabel.Text = tostring(math.ceil(remaining))
+		elseif slot.overlay.Visible then
+			slot.overlay.Visible = false
+			slot.timeLabel.Text = ""
+		end
+	end
+	if not anyActive and ticking ~= nil then
+		ticking:Disconnect()
+		ticking = nil
+	end
+end
+
+local function buildSlot(parent: Frame, index: number, onCast: (slot: number) -> ()): Slot
+	local button = Instance.new("TextButton")
+	button.Name = "Slot" .. index
+	button.LayoutOrder = index
+	button.Size = UDim2.fromScale(1, 1)
+	button.SizeConstraint = Enum.SizeConstraint.RelativeYY
+	button.BackgroundColor3 = DIM_COLOR
+	button.Text = ""
+	addCorner(button, 8)
+
+	local key = Instance.new("TextLabel")
+	key.Name = "Key"
+	key.BackgroundTransparency = 1
+	key.Position = UDim2.fromScale(0.06, 0.04)
+	key.Size = UDim2.fromScale(0.3, 0.3)
+	key.TextColor3 = TEXT_LIGHT
+	key.TextScaled = true
+	key.TextXAlignment = Enum.TextXAlignment.Left
+	key.Font = Enum.Font.GothamBold
+	key.Text = tostring(index)
+	limitText(key, 8, 18)
+	key.Parent = button
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Name = "AbilityName"
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Position = UDim2.fromScale(0.05, 0.32)
+	nameLabel.Size = UDim2.fromScale(0.9, 0.62)
+	nameLabel.TextColor3 = TEXT_LIGHT
+	nameLabel.TextScaled = true
+	nameLabel.TextWrapped = true
+	nameLabel.Font = Enum.Font.GothamMedium
+	nameLabel.Text = "—"
+	nameLabel.TextTransparency = 0.6
+	limitText(nameLabel, 8, 16)
+	nameLabel.Parent = button
+
+	local overlay = Instance.new("Frame")
+	overlay.Name = "Cooldown"
+	overlay.AnchorPoint = Vector2.new(0, 1)
+	overlay.Position = UDim2.fromScale(0, 1)
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.BackgroundColor3 = OVERLAY_COLOR
+	overlay.BackgroundTransparency = 0.35
+	overlay.BorderSizePixel = 0
+	overlay.Visible = false
+	addCorner(overlay, 8)
+	overlay.Parent = button
+
+	local timeLabel = Instance.new("TextLabel")
+	timeLabel.Name = "Seconds"
+	timeLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	timeLabel.Position = UDim2.fromScale(0.5, 0.5)
+	timeLabel.Size = UDim2.fromScale(0.6, 0.4)
+	timeLabel.BackgroundTransparency = 1
+	timeLabel.TextColor3 = TEXT_LIGHT
+	timeLabel.TextScaled = true
+	timeLabel.Font = Enum.Font.GothamBold
+	timeLabel.Text = ""
+	limitText(timeLabel, 10, 24)
+	timeLabel.ZIndex = 3
+	timeLabel.Parent = button
+
+	button.Activated:Connect(function()
+		onCast(index)
+	end)
+	button.Parent = parent
+	return {
+		button = button,
+		overlay = overlay,
+		timeLabel = timeLabel,
+		nameLabel = nameLabel,
+		endsAt = 0,
+		total = 0,
+	}
+end
+
+function AbilityBar.mount(playerGui: PlayerGui, onCast: (slot: number) -> ())
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "AbilityGui"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 11
+
+	local bar = Instance.new("Frame")
+	bar.Name = "Bar"
+	bar.AnchorPoint = Vector2.new(0.5, 1)
+	bar.Position = UDim2.fromScale(0.5, 0.97)
+	bar.Size = UDim2.fromScale(0.34, 0.1)
+	bar.BackgroundTransparency = 1
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, 6)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = bar
+
+	for index = 1, SLOT_COUNT do
+		slots[index] = buildSlot(bar, index, onCast)
+	end
+	bar.Parent = gui
+	gui.Parent = playerGui
+end
+
+function AbilityBar.render(views: { PathView.SlotView })
+	for _, view in views do
+		local slot = slots[view.slot]
+		if slot ~= nil then
+			local empty = view.name == ""
+			slot.nameLabel.Text = if empty then "—" else view.name
+			slot.button.BackgroundColor3 = if empty then DIM_COLOR else BUTTON_COLOR
+			slot.nameLabel.TextTransparency = if empty then 0.6 else 0
+		end
+	end
+end
+
+function AbilityBar.startCooldown(slotIndex: number, seconds: number)
+	local slot = slots[slotIndex]
+	if slot == nil or seconds <= 0 then
+		return
+	end
+	slot.total = seconds
+	slot.endsAt = os.clock() + seconds
+	tick()
+	if ticking == nil then
+		ticking = RunService.RenderStepped:Connect(tick)
+	end
+end
+
+return AbilityBar
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">ClaimUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -5320,7 +8341,7 @@ return ClaimUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="39">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">CombatController</string>
             <string name="Source"><![CDATA[--!strict
@@ -5335,7 +8356,11 @@ local FLASH_SECONDS = 0.15
 
 local CombatController = {}
 
-function CombatController.start(strike: () -> (), isBlocked: () -> boolean)
+function CombatController.start(
+	strike: () -> (),
+	cast: (slot: number) -> (),
+	isBlocked: () -> boolean
+)
 	local lastStrike = -math.huge
 	ContextActionService:BindAction("Strike", function(_name, state, _input)
 		if state == Enum.UserInputState.Begin and not isBlocked() then
@@ -5349,6 +8374,17 @@ function CombatController.start(strike: () -> (), isBlocked: () -> boolean)
 		return Enum.ContextActionResult.Pass
 	end, true, Enum.UserInputType.MouseButton1, Enum.KeyCode.F)
 	ContextActionService:SetTitle("Strike", "Strike")
+
+	-- Keys 1-4 cast ability slots; the bar itself is the touch control. The server decides.
+	local keys = { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four }
+	for slot, key in keys do
+		ContextActionService:BindAction("Cast" .. slot, function(_name, state, _input)
+			if state == Enum.UserInputState.Begin and not isBlocked() then
+				cast(slot)
+			end
+			return Enum.ContextActionResult.Pass
+		end, false, key)
+	end
 end
 
 -- A brief white flash on a character that was hit.
@@ -5370,7 +8406,7 @@ return CombatController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">LedgerUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -5710,7 +8746,7 @@ return LedgerUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="41">
+        <Item class="LocalScript" referent="54">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--!strict
@@ -5724,11 +8760,14 @@ local Rules = Shared:WaitForChild("Rules")
 local Net = require(Shared:WaitForChild("Net"))
 local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages"))
 local LedgerView = require(Rules:WaitForChild("LedgerView"))
+local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local StatusView = require(Rules:WaitForChild("StatusView"))
 local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
 local LedgerUI = require(script.Parent.LedgerUI)
+local AbilityBar = require(script.Parent.AbilityBar)
+local PathUI = require(script.Parent.PathUI)
 local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
 
@@ -5746,6 +8785,12 @@ local strikeRemote = remotes:WaitForChild(Net.Strike) :: RemoteEvent
 local hitFx = remotes:WaitForChild(Net.HitFx) :: RemoteEvent
 local claimUpdate = remotes:WaitForChild(Net.ClaimUpdate) :: RemoteEvent
 local claimPick = remotes:WaitForChild(Net.ClaimPick) :: RemoteEvent
+local pathSync = remotes:WaitForChild(Net.PathSync) :: RemoteEvent
+local pickCalling = remotes:WaitForChild(Net.PickCalling) :: RemoteEvent
+local changeCalling = remotes:WaitForChild(Net.ChangeCalling) :: RemoteEvent
+local loadoutAction = remotes:WaitForChild(Net.LoadoutAction) :: RemoteEvent
+local castAbility = remotes:WaitForChild(Net.CastAbility) :: RemoteEvent
+local abilityCooldown = remotes:WaitForChild(Net.AbilityCooldown) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -5762,10 +8807,26 @@ end)
 ClaimUI.mount(playerGui, function(slot)
 	claimPick:FireServer(slot)
 end)
+PathUI.mount(playerGui, {
+	pick = function(path)
+		pickCalling:FireServer(path)
+	end,
+	change = function(path)
+		changeCalling:FireServer(path)
+	end,
+	loadout = function(request)
+		loadoutAction:FireServer(request)
+	end,
+})
+AbilityBar.mount(playerGui, function(slot)
+	castAbility:FireServer(slot)
+end)
 CombatController.start(function()
 	strikeRemote:FireServer()
+end, function(slot)
+	castAbility:FireServer(slot)
 end, function()
-	return LedgerUI.isOpen() or ClaimUI.isOpen()
+	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen()
 end)
 
 ledgerSync.OnClientEvent:Connect(function(ledger, vault)
@@ -5786,6 +8847,36 @@ hitFx.OnClientEvent:Connect(function(victimUserId)
 	local character = if victim ~= nil then victim.Character else nil
 	if character ~= nil then
 		CombatController.flash(character)
+	end
+end)
+
+-- The last path sync and when it arrived (local clock); cooldown text advances from it.
+local lastPaths: any = nil
+local lastCoin = 0
+local lastServerNow = 0
+local pathsAt = 0
+local function renderPaths()
+	if lastPaths ~= nil then
+		local now = lastServerNow + (os.clock() - pathsAt)
+		local view = PathView.build(lastPaths, lastCoin, now)
+		PathUI.render(view)
+		AbilityBar.render(view.slots)
+	end
+end
+pathSync.OnClientEvent:Connect(function(progress, coin, serverNow)
+	lastPaths = progress
+	lastCoin = coin
+	lastServerNow = serverNow
+	pathsAt = os.clock()
+	renderPaths()
+end)
+abilityCooldown.OnClientEvent:Connect(function(slot, seconds)
+	AbilityBar.startCooldown(slot, seconds)
+end)
+task.spawn(function()
+	while true do
+		task.wait(60)
+		renderPaths()
 	end
 end)
 
@@ -5833,7 +8924,547 @@ ledgerRequest:FireServer()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="42">
+        <Item class="ModuleScript" referent="55">
+          <Properties>
+            <string name="Name">PathUI</string>
+            <string name="Source"><![CDATA[--!strict
+-- Calling picker and Paths panel. Renders a PathView and sends requests; the server decides.
+local ContextActionService = game:GetService("ContextActionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Paths = require(Shared:WaitForChild("Catalog"):WaitForChild("Paths"))
+local PathView = require(Shared:WaitForChild("Rules"):WaitForChild("PathView"))
+local Types = require(Shared:WaitForChild("Types"))
+
+type View = PathView.View
+type RowView = PathView.RowView
+
+export type Handlers = {
+	pick: (path: string) -> (),
+	change: (path: string) -> (),
+	loadout: (request: { [string]: any }) -> (),
+}
+
+local PathUI = {}
+
+local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
+local TEXT_DIM = Color3.fromRGB(130, 130, 135)
+local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
+local CARD_COLOR = Color3.fromRGB(46, 40, 56)
+local LOCKED_COLOR = Color3.fromRGB(55, 55, 60)
+local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
+local DARK_TEXT = Color3.fromRGB(20, 18, 24)
+local ROW_HEIGHT = 196
+local FALLBACK_COLOR = Color3.fromRGB(120, 120, 130)
+
+local noop = function(_request: any) end
+local handlers: Handlers = { pick = noop, change = noop, loadout = noop }
+
+local panel: Frame? = nil
+local picker: Frame? = nil
+local confirm: Frame? = nil
+local confirmQuestion: TextLabel? = nil
+local rowList: ScrollingFrame? = nil
+local pickerList: ScrollingFrame? = nil
+local slotStrip: Frame? = nil
+local callingLabel: TextLabel? = nil
+local lastView: View? = nil
+local pendingChange = ""
+local dismissedPicker = false
+
+local function pathColor(path: string): Color3
+	local info = Paths.info[path :: Types.PathId]
+	if info == nil then
+		return FALLBACK_COLOR
+	end
+	return Color3.fromRGB(info.color.r, info.color.g, info.color.b)
+end
+
+local function addCorner(parent: Instance, radius: number)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = parent
+end
+
+local function limitText(parent: Instance, minSize: number, maxSize: number)
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MinTextSize = minSize
+	constraint.MaxTextSize = maxSize
+	constraint.Parent = parent
+end
+
+local function makeLabel(name: string, size: UDim2, position: UDim2, maxText: number): TextLabel
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.Size = size
+	label.Position = position
+	label.BackgroundTransparency = 1
+	label.TextColor3 = TEXT_LIGHT
+	label.TextScaled = true
+	label.TextWrapped = true
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Font = Enum.Font.GothamMedium
+	label.Text = ""
+	limitText(label, 9, maxText)
+	return label
+end
+
+local function makeButton(name: string, text: string, size: UDim2): TextButton
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Size = size
+	button.BackgroundColor3 = BUTTON_COLOR
+	button.TextColor3 = TEXT_LIGHT
+	button.TextScaled = true
+	button.Font = Enum.Font.GothamBold
+	button.Text = text
+	button.AutoButtonColor = true
+	addCorner(button, 8)
+	limitText(button, 10, 20)
+	return button
+end
+
+local function makeScroller(name: string, size: UDim2, position: UDim2): ScrollingFrame
+	local scroller = Instance.new("ScrollingFrame")
+	scroller.Name = name
+	scroller.Size = size
+	scroller.Position = position
+	scroller.BackgroundTransparency = 1
+	scroller.BorderSizePixel = 0
+	scroller.ScrollBarThickness = 6
+	scroller.CanvasSize = UDim2.new()
+	scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	return scroller
+end
+
+local function clearRows(container: Instance)
+	for _, child in container:GetChildren() do
+		if not child:IsA("UIComponent") then
+			child:Destroy()
+		end
+	end
+end
+
+-- The first empty loadout slot, or 4 when all are full (the server decides what happens then).
+local function equipSlot(): number
+	local view = lastView
+	if view ~= nil then
+		for _, slot in view.slots do
+			if slot.abilityId == "" then
+				return slot.slot
+			end
+		end
+	end
+	return 4
+end
+
+local function askChange(row: RowView)
+	local dialog = confirm
+	local question = confirmQuestion
+	if dialog == nil or question == nil then
+		return
+	end
+	pendingChange = row.path
+	question.Text = "Change your Calling to "
+		.. row.name
+		.. "? Levels are kept; learning rates change."
+	dialog.Visible = true
+end
+
+local function makeAbility(row: RowView, index: number): Frame
+	local ability = row.abilities[index]
+	local frame = Instance.new("Frame")
+	frame.Name = "Ability" .. ability.id
+	frame.Position = UDim2.new(0.01 + (index - 1) * 0.33, 0, 0, 62)
+	frame.Size = UDim2.new(0.32, 0, 0, 126)
+	frame.BackgroundColor3 = if ability.unlocked then CARD_COLOR else LOCKED_COLOR
+	addCorner(frame, 8)
+
+	local name = makeLabel("Name", UDim2.new(0.94, 0, 0, 22), UDim2.new(0.03, 0, 0, 4), 18)
+	name.Font = Enum.Font.GothamBold
+	name.TextColor3 = if ability.unlocked then TEXT_LIGHT else TEXT_DIM
+	name.Text = ability.name
+	name.Parent = frame
+
+	local description =
+		makeLabel("Description", UDim2.new(0.94, 0, 0, 60), UDim2.new(0.03, 0, 0, 28), 15)
+	description.TextYAlignment = Enum.TextYAlignment.Top
+	description.TextColor3 = if ability.unlocked then TEXT_LIGHT else TEXT_DIM
+	description.Text = ability.description
+	description.Parent = frame
+
+	local bottomSize = UDim2.new(0.94, 0, 0, 28)
+	local bottomPosition = UDim2.new(0.03, 0, 1, -32)
+	if not ability.unlocked then
+		local locked = makeLabel("Locked", bottomSize, bottomPosition, 16)
+		locked.TextColor3 = TEXT_DIM
+		locked.Text = "Level " .. ability.unlockLevel
+		locked.Parent = frame
+	elseif ability.equippedSlot > 0 then
+		local equipped = makeLabel("Equipped", bottomSize, bottomPosition, 16)
+		equipped.Text = "Equipped (slot " .. ability.equippedSlot .. ")"
+		equipped.Parent = frame
+	else
+		local equip = makeButton("Equip" .. ability.id, "Equip", bottomSize)
+		equip.Position = bottomPosition
+		equip.Activated:Connect(function()
+			handlers.loadout({ slot = equipSlot(), abilityId = ability.id })
+		end)
+		equip.Parent = frame
+	end
+	return frame
+end
+
+local function makeRow(row: RowView, order: number, needsCalling: boolean): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = "Row" .. row.path
+	frame.LayoutOrder = order
+	frame.Size = UDim2.new(1, -8, 0, ROW_HEIGHT)
+	frame.BackgroundColor3 = PANEL_COLOR
+	addCorner(frame, 10)
+	local stroke = Instance.new("UIStroke")
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Color = pathColor(row.path)
+	stroke.Thickness = if row.isCalling then 3 else 1
+	stroke.Parent = frame
+
+	local header = makeLabel("Header", UDim2.new(0.6, 0, 0, 28), UDim2.new(0.02, 0, 0, 6), 22)
+	header.Font = Enum.Font.GothamBold
+	header.TextColor3 = pathColor(row.path)
+	header.Text = row.name .. "  Lv " .. row.level .. (if row.isCalling then "  (Calling)" else "")
+	header.Parent = frame
+
+	local detail = makeLabel("Detail", UDim2.new(0.96, 0, 0, 22), UDim2.new(0.02, 0, 0, 36), 16)
+	detail.Text = row.style .. "  |  XP " .. row.xpText .. "  |  Rate " .. row.rateText
+	detail.Parent = frame
+
+	for index = 1, #row.abilities do
+		makeAbility(row, index).Parent = frame
+	end
+
+	if needsCalling then
+		local choose = makeButton("Choose", "Choose", UDim2.new(0.3, 0, 0, 28))
+		choose.AnchorPoint = Vector2.new(1, 0)
+		choose.Position = UDim2.new(0.98, 0, 0, 6)
+		choose.Activated:Connect(function()
+			handlers.pick(row.path)
+		end)
+		choose.Parent = frame
+	elseif row.changeText ~= "" then
+		local make = makeButton(
+			"MakeCalling",
+			"Make Calling (" .. row.changeText .. ")",
+			UDim2.new(0.36, 0, 0, 28)
+		)
+		make.AnchorPoint = Vector2.new(1, 0)
+		make.Position = UDim2.new(0.98, 0, 0, 6)
+		make.Active = row.canChange
+		make.AutoButtonColor = row.canChange
+		if not row.canChange then
+			make.BackgroundColor3 = LOCKED_COLOR
+			make.TextColor3 = TEXT_DIM
+		end
+		make.Activated:Connect(function()
+			if row.canChange then
+				askChange(row)
+			end
+		end)
+		make.Parent = frame
+	end
+	return frame
+end
+
+local function makeCard(row: RowView, order: number): Frame
+	local card = Instance.new("Frame")
+	card.Name = "Card" .. row.path
+	card.LayoutOrder = order
+	card.BackgroundColor3 = pathColor(row.path)
+	addCorner(card, 10)
+
+	local name = makeLabel("Name", UDim2.new(0.92, 0, 0, 26), UDim2.new(0.04, 0, 0, 6), 22)
+	name.Font = Enum.Font.GothamBold
+	name.TextColor3 = DARK_TEXT
+	name.Text = row.name
+	name.Parent = card
+
+	local style = makeLabel("Style", UDim2.new(0.92, 0, 0, 20), UDim2.new(0.04, 0, 0, 32), 16)
+	style.TextColor3 = DARK_TEXT
+	style.Text = row.style
+	style.Parent = card
+
+	local lines: { string } = {}
+	for _, ability in row.abilities do
+		table.insert(lines, ability.name .. ": " .. ability.description)
+	end
+	local abilities =
+		makeLabel("Abilities", UDim2.new(0.92, 0, 1, -98), UDim2.new(0.04, 0, 0, 56), 15)
+	abilities.TextYAlignment = Enum.TextYAlignment.Top
+	abilities.TextColor3 = DARK_TEXT
+	abilities.Text = table.concat(lines, "\n")
+	abilities.Parent = card
+
+	local choose = makeButton("Choose", "Choose", UDim2.new(0.92, 0, 0, 30))
+	choose.AnchorPoint = Vector2.new(0.5, 1)
+	choose.Position = UDim2.new(0.5, 0, 1, -6)
+	choose.Activated:Connect(function()
+		handlers.pick(row.path)
+	end)
+	choose.Parent = card
+	return card
+end
+
+local function buildConfirm(gui: ScreenGui)
+	local frame = Instance.new("Frame")
+	frame.Name = "Confirm"
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.fromScale(0.5, 0.5)
+	frame.Size = UDim2.fromScale(0.5, 0.26)
+	frame.BackgroundColor3 = PANEL_COLOR
+	frame.Visible = false
+	frame.ZIndex = 50
+	addCorner(frame, 12)
+
+	local question =
+		makeLabel("Question", UDim2.fromScale(0.9, 0.5), UDim2.fromScale(0.05, 0.08), 24)
+	question.TextXAlignment = Enum.TextXAlignment.Center
+	question.ZIndex = 51
+	question.Parent = frame
+	confirmQuestion = question
+
+	local yes = makeButton("Yes", "Yes", UDim2.fromScale(0.35, 0.25))
+	yes.Position = UDim2.fromScale(0.1, 0.65)
+	yes.ZIndex = 51
+	yes.Activated:Connect(function()
+		frame.Visible = false
+		local path = pendingChange
+		pendingChange = ""
+		if path ~= "" then
+			handlers.change(path)
+		end
+	end)
+	yes.Parent = frame
+
+	local no = makeButton("No", "No", UDim2.fromScale(0.35, 0.25))
+	no.Position = UDim2.fromScale(0.55, 0.65)
+	no.ZIndex = 51
+	no.Activated:Connect(function()
+		frame.Visible = false
+		pendingChange = ""
+	end)
+	no.Parent = frame
+
+	frame.Parent = gui
+	confirm = frame
+end
+
+local function buildPicker(gui: ScreenGui)
+	local frame = Instance.new("Frame")
+	frame.Name = "Picker"
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.fromScale(0.5, 0.5)
+	frame.Size = UDim2.fromScale(0.9, 0.85)
+	frame.BackgroundColor3 = PANEL_COLOR
+	frame.Visible = false
+	frame.ZIndex = 5
+	addCorner(frame, 14)
+
+	local title = makeLabel("Title", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.02, 0.02), 30)
+	title.Font = Enum.Font.GothamBold
+	title.Text = "Choose your Calling"
+	title.Parent = frame
+
+	local later = makeButton("Later", "Later", UDim2.fromScale(0.14, 0.08))
+	later.AnchorPoint = Vector2.new(1, 0)
+	later.Position = UDim2.fromScale(0.98, 0.02)
+	later.Activated:Connect(function()
+		dismissedPicker = true
+		frame.Visible = false
+	end)
+	later.Parent = frame
+
+	local list = makeScroller("Cards", UDim2.fromScale(0.96, 0.84), UDim2.fromScale(0.02, 0.13))
+	local grid = Instance.new("UIGridLayout")
+	grid.CellSize = UDim2.new(0.32, 0, 0, 250)
+	grid.CellPadding = UDim2.new(0.01, 0, 0, 8)
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	grid.Parent = list
+	list.Parent = frame
+	pickerList = list
+
+	frame.Parent = gui
+	picker = frame
+end
+
+local function buildPanel(gui: ScreenGui)
+	local book = Instance.new("Frame")
+	book.Name = "Panel"
+	book.AnchorPoint = Vector2.new(0.5, 0.5)
+	book.Position = UDim2.fromScale(0.5, 0.5)
+	book.Size = UDim2.fromScale(0.8, 0.85)
+	book.BackgroundColor3 = PANEL_COLOR
+	book.Visible = false
+	addCorner(book, 14)
+
+	local title =
+		makeLabel("CallingText", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.02, 0.02), 30)
+	title.Font = Enum.Font.GothamBold
+	title.Parent = book
+	callingLabel = title
+
+	local close = makeButton("Close", "X", UDim2.fromScale(0.08, 0.08))
+	close.AnchorPoint = Vector2.new(1, 0)
+	close.Position = UDim2.fromScale(0.98, 0.02)
+	close.Activated:Connect(PathUI.toggle)
+	close.Parent = book
+
+	local strip = Instance.new("Frame")
+	strip.Name = "Loadout"
+	strip.BackgroundTransparency = 1
+	strip.Position = UDim2.fromScale(0.02, 0.11)
+	strip.Size = UDim2.fromScale(0.96, 0.09)
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.Padding = UDim.new(0.01, 0)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = strip
+	strip.Parent = book
+	slotStrip = strip
+
+	local list = makeScroller("Rows", UDim2.fromScale(0.96, 0.77), UDim2.fromScale(0.02, 0.21))
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.Padding = UDim.new(0, 8)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Parent = list
+	list.Parent = book
+	rowList = list
+
+	book.Parent = gui
+	panel = book
+end
+
+function PathUI.mount(playerGui: PlayerGui, given: Handlers)
+	handlers = given
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "PathGui"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 12
+
+	local openButton = makeButton("PathsButton", "Paths", UDim2.fromScale(0.14, 0.07))
+	openButton.AnchorPoint = Vector2.new(0, 1)
+	openButton.Position = UDim2.fromScale(0.02, 0.89)
+	local openLimit = openButton:FindFirstChildOfClass("UITextSizeConstraint")
+	if openLimit ~= nil then
+		openLimit.MinTextSize = 12
+	end
+	openButton.Activated:Connect(PathUI.toggle)
+	openButton.Parent = gui
+
+	buildPicker(gui)
+	buildPanel(gui)
+	buildConfirm(gui)
+
+	ContextActionService:BindAction("TogglePaths", function(_name, state)
+		if state == Enum.UserInputState.Begin then
+			PathUI.toggle()
+		end
+		return Enum.ContextActionResult.Pass
+	end, false, Enum.KeyCode.P)
+
+	gui.Parent = playerGui
+end
+
+function PathUI.render(view: View)
+	lastView = view
+	local rows = rowList
+	local cards = pickerList
+	local strip = slotStrip
+	local pick = picker
+	if rows == nil or cards == nil or strip == nil or pick == nil then
+		return
+	end
+	if callingLabel ~= nil then
+		callingLabel.Text = view.callingText
+	end
+
+	-- A pending Calling change only stays open while the new view still allows it.
+	local dialog = confirm
+	local question = confirmQuestion
+	if pendingChange ~= "" and dialog ~= nil and question ~= nil then
+		local pending: RowView? = nil
+		for _, row in view.rows do
+			if row.path == pendingChange then
+				pending = row
+			end
+		end
+		if pending == nil or pending.changeText == "" or not pending.canChange then
+			dialog.Visible = false
+			pendingChange = ""
+		else
+			question.Text = "Change your Calling to "
+				.. pending.name
+				.. "? Levels are kept; learning rates change."
+		end
+	end
+
+	clearRows(strip)
+	for _, slot in view.slots do
+		local empty = slot.abilityId == ""
+		local cell = Instance.new("Frame")
+		cell.Name = "Slot" .. slot.slot
+		cell.LayoutOrder = slot.slot
+		cell.Size = UDim2.new(0.2425, 0, 1, 0)
+		cell.BackgroundColor3 = if empty then LOCKED_COLOR else CARD_COLOR
+		addCorner(cell, 8)
+		local text = makeLabel("Name", UDim2.new(0.74, 0, 1, 0), UDim2.fromScale(0.04, 0), 18)
+		text.TextColor3 = if empty then TEXT_DIM else TEXT_LIGHT
+		text.Text = slot.slot .. ": " .. (if empty then "Empty" else slot.name)
+		text.Parent = cell
+		if not empty then
+			local clear = makeButton("Clear" .. slot.slot, "×", UDim2.new(0.2, 0, 0.8, 0))
+			clear.AnchorPoint = Vector2.new(1, 0.5)
+			clear.Position = UDim2.fromScale(0.98, 0.5)
+			clear.Activated:Connect(function()
+				handlers.loadout({ slot = slot.slot, abilityId = "" })
+			end)
+			clear.Parent = cell
+		end
+		cell.Parent = strip
+	end
+
+	clearRows(rows)
+	for index, row in view.rows do
+		makeRow(row, index, view.needsCalling).Parent = rows
+	end
+
+	clearRows(cards)
+	if view.needsCalling then
+		for index, row in view.rows do
+			makeCard(row, index).Parent = cards
+		end
+	end
+	pick.Visible = view.needsCalling and not dismissedPicker
+end
+
+function PathUI.isOpen(): boolean
+	local book = panel
+	local pick = picker
+	return (book ~= nil and book.Visible) or (pick ~= nil and pick.Visible)
+end
+
+function PathUI.toggle()
+	local book = panel
+	if book ~= nil then
+		book.Visible = not book.Visible
+	end
+end
+
+return PathUI
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">StatusHUD</string>
             <string name="Source"><![CDATA[--!strict
@@ -6018,7 +9649,7 @@ return StatusHUD
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="43">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">Toast</string>
             <string name="Source"><![CDATA[--!strict
@@ -6093,7 +9724,7 @@ return Toast
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="44">
+  <Item class="Workspace" referent="58">
     <Properties>
       <string name="Name">Workspace</string>
       <float name="FallenPartsDestroyHeight">-60</float>
