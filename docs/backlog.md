@@ -64,3 +64,28 @@ Known from the final review of the wide island, and left as they are:
   `Scenery.luau`.
 - Hush Gardens blight has no ground marker, only the status line and the
   entering message.
+
+Small notes from the task reviews of the wide island, none urgent:
+
+- Nothing in `check.sh` checks Luau types. `--!strict` is only checked when
+  the place is opened in Studio.
+- The status column fits five lines above the "Drop shield" button. A new
+  kind of line needs the button moved or the column made taller.
+- `living()` is copied in `HazardService` and `CombatService`. The sign label
+  styling in `SiteBuilder` repeats the training-post label's.
+- `World.islandHalfSize` is no longer used outside the tests.
+- Tests to tighten:
+  - `Geography.bearingOf` when the angle rounds to exactly 360.
+  - Only the `lava` look's values are pinned.
+  - The hedge maze test does not check "one block per run".
+  - The scenery tests do not pin the 36 props per region.
+  - The Bellows straight-walk test passes at across ±20 and ±60 on rounding
+    noise; give every tangent line the same small slack.
+  - The marker test hardcodes the 0.2 lift and ground height 0.
+- `SquallSteps.luau` and two tests write region bearings (60, 300) as
+  numbers instead of reading them from `Regions`.
+- The causeway vent markers are 1 stud wider than the causeway on each side.
+- Play-test Driver: if the wait that lines up check W.6 with the vent times
+  out, the check runs unaligned without saying so.
+- M1 checklist step 14 says "due west"; there is no compass in the game.
+  "Halfway between the Hush Gardens and Bastion Reach roads" is easier.
