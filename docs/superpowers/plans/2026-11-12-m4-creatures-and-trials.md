@@ -8,11 +8,11 @@
 
 **Tech Stack:** Luau (`--!strict`), Rojo 7.7.1, Lune 0.11.1, StyLua 2.6.0 (Luau build), Selene 0.31.0, ProfileStore 1.0.3 (vendored), plain Roblox UI instances.
 
-**Spec:** `docs/superpowers/specs/2026-11-10-isle-of-avarice-design.md` revision 6 — sections 3.9 (creatures), 3.10 (trials and quests), 3.11 (Relics 013–030), plus the sections they touch: 3.1–3.2 (30 slots, scarcity on every reward), 3.4 (defeat by a creature), 3.5 (protections, combat logging), 3.7 (earning cards and Coin), 4.2 (XP from creatures and trials), 4.4 (effects on creatures), 5.4 (the island). Gaps and contradictions found while planning are in `m4-spec-notes.md` (folded into revision 6); this plan follows those resolutions. Not in this plan: Edicts, shops and trading (M5), non-Relic card losses on defeat (M5), parties (M6).
+**Spec:** `docs/superpowers/specs/2026-11-10-isle-of-avarice-design.md` revision 6 — sections 3.9 (creatures), 3.10 (trials and quests), 3.11 (Relics 013–030), plus the sections they touch: 3.1–3.2 (30 slots, scarcity on every reward), 3.4 (defeat by a creature), 3.5 (protections, combat logging), 3.7 (earning cards and Coin), 4.2 (XP from creatures and trials), 4.4 (effects on creatures), 5.4 (the island). Gaps and contradictions found while planning are folded into spec 3.12; this plan follows them. Pre-flight rulings live in the SDD ledger and override the plan where they differ. Not in this plan: Edicts, shops and trading (M5), non-Relic card losses on defeat (M5), parties (M6).
 
 ## Global Constraints
 
-- **Original content only.** Names are those of spec 3.9–3.11 except the third creature, **Bogspitter** (spec's "Mirelurker" is one letter from a well-known creature of another game; see notes). Relic names R013–R030 are exactly those in Task 2.
+- **Original content only.** Names are those of spec 3.9–3.11 including the third creature, **Bogspitter** (renamed from a first draft whose name was one letter from a well-known creature of another game). Relic names R013–R030 are exactly those in Task 2.
 - **Tone:** cartoon knock-outs; "defeated", never "killed"; creatures tip over and vanish, no blood or gore.
 - Every file under `src/` except `src/server/Vendor` starts with `--!strict`. Files under `src/shared/` use no Roblox APIs and require each other only by relative string. Rule functions never mutate their arguments (exception: `RateLimiter.allow`).
 - The server decides everything. A client request names a trial id or an ability slot; the server works out distance, targets, damage, progress and rewards itself. No client position, target, time or result is trusted. In server handlers, no yielding call between reading state and committing it.

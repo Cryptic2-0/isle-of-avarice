@@ -308,10 +308,11 @@ Every drop and reward obeys scarcity (3.2): a sealed Relic is not given.
 ### 3.12 M4 details (rulings made while planning)
 
 - A creature "sees" a player within its sight range with an unblocked
-  line from the creature (bodies never block). A hit makes the attacker
-  its target if that player is a valid target: alive, outside Tallyport,
-  no respawn shield, within 60 studs of the den. A taunted creature
-  chases the taunter while the taunter is a valid target.
+  line from the creature (bodies never block). A hit on a creature with
+  no target makes the attacker its target if that player is a valid
+  target: alive, outside Tallyport, no respawn shield, within 60 studs
+  of the den. A creature already chasing keeps its target. A taunted
+  creature chases the taunter while the taunter is a valid target.
 - A creature walking home is immune and ignores taunt. At its den it
   heals to full and forgets its contributors and statuses. Creatures
   stop 4 studs outside Tallyport; a pull or knockback cannot put one
