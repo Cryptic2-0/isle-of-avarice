@@ -9,6 +9,7 @@ local HushGardens = require("../src/shared/Catalog/SiteData/HushGardens")
 local Looks = require("../src/shared/Catalog/Looks")
 local Make = require("../src/shared/Catalog/SiteData/Make")
 local ReckoningRock = require("../src/shared/Catalog/SiteData/ReckoningRock")
+local Regions = require("../src/shared/Catalog/Regions")
 local Relics = require("../src/shared/Catalog/Relics")
 local Sites = require("../src/shared/Catalog/Sites")
 local SquallSteps = require("../src/shared/Catalog/SiteData/SquallSteps")
@@ -547,12 +548,99 @@ T.test("Sites gathers the sites", function()
 		end
 	end
 	T.eq(#Sites.hazards, hazardCount)
-	T.eq(#Sites.features, featureCount)
+	T.eq(#Sites.features, featureCount + #Sites.common + #Sites.scenery)
 	-- both gather in list order
 	for i, h in hazards do
 		T.truthy(Sites.hazards[i] == h, `hazard {i} is in list order`)
 	end
 	for i, f in features do
 		T.truthy(Sites.features[i] == f, `feature {i} is in list order`)
+	end
+end)
+
+T.test("common features: roads, signs and bridges", function()
+	T.eq(#Sites.common, 24)
+	local roads, bridges, signParts = 0, 0, 0
+	for _, f in Sites.common do
+		if f.look == "road" then
+			roads += 1
+			T.falsy(f.solid)
+		elseif f.look == "wood" then
+			bridges += 1
+			T.truthy(f.solid)
+		elseif f.look == "sign" then
+			signParts += 1
+		end
+	end
+	T.eq({ roads, signParts, bridges }, { 6, 12, 6 })
+
+	-- Each region's road, sign post and sign board come first, in Regions.wild order.
+	for k, region in Regions.wild do
+		T.eq(Sites.common[3 * k - 2], Make.block(region, 45, 470, -6, 6, 0.02, 0.12, "road", false))
+		T.eq(Sites.common[3 * k - 1], Make.disc(region, 285, 14, 0.5, 0, 7, "sign", true))
+		local board = Make.block(region, 284.5, 285.5, 10, 18, 5, 8, "sign", false)
+		board.text = Regions.byId[region].name .. "\n" .. Regions.byId[region].hint
+		T.eq(Sites.common[3 * k], board)
+	end
+
+	-- Then one bridge per river crossing.
+	local crossings = Geography.bridges()
+	T.eq(#crossings, 6)
+	for i, crossing in crossings do
+		T.eq(Sites.common[18 + i], {
+			look = "wood",
+			shape = "block",
+			x = crossing.x,
+			y = -0.7,
+			z = crossing.z,
+			sx = 16,
+			sy = 2,
+			sz = 180,
+			yaw = crossing.yaw,
+			solid = true,
+		})
+	end
+end)
+
+T.test("exactly six features carry text, the first for Thornwood", function()
+	local texts: { string } = {}
+	for _, f in Sites.features do
+		if f.text ~= nil then
+			table.insert(texts, f.text)
+		end
+	end
+	T.eq(#texts, 6)
+	T.eq(texts[1], "Thornwood\nA hedge maze. Briars are a shortcut that costs health.")
+	for k, region in Regions.wild do
+		T.eq(texts[k], Regions.byId[region].name .. "\n" .. Regions.byId[region].hint)
+	end
+end)
+
+T.test("Sites.features is site features, then common, then scenery", function()
+	local siteFeatures = 0
+	for _, site in Sites.list do
+		siteFeatures += #site.features
+	end
+	T.truthy(#Sites.scenery > 0)
+	T.eq(#Sites.features, siteFeatures + #Sites.common + #Sites.scenery)
+	for i, f in Sites.common do
+		T.truthy(Sites.features[siteFeatures + i] == f, `common feature {i} follows the sites`)
+	end
+	for i, f in Sites.scenery do
+		T.truthy(
+			Sites.features[siteFeatures + #Sites.common + i] == f,
+			`scenery feature {i} follows the common features`
+		)
+	end
+end)
+
+T.test("six extra Copper caches, one in each wild region", function()
+	T.eq(#Sites.extras, 6)
+	for k, region in Regions.wild do
+		local extra = Sites.extras[k]
+		local x, z = Geography.place(region, 310, -60)
+		T.eq(extra, { relicId = string.format("R%03d", k), x = x, y = 1, z = z })
+		T.eq(Geography.regionAt(extra.x, extra.z), region)
+		T.truthy(Relics.byId[extra.relicId] ~= nil)
 	end
 end)
