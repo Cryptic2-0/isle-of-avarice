@@ -1,5 +1,6 @@
 --!strict
--- Top-left status lines (region, safe zone, shields, Marked, hazards) and the "Drop shield" button.
+-- Top-left: the Coin line, the status lines (region, safe zone, shields, Marked, hazards) and
+-- the "Drop shield" button.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -18,7 +19,11 @@ local KIND_COLORS: { [string]: Color3 } = {
 	marked = Color3.fromRGB(235, 70, 70),
 }
 
+local COIN_COLOR = Color3.fromRGB(255, 215, 90)
+local COIN_HEIGHT = 28
+
 local column: Frame? = nil
+local coinLabel: TextLabel? = nil
 local dropButton: TextButton? = nil
 local confirm: Frame? = nil
 -- Text of the lines on screen, so an unchanged render does nothing.
@@ -99,10 +104,31 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 15
 
+	local coin = Instance.new("TextLabel")
+	coin.Name = "Coin"
+	coin.Position = UDim2.new(0, 12, 0, 12)
+	coin.Size = UDim2.new(0, 230, 0, COIN_HEIGHT)
+	coin.BackgroundColor3 = BACKGROUND
+	coin.BackgroundTransparency = 0.3
+	coin.TextColor3 = COIN_COLOR
+	coin.TextScaled = true
+	coin.TextXAlignment = Enum.TextXAlignment.Left
+	coin.Font = Enum.Font.GothamBold
+	coin.Text = "Coin: 0"
+	addCorner(coin, 6)
+	local coinPadding = Instance.new("UIPadding")
+	coinPadding.PaddingLeft = UDim.new(0, 8)
+	coinPadding.PaddingTop = UDim.new(0, 4)
+	coinPadding.PaddingBottom = UDim.new(0, 4)
+	coinPadding.Parent = coin
+	limitText(coin, 10, 20)
+	coin.Parent = gui
+	coinLabel = coin
+
 	local list = Instance.new("Frame")
 	list.Name = "Lines"
 	list.BackgroundTransparency = 1
-	list.Position = UDim2.new(0, 12, 0, 12)
+	list.Position = UDim2.new(0, 12, 0, 12 + COIN_HEIGHT + 4)
 	list.Size = UDim2.new(0, 230, 0, 160)
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, 4)
@@ -112,7 +138,7 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	column = list
 
 	local drop = makeButton("DropShield", "Drop shield", UDim2.new(0, 150, 0, 32))
-	drop.Position = UDim2.new(0, 12, 0, 176)
+	drop.Position = UDim2.new(0, 12, 0, 176 + COIN_HEIGHT + 4)
 	drop.Visible = false
 	drop.Parent = gui
 	dropButton = drop
@@ -124,6 +150,14 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	end)
 
 	gui.Parent = playerGui
+end
+
+-- "Coin: 120" above the status lines.
+function StatusHUD.setCoin(coin: number)
+	local label = coinLabel
+	if label ~= nil then
+		label.Text = "Coin: " .. tostring(math.floor(coin))
+	end
 end
 
 function StatusHUD.render(lines: { StatusView.Line }, showDropShield: boolean)

@@ -13,15 +13,19 @@ local PathView = require(Rules:WaitForChild("PathView"))
 local PlaceView = require(Rules:WaitForChild("PlaceView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local StatusView = require(Rules:WaitForChild("StatusView"))
+local TrialView = require(Rules:WaitForChild("TrialView"))
+local World = require(Shared:WaitForChild("Catalog"):WaitForChild("World"))
 local Atmosphere = require(script.Parent.Atmosphere)
 local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
+local CreatureFx = require(script.Parent.CreatureFx)
 local HazardController = require(script.Parent.HazardController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
 local PathUI = require(script.Parent.PathUI)
 local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
+local TrialUI = require(script.Parent.TrialUI)
 
 local HUD_REFRESH_SECONDS = 0.5
 
@@ -43,6 +47,10 @@ local changeCalling = remotes:WaitForChild(Net.ChangeCalling) :: RemoteEvent
 local loadoutAction = remotes:WaitForChild(Net.LoadoutAction) :: RemoteEvent
 local castAbility = remotes:WaitForChild(Net.CastAbility) :: RemoteEvent
 local abilityCooldown = remotes:WaitForChild(Net.AbilityCooldown) :: RemoteEvent
+local trialOffer = remotes:WaitForChild(Net.TrialOffer) :: RemoteEvent
+local trialAccept = remotes:WaitForChild(Net.TrialAccept) :: RemoteEvent
+local trialSync = remotes:WaitForChild(Net.TrialSync) :: RemoteEvent
+local coinSync = remotes:WaitForChild(Net.CoinSync) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -73,14 +81,18 @@ PathUI.mount(playerGui, {
 AbilityBar.mount(playerGui, function(slot)
 	castAbility:FireServer(slot)
 end)
+TrialUI.mount(playerGui, function(trialId)
+	trialAccept:FireServer(trialId)
+end)
 CombatController.start(function()
 	strikeRemote:FireServer()
 end, function(slot)
 	castAbility:FireServer(slot)
 end, function()
-	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen()
+	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen() or TrialUI.isOpen()
 end)
 HazardController.start()
+CreatureFx.start(localPlayer)
 
 ledgerSync.OnClientEvent:Connect(function(ledger, vault)
 	LedgerUI.render(LedgerView.build(ledger, vault))
@@ -95,12 +107,20 @@ claimUpdate.OnClientEvent:Connect(function(payload)
 		ClaimUI.show(payload.victimName, payload.claim, payload.secondsLeft)
 	end
 end)
-hitFx.OnClientEvent:Connect(function(victimUserId)
-	local victim = Players:GetPlayerByUserId(victimUserId)
-	local character = if victim ~= nil then victim.Character else nil
-	if character ~= nil then
-		CombatController.flash(character)
+hitFx.OnClientEvent:Connect(function(fighterId)
+	-- A player's character flashes; any other id is a creature's.
+	local victim = Players:GetPlayerByUserId(fighterId)
+	if victim ~= nil then
+		local character = victim.Character
+		if character ~= nil then
+			CombatController.flash(character)
+		end
+	else
+		CreatureFx.flash(fighterId)
 	end
+end)
+trialOffer.OnClientEvent:Connect(function(view)
+	TrialUI.showOffer(view)
 end)
 
 -- The last path sync and when it arrived (local clock); cooldown text advances from it.
@@ -121,7 +141,44 @@ pathSync.OnClientEvent:Connect(function(progress, coin, serverNow)
 	lastCoin = coin
 	lastServerNow = serverNow
 	pathsAt = os.clock()
+	StatusHUD.setCoin(coin)
 	renderPaths()
+end)
+-- Coin changed (a creature, a trial, a Calling change): the Coin line and the Paths panel.
+coinSync.OnClientEvent:Connect(function(coin)
+	lastCoin = coin
+	StatusHUD.setCoin(coin)
+	renderPaths()
+end)
+
+-- The last trial sync and when it arrived (local clock); the trial clock counts down here.
+local trialState: TrialView.HudState? = nil
+local questStep = 0
+local trialAt = 0
+local function renderTrial()
+	local state = trialState
+	local shown: TrialView.HudState? = nil
+	local nextMarker = nil
+	if state ~= nil then
+		shown = {
+			trialId = state.trialId,
+			progress = state.progress,
+			goal = state.goal,
+			secondsLeft = state.secondsLeft - (os.clock() - trialAt),
+		}
+		local markers = World.courses[state.trialId]
+		if markers ~= nil then
+			nextMarker = markers[state.progress + 1]
+		end
+	end
+	TrialUI.renderHud(TrialView.hud(shown, questStep))
+	TrialUI.setBeacon(nextMarker)
+end
+trialSync.OnClientEvent:Connect(function(state, step)
+	trialState = state
+	questStep = step
+	trialAt = os.clock()
+	renderTrial()
 end)
 abilityCooldown.OnClientEvent:Connect(function(slot, seconds)
 	AbilityBar.startCooldown(slot, seconds)
@@ -198,6 +255,7 @@ end
 task.spawn(function()
 	while true do
 		refreshHud()
+		renderTrial()
 		task.wait(HUD_REFRESH_SECONDS)
 	end
 end)

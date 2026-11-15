@@ -93,7 +93,7 @@ local function makeCell(slot: ClaimView.SlotView): TextButton
 	padding.PaddingLeft = UDim.new(0, 4)
 	padding.PaddingRight = UDim.new(0, 4)
 	padding.Parent = cell
-	limitText(cell, 9, 20)
+	limitText(cell, 7, 18)
 
 	local text = slot.label .. "\n" .. slot.name
 	if slot.state == "open" then
@@ -227,8 +227,9 @@ function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
 	cells.Position = UDim2.fromScale(0.03, 0.25)
 	cells.Size = UDim2.fromScale(0.94, 0.6)
 	local layout = Instance.new("UIGridLayout")
-	layout.CellSize = UDim2.fromScale(0.235, 0.3)
-	layout.CellPadding = UDim2.fromScale(0.02, 0.04)
+	-- 30 slots: six columns by five rows.
+	layout.CellSize = UDim2.fromScale(0.15, 0.17)
+	layout.CellPadding = UDim2.fromScale(0.02, 0.035)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = cells
 	cells.Parent = frame

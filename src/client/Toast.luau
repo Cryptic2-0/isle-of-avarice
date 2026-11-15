@@ -1,11 +1,16 @@
 --!strict
--- One message at the top of the screen. A new message replaces the old one.
+-- Messages at the top of the screen, one at a time. A message stays 3 seconds, or 1.5 when
+-- another is waiting. At most 4 wait; a fifth pushes out the one that has waited longest.
 local SHOW_SECONDS = 3
+local SHORT_SECONDS = 1.5
+local MAX_WAITING = 4
+local STEP_SECONDS = 0.1
 
 local Toast = {}
 
 local label: TextLabel? = nil
-local generation = 0
+local waiting: { string } = {}
+local showing = false
 
 function Toast.mount(playerGui: PlayerGui)
 	local gui = Instance.new("ScreenGui")
@@ -46,21 +51,46 @@ function Toast.mount(playerGui: PlayerGui)
 	gui.Parent = playerGui
 end
 
+-- Shows `first`, then everything that queues up behind it, then hides the label.
+local function run(current: TextLabel, first: string)
+	local text: string? = first
+	while text ~= nil do
+		current.Text = text
+		current.Visible = true
+		local shownFor = 0
+		while shownFor < SHOW_SECONDS and not (#waiting > 0 and shownFor >= SHORT_SECONDS) do
+			shownFor += task.wait(STEP_SECONDS)
+		end
+		text = table.remove(waiting, 1)
+	end
+	current.Visible = false
+	showing = false
+end
+
 function Toast.show(text: string)
 	local current = label
 	if current == nil then
 		return
 	end
-	generation += 1
-	local mine = generation
-	current.Text = text
-	current.Visible = true
-	task.delay(SHOW_SECONDS, function()
-		-- A newer message owns the label now.
-		if generation == mine then
-			current.Visible = false
+	if showing then
+		if #waiting >= MAX_WAITING then
+			table.remove(waiting, 1)
 		end
-	end)
+		table.insert(waiting, text)
+		return
+	end
+	showing = true
+	task.spawn(run, current, text)
+end
+
+-- The message on screen and those waiting, oldest first (play-test seam).
+function Toast.pending(): { string }
+	local list = table.clone(waiting)
+	local current = label
+	if showing and current ~= nil then
+		table.insert(list, 1, current.Text)
+	end
+	return list
 end
 
 return Toast
