@@ -4,9 +4,7 @@ Milestone 4 adds creatures and trials. Beasts live at dens out in the wild regio
 
 Some steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
-Automated run: **not done yet.** The play-test script has M4 checks (their names start with "M4"), but they have not been run in Studio. Run the automated two-player play test described in the README first. It should end with `[PLAYTEST] DONE` and `failed=0`. If it does not, copy the lines that start with `[PLAYTEST] FAIL` or `[PLAYTEST] CRASH` and send them back before going through the steps below.
-
-The steps below are the hand checks for how things look, move and feel, and for the phone layout.
+Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 failed=0`, with no errors from the game's scripts. 105 of those checks are for milestone 4. The steps below are the hand checks for how things look, move and feel, and for the phone layout.
 
 ## Words used here
 

@@ -521,16 +521,28 @@ local function freshCreature(id: number, healthNow: number?): boolean
 	return true
 end
 
--- Stands the player 4 studs from the creature, facing it, and Strikes once.
-local function strikeCreature(player: Player, id: number)
-	local _, root = creatureBody(id)
-	if root == nil then
-		return
+-- Stands the player 4 studs from the creature, facing it, and Strikes. A teleport across the
+-- island can take a moment to settle, so a Strike that changed nothing is tried once more.
+-- `once`: for checks that expect the Strike to change nothing.
+local function strikeCreature(player: Player, id: number, once: boolean?)
+	for _ = 1, if once then 1 else 2 do
+		local _, root = creatureBody(id)
+		if root == nil then
+			return
+		end
+		local before = creatureHealth(id)
+		local target = Vector3.new(root.Position.X, 3, root.Position.Z)
+		local spot = clearSpot(target, 4)
+		place(player, spot, target)
+		waitFor(function()
+			return flatDistance(positionOf(player), spot) <= 1.5
+		end, 2)
+		task.wait(0.5)
+		strike(player)
+		if creatureHealth(id) ~= before then
+			return
+		end
 	end
-	local target = Vector3.new(root.Position.X, 3, root.Position.Z)
-	place(player, clearSpot(target, 4), target)
-	task.wait(0.4)
-	strike(player)
 end
 
 local function coinOf(player: Player): number
@@ -635,6 +647,12 @@ local function runM4(A: Player, B: Player)
 
 	-- M4.2: wander, notice, chase, bite.
 	local den = denOf(HOUND_1)
+	-- A may still be Marked from the fights of M2 and M3: what matters is that M4 adds no time.
+	local function markedUntil(player: Player): number
+		local protection = ProtectionService.status(player, os.clock())
+		return if protection ~= nil then protection.markedUntil else -1
+	end
+	local markedBefore = markedUntil(A)
 	place(A, IN_TOWN, B_TOWN)
 	place(B, B_TOWN, IN_TOWN)
 	CreatureService.setActive({ HOUND_1 })
@@ -668,20 +686,20 @@ local function runM4(A: Player, B: Player)
 	end, 10)
 	local lost = before - health(A)
 	check("M4.2 its Bite takes 8", bitten and lost >= 7 and lost <= 9, fmt(lost))
-	local status = ProtectionService.status(A, os.clock())
 	check(
 		"M4.2 being bitten Marks nobody",
-		status ~= nil and not Protection.isMarked(status, os.clock())
+		markedUntil(A) == markedBefore,
+		`{fmt(markedBefore)} -> {fmt(markedUntil(A))}`
 	)
 
 	-- M4.3: A hits it, then runs: it walks home, cannot be hurt on the way, and heals.
 	strikeCreature(A, HOUND_1)
 	local hurt = creatureHealth(HOUND_1)
 	check("M4.3 A's Strike takes 20 from the Brinehound", hurt >= 39 and hurt <= 41, fmt(hurt))
-	status = ProtectionService.status(A, os.clock())
 	check(
 		"M4.3 hitting a creature does not Mark A",
-		status ~= nil and not Protection.isMarked(status, os.clock())
+		markedUntil(A) == markedBefore,
+		`{fmt(markedBefore)} -> {fmt(markedUntil(A))}`
 	)
 	place(A, den + Vector3.new(0, 0, 0) + (clearSpot(den, 20) - den).Unit * 75, den)
 	local returning = waitFor(function()
@@ -690,7 +708,7 @@ local function runM4(A: Player, B: Player)
 	end, 4)
 	check("M4.3 past 60 studs from the den it gives up", returning)
 	local onTheWay = creatureHealth(HOUND_1)
-	strikeCreature(A, HOUND_1)
+	strikeCreature(A, HOUND_1, true)
 	check(
 		"M4.3 it cannot be hurt while walking home",
 		creatureHealth(HOUND_1) >= onTheWay,
@@ -712,6 +730,15 @@ local function runM4(A: Player, B: Player)
 	local xpA, xpB = xpOf(A, callingA), xpOf(B, callingB)
 	local ma, mb = mark(A), mark(B)
 	strikeCreature(A, SHELLBACK_1)
+	check(
+		"M4.4 A's Strike leaves it at 20",
+		math.abs(creatureHealth(SHELLBACK_1) - 20) <= 1,
+		fmt(creatureHealth(SHELLBACK_1))
+	)
+	-- A steps away first: B's Strike takes the nearest fighter in its arc, and that must be
+	-- the Shellback, not A standing on the same spot.
+	place(A, OUTSIDE, OUTSIDE_2)
+	task.wait(0.3)
 	strikeCreature(B, SHELLBACK_1)
 	local paidA =
 		expectNote("M4.4 A is told the Shellback is defeated", A, ma, "CREATURE_DEFEATED", 4)
@@ -996,7 +1023,7 @@ local function runM4(A: Player, B: Player)
 		check("M4.11 B's screen does not", (seenByB.champions or {})[tostring(A.UserId)] == false)
 		local championHealth = creatureHealth(championId)
 		heal(B)
-		strikeCreature(B, championId)
+		strikeCreature(B, championId, true)
 		check(
 			"M4.11 B cannot hurt it",
 			creatureHealth(championId) == championHealth,
@@ -1059,7 +1086,13 @@ local function runM4(A: Player, B: Player)
 	place(A, Vector3.new(ledges[1].x - 8, 3, ledges[1].z), Vector3.zero)
 	task.wait(0.4)
 	send(A, "prompt", "C019")
-	expectNote("M4.13 C019 from the ground: TOO_FAR", A, ma, "TOO_FAR", 4)
+	-- 20 studs up, the prompt is out of reach, so the game either refuses or hears nothing.
+	task.wait(2)
+	check(
+		"M4.13 C019 cannot be opened from the ground",
+		noteSince(A, ma, "GOT_CARD") == nil and not hasFree(A, "R017"),
+		codesSince(A, ma)
+	)
 	ma = mark(A)
 	place(
 		A,
