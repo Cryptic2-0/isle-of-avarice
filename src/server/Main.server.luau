@@ -11,6 +11,7 @@ local PathService = require(script.Parent.PathService)
 local ProtectionService = require(script.Parent.ProtectionService)
 local SourceService = require(script.Parent.SourceService)
 local StatusService = require(script.Parent.StatusService)
+local TrialService = require(script.Parent.TrialService)
 local VaultService = require(script.Parent.VaultService)
 local WorldBuilder = require(script.Parent.WorldBuilder)
 
@@ -42,6 +43,7 @@ runStep("HazardService.start", HazardService.start)
 runStep("ClaimService.start", ClaimService.start)
 runStep("PathService.start", PathService.start)
 runStep("CreatureService.start", CreatureService.start)
+runStep("TrialService.start", TrialService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 
