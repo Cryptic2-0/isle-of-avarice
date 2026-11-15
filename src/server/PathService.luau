@@ -12,6 +12,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local ClaimService = require(script.Parent.ClaimService)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
+local SourceService = require(script.Parent.SourceService)
 
 type PathProgress = Types.PathProgress
 
@@ -158,7 +159,15 @@ local function handleChange(player: Player, pathId: any)
 		end
 		return
 	end
-	data.coin = data.coin - cost
+	-- Paid through addCoin, so the client's Coin line stays current. No yield before the write.
+	if not SourceService.addCoin(player, -cost) then
+		LedgerService.notify(
+			player,
+			"NOT_ENOUGH_COIN",
+			{ cost = tostring(PathProgress.CHANGE_COST) }
+		)
+		return
+	end
 	data.paths = newProgress
 	LedgerService.notify(player, "CALLING_CHANGED", { path = newProgress.calling })
 	sync(player, data)
