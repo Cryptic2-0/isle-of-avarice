@@ -126,3 +126,28 @@ T.test("sealed is checked after empty and before free slots", function()
 	local _, _, farSealed = Sources.tryCollect(s0, Ledger.new(), cache, 0, 999, true, false)
 	T.eq(farSealed, "TOO_FAR")
 end)
+
+T.test("give puts a reward Relic in a free slot, with the same checks as a cache", function()
+	local full = {}
+	for _ = 1, Ledger.FREE_SLOTS do
+		table.insert(full, "R001")
+	end
+	local fullFree = { claimed = {}, free = full }
+	T.eq(
+		{ Sources.give(Ledger.new(), "R013", false, false) },
+		{ { claimed = {}, free = { "R013" } }, "GOT_CARD" } :: { any }
+	)
+	T.eq({ Sources.give(nil, "R013", false, false) }, { nil, "DATA_NOT_LOADED" } :: { any })
+	T.eq({ Sources.give(Ledger.new(), "R013", false, true) }, { nil, "LEDGER_LOCKED" } :: { any })
+	T.eq({ Sources.give(Ledger.new(), "R999", false, false) }, { nil, "UNKNOWN_CARD" } :: { any })
+	T.eq({ Sources.give(Ledger.new(), "R013", true, false) }, { nil, "SEALED" } :: { any })
+	T.eq({ Sources.give(fullFree, "R013", false, false) }, { nil, "FREE_FULL" } :: { any })
+	-- Order: data, locked, unknown, sealed, full.
+	T.eq({ Sources.give(nil, "R999", true, true) }, { nil, "DATA_NOT_LOADED" } :: { any })
+	T.eq({ Sources.give(fullFree, "R999", true, true) }, { nil, "LEDGER_LOCKED" } :: { any })
+	T.eq({ Sources.give(fullFree, "R999", true, false) }, { nil, "UNKNOWN_CARD" } :: { any })
+	T.eq({ Sources.give(fullFree, "R013", true, false) }, { nil, "SEALED" } :: { any })
+	local mine = Ledger.new()
+	Sources.give(mine, "R013", false, false)
+	T.eq(mine, Ledger.new(), "the ledger is not changed in place")
+end)

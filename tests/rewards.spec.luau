@@ -1,0 +1,159 @@
+--!strict
+local T = require("./harness")
+local Creatures = require("../src/shared/Catalog/Creatures")
+local R = require("../src/shared/Rules/Rewards")
+
+local function copy(value: any): any
+	if type(value) ~= "table" then
+		return value
+	end
+	local out = {}
+	for k, v in value do
+		out[k] = copy(v)
+	end
+	return out
+end
+
+local function always(value: number): () -> number
+	return function()
+		return value
+	end
+end
+
+-- Four hits by two players.
+local function sample(): R.Tally
+	local t = R.record({}, 1, "Strike", 20, 0)
+	t = R.record(t, 1, "Ember", 16, 1)
+	t = R.record(t, 2, "Fang", 22, 2)
+	return R.record(t, 1, "Ember", 3, 3)
+end
+
+T.test("record adds up damage per attacker and Path", function()
+	T.eq({ R.CONTRIBUTOR_SECONDS, R.STRIKE }, { 30, "Strike" } :: { any })
+	local t = sample()
+	T.eq(t["1"], { lastAt = 3, total = 39, byPath = { Strike = 20, Ember = 19 } })
+	T.eq(t["2"], { lastAt = 2, total = 22, byPath = { Fang = 22 } })
+	for _, bad in { 0, -5, 0 / 0, math.huge } do
+		T.eq(R.record(t, 1, "Fang", bad, 4), t)
+	end
+	local before = copy(t)
+	R.record(t, 1, "Fang", 5, 9)
+	R.record(t, 3, "Fang", 5, 9)
+	T.eq(t, before, "the tally is not changed in place")
+end)
+
+T.test("contributors hit it in the last 30 seconds, most damage first", function()
+	local t = sample()
+	T.eq(
+		{ R.contributors(t, 32), R.contributors(t, 32.5), R.contributors(t, 33.5) },
+		{ { 1, 2 }, { 1 }, {} } :: { any }
+	)
+	T.eq(R.contributors(t, 0 / 0), {})
+	T.eq(R.contributors(R.record(R.record({}, 9, "Fang", 10, 0), 4, "Fang", 10, 0), 1), { 4, 9 })
+	T.eq(R.contributors({}, 0), {})
+end)
+
+T.test("XP goes to the Path that dealt the most; the Strike counts as the Calling", function()
+	T.eq(R.xpPath({ Strike = 20, Ember = 25 }, "Fang"), "Ember")
+	T.eq(
+		R.xpPath({ Strike = 20, Fang = 5, Ember = 25 }, "Fang"),
+		"Fang",
+		"a tie goes to the Calling"
+	)
+	T.eq(R.xpPath({ Ember = 10, Gale = 10 }, "Fang"), "Gale", "other ties: hexagon order")
+	T.eq(R.xpPath({ Strike = 40 }, "Mire"), "Mire")
+	T.eq(R.xpPath({ Strike = 40, Ember = 99 }, ""), "", "no Calling, no XP")
+	T.eq(R.xpPath({ Nope = 99, Mend = 1 }, "Fang"), "Mend")
+	T.eq(R.xpPath({}, "Gale"), "Gale")
+end)
+
+-- The Brine Colossus (60 Coin, 500 XP, R022 100%, R023 20%) and six players dealing 60 down to 10.
+local col = Creatures.byId.brine_colossus
+local function six(): (R.Tally, { [string]: R.Recipient })
+	local tally: R.Tally, all = {}, {}
+	for id = 1, 6 do
+		tally = R.record(tally, id, "Strike", 70 - id * 10, 0)
+		all[tostring(id)] = { calling = "Fang", room = 20 }
+	end
+	return tally, all
+end
+
+T.test("awards: every contributor gets Coin and XP; drops obey the server cap", function()
+	local tally, all = six()
+	local a = R.awards(col, tally, all, {}, 1, always(0.5))
+	T.eq(a[1], {
+		userId = 1,
+		coin = 60,
+		xpPath = "Fang",
+		xp = 500,
+		relics = { "R022" },
+		sealed = {},
+		lost = {},
+	})
+	T.eq(
+		{ #a, a[4].relics, a[5].relics, a[5].sealed, a[6].sealed },
+		{ 6, { "R022" }, {}, { "R022" }, { "R022" } } :: { any },
+		"Gold cap 4"
+	)
+	T.eq(R.awards(col, tally, all, { R022 = 3 }, 1, always(0.5))[2].sealed, { "R022" })
+	T.eq(R.awards(col, tally, all, {}, 1, always(0.1))[1].relics, { "R022", "R023" })
+end)
+
+T.test("awards: full slots lose the Relic; no Calling means Coin only", function()
+	local tally, all = six()
+	local tight = table.clone(all)
+	tight["1"] = { calling = "Fang", room = 1 }
+	local t1 = R.awards(col, tally, tight, {}, 1, always(0.1))[1]
+	T.eq({ t1.relics, t1.lost }, { { "R022" }, { "R023" } })
+	-- A lost Relic does not count against the cap.
+	local none = table.clone(all)
+	none["1"] = { calling = "Fang", room = 0 }
+	local lostAll = R.awards(col, tally, none, { R022 = 3 }, 1, always(0.5))
+	T.eq({ lostAll[1].lost, lostAll[2].relics }, { { "R022" }, { "R022" } })
+	local bare = table.clone(all)
+	bare["1"] = { calling = "", room = 20 }
+	local b1 = R.awards(col, tally, bare, {}, 1, always(0.5))[1]
+	T.eq({ b1.coin, b1.xpPath, b1.xp }, { 60, "", 0 } :: { any })
+end)
+
+T.test("awards: only present, recent contributors; chances are strict", function()
+	local tally, all = six()
+	T.eq(#R.awards(col, tally, { ["2"] = all["2"] }, {}, 1, always(0.5)), 1)
+	T.eq(R.awards(col, tally, { ["2"] = all["2"] }, {}, 1, always(0.5))[1].userId, 2)
+	T.eq(#R.awards(col, tally, all, {}, 31, always(0.5)), 0, "nobody hit in the last 30 s")
+	local hound, one = Creatures.byId.brinehound, R.record({}, 1, "Strike", 20, 0)
+	local me = { ["1"] = { calling = "Fang", room = 20 } }
+	T.eq(R.awards(hound, one, me, {}, 1, always(0.0199))[1].relics, { "R019" })
+	T.eq(R.awards(hound, one, me, {}, 1, always(0.02))[1].relics, {})
+	T.eq(R.awards(hound, one, me, {}, 1, always(0 / 0))[1].relics, {}, "a NaN roll wins nothing")
+end)
+
+T.test("awards: one roll per drop per contributor, in contributor then drop order", function()
+	local reward = {
+		coin = 1,
+		xp = 1,
+		drops = { { relicId = "R019", chance = 0.5 }, { relicId = "R020", chance = 0.5 } },
+	}
+	local tally = R.record(R.record({}, 5, "Fang", 10, 0), 8, "Fang", 30, 0)
+	local both =
+		{ ["5"] = { calling = "Fang", room = 20 }, ["8"] = { calling = "Fang", room = 20 } }
+	local rolls = { 0.01, 0.99, 0.99, 0.01 }
+	local drawn = 0
+	local a = R.awards(reward, tally, both, {}, 1, function()
+		drawn += 1
+		return rolls[drawn]
+	end)
+	T.eq(drawn, 4)
+	T.eq(
+		{ a[1].userId, a[1].relics, a[2].userId, a[2].relics },
+		{ 8, { "R019" }, 5, { "R020" } } :: { any }
+	)
+end)
+
+T.test("awards never changes its arguments", function()
+	local tally, all = six()
+	local held = { R022 = 2 }
+	local tally0, all0, held0 = copy(tally), copy(all), copy(held)
+	R.awards(col, tally, all, held, 1, always(0.1))
+	T.eq({ tally, all, held }, { tally0, all0, held0 } :: { any })
+end)
