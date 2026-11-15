@@ -9,7 +9,7 @@ T.test("a fresh claim shows every slot open", function()
 	T.eq(view.picksText, "Picks left: 5")
 	T.eq(view.secondsLeft, 30)
 	T.eq(view.open, true)
-	T.eq(#view.slots, 12)
+	T.eq(#view.slots, 30)
 	for _, slot in view.slots do
 		T.eq(slot.state, "open")
 	end
@@ -40,7 +40,7 @@ T.test("a reached tier limit locks that tier's slots", function()
 	local claim = BlindClaim.start(100)
 	claim.taken = { Platinum = 1 }
 	local view = ClaimView.build("Ann", claim, 100)
-	T.eq(view.slots[12].state, "locked")
+	T.eq(view.slots[27].state, "locked")
 	T.eq(view.slots[11].state, "open")
 end)
 

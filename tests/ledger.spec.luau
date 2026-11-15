@@ -106,6 +106,7 @@ T.test("count and claimedCount", function()
 	T.eq(Ledger.claimedCount(Ledger.new()), 0)
 end)
 
+local lastId = Relics.list[Relics.count].id
 T.test("isComplete needs every relic claimed", function()
 	local claimed: { [string]: boolean } = {}
 	for i, relic in Relics.list do
@@ -114,11 +115,11 @@ T.test("isComplete needs every relic claimed", function()
 		end
 	end
 	T.falsy(
-		Ledger.isComplete({ claimed = claimed, free = { "R012", "R012" } }),
-		"11 claimed plus spares"
+		Ledger.isComplete({ claimed = claimed, free = { lastId, lastId } }),
+		"29 claimed plus spares"
 	)
-	claimed.R012 = true
-	T.truthy(Ledger.isComplete({ claimed = claimed, free = {} }), "all 12")
+	claimed[lastId] = true
+	T.truthy(Ledger.isComplete({ claimed = claimed, free = {} }), "all 30")
 	T.falsy(Ledger.isComplete(Ledger.new()))
 end)
 

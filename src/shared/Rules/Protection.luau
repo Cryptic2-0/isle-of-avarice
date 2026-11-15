@@ -69,6 +69,24 @@ function Protection.canDamage(attacker: Status, victim: Status, now: number): (b
 	return true, nil
 end
 
+-- A creature hurting a player. The safe zone stops it, Marked or not, and so does the
+-- respawn shield (a NaN time counts as shielded). The new-player shield does not.
+function Protection.creatureCanHit(victim: Status, now: number): boolean
+	if victim.inSafeZone then
+		return false
+	end
+	return now >= victim.respawnShieldUntil
+end
+
+-- A player hurting a creature. Only standing in the safe zone stops it; the new-player
+-- shield does not.
+function Protection.canHitCreature(attacker: Status): (boolean, string?)
+	if attacker.inSafeZone then
+		return false, "SAFE_ZONE"
+	end
+	return true, nil
+end
+
 -- True when this hit starts a fight: the victim is not Marked and did not hit the attacker recently.
 function Protection.isAggressor(
 	log: Combat.HitLog,

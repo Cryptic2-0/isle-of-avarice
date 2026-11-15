@@ -78,7 +78,7 @@ end)
 T.test("bad slots are refused and spend nothing", function()
 	local victim, killer = fresh()
 	local c0 = BlindClaim.start(100)
-	for _, bad in { 0, 13, 1.5, -1, 0 / 0, math.huge, -math.huge, "7", true, {} } do
+	for _, bad in { 0, 31, 1.5, -1, 0 / 0, math.huge, -math.huge, "7", true, {} } do
 		local c, v, k, cd = BlindClaim.pick(c0, victim, {}, killer, bad, 101)
 		T.eq(cd, "BAD_SLOT", tostring(bad))
 		T.eq(c, c0)
@@ -132,7 +132,7 @@ T.test("inputs are never mutated", function()
 	local victim, killer = fresh()
 	local c0 = BlindClaim.start(100)
 	local vault = { R012 = true }
-	for slot = 0, 13 do
+	for slot = 0, 31 do
 		BlindClaim.pick(c0, victim, vault, killer, slot, 101)
 	end
 	local v2, k2 = fresh()

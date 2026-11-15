@@ -2,7 +2,8 @@
 -- Play-test agent. Only in the play-test build (playtest.project.json), never in dist.
 -- It does what a player would do (fire the game's own remotes, hold a cache prompt) when
 -- the play-test driver asks, and reports back what this client saw: messages, claim
--- screens, hit flashes, ability cooldowns and the state of the on-screen UI.
+-- screens, hit flashes, ability cooldowns, trial offers and the state of the on-screen UI.
+local CollectionService = game:GetService("CollectionService")
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,6 +32,9 @@ remotes:WaitForChild("StatusSync").OnClientEvent:Connect(function(status)
 end)
 remotes:WaitForChild("AbilityCooldown").OnClientEvent:Connect(function(slot, seconds)
 	report:FireServer("cooldown", slot, seconds)
+end)
+remotes:WaitForChild("TrialOffer").OnClientEvent:Connect(function(view)
+	report:FireServer("offer", view)
 end)
 
 local function texts(container: Instance?): { string }
@@ -169,6 +173,58 @@ local function inspectUi()
 
 	ui.strikeBound = next(ContextActionService:GetBoundActionInfo("Strike")) ~= nil
 
+	-- M4: the Coin line, the trial HUD, the offer window, the beacon and duel champions.
+	local coin = statusGui and statusGui:FindFirstChild("Coin")
+	ui.coin = coin and coin.Text or ""
+	local trialGui = playerGui:FindFirstChild("TrialGui")
+	local trialLines = {}
+	local hud = trialGui and trialGui:FindFirstChild("Hud")
+	if hud ~= nil then
+		for index = 1, 3 do
+			local line = hud:FindFirstChild("Line" .. index)
+			if line ~= nil then
+				trialLines[index] = line.Text
+			end
+		end
+	end
+	ui.trialLines = trialLines
+	local offer = trialGui and trialGui:FindFirstChild("Offer")
+	ui.offerVisible = offer ~= nil and offer.Visible
+	local offerBody = offer and offer:FindFirstChild("Body")
+	local function offerText(name: string): string
+		local label = offerBody and offerBody:FindFirstChild(name)
+		return label and label.Text or ""
+	end
+	ui.offerTitle = offerText("Title")
+	ui.offerRelic = offerText("Relic")
+	ui.offerNote = offerText("Note")
+	local buttons = offer and offer:FindFirstChild("Buttons")
+	local accept = buttons and buttons:FindFirstChild("Accept")
+	ui.acceptActive = accept ~= nil and accept.Active
+	local beacon = workspace:FindFirstChild("TrialBeacon")
+	if beacon ~= nil then
+		ui.beacon = { x = beacon.Position.X, z = beacon.Position.Z }
+	end
+	-- Per duel champion, keyed by its owner's user id: does this client draw it?
+	local champions = {}
+	for _, model in CollectionService:GetTagged("Creature") do
+		local owner = model:GetAttribute("OwnerUserId")
+		if type(owner) == "number" and owner ~= 0 then
+			local shown = false
+			for _, part in model:GetChildren() do
+				if
+					part:IsA("BasePart")
+					and part.Name ~= "HumanoidRootPart"
+					and part.LocalTransparencyModifier < 1
+				then
+					shown = true
+				end
+			end
+			champions[tostring(owner)] = shown
+		end
+	end
+	ui.champions = champions
+
 	-- What this client itself computes for the safe zone (same inputs as the HUD).
 	local character = Players.LocalPlayer.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -217,6 +273,28 @@ cmd.OnClientEvent:Connect(function(op, arg)
 		task.wait(prompt.HoldDuration + 0.3)
 		prompt:InputHoldEnd()
 		report:FireServer("prompted", arg)
+	elseif op == "warden" then
+		-- Talk to a Warden the way the E key would.
+		local island = workspace:FindFirstChild("Island")
+		local warden = island and island:FindFirstChild("Warden_" .. tostring(arg))
+		local body = warden and warden:FindFirstChild("Body")
+		local prompt = body and body:FindFirstChildOfClass("ProximityPrompt")
+		if prompt == nil then
+			report:FireServer("error", "no Warden prompt for " .. tostring(arg))
+			return
+		end
+		prompt:InputHoldBegin()
+		task.wait(prompt.HoldDuration + 0.3)
+		prompt:InputHoldEnd()
+	elseif op == "accept" then
+		-- Any value, hostile ones included: the server must check it.
+		remotes.TrialAccept:FireServer(arg)
+	elseif op == "closeOffer" then
+		local trialGui = playerGui:FindFirstChild("TrialGui")
+		local offer = trialGui and trialGui:FindFirstChild("Offer")
+		if offer ~= nil then
+			offer.Visible = false
+		end
 	elseif op == "toggleLedger" then
 		local ledgerGui = playerGui:FindFirstChild("LedgerGui")
 		local book = ledgerGui and ledgerGui:FindFirstChild("Book")

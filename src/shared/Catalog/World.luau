@@ -58,6 +58,154 @@ for _, extra in Sites.extras do
 	addCache(extra.relicId, extra.x, extra.y, extra.z, extra.hold)
 end
 
+-- A spot in a wild region's own frame: `along` out from the island centre down the region's
+-- bearing, `across` to the right of that line.
+local function spot(regionId: string, along: number, across: number, y: number): Types.Vec3
+	local x, z = Geography.place(regionId, along, across)
+	return { x = x, y = y, z = z }
+end
+
+-- A stack of square ledges to jump up, centred on a spot. Ledges are 8 wide, 10 apart and
+-- rise 4 each; they run in rows of `perRow` that double back, so the next ledge is always
+-- the only one within a jump. Ledges are square to the world's axes whatever the region.
+local LEDGE_SIZE = 8
+local LEDGE_STEP = 10
+local LEDGE_RISE = 4
+local function climb(centre: Types.Vec3, count: number, perRow: number): { Types.Ledge }
+	local rows = math.ceil(count / perRow)
+	local ledges: { Types.Ledge } = {}
+	for i = 0, count - 1 do
+		local row = math.floor(i / perRow)
+		local col = i % perRow
+		if row % 2 == 1 then
+			col = perRow - 1 - col
+		end
+		table.insert(ledges, {
+			x = centre.x + (col - (perRow - 1) / 2) * LEDGE_STEP,
+			z = centre.z + (row - (rows - 1) / 2) * LEDGE_STEP,
+			size = LEDGE_SIZE,
+			top = (i + 1) * LEDGE_RISE,
+		})
+	end
+	return ledges
+end
+
+-- Caches C019 to C021 sit on top of climbs: R017 above Thornwood's north shore, R018 on the
+-- far flank of Bastion Reach, and R026 on the Lookout's crag, the island's highest point.
+local climbs: { [string]: { Types.Ledge } } = {}
+local function addClimbCache(relicId: string, centre: Types.Vec3, count: number, perRow: number)
+	local ledges = climb(centre, count, perRow)
+	local last = ledges[#ledges]
+	addCache(relicId, last.x, last.top + 1, last.z, nil)
+	climbs[caches[#caches].id] = ledges
+end
+addClimbCache("R017", spot("Thornwood", 870, 160, 0), 5, 3)
+addClimbCache("R018", spot("BastionReach", 800, 290, 0), 6, 3)
+addClimbCache("R026", spot("SquallSteps", 550, 220, 0), 16, 4)
+-- The Cliff Warden's course: one straight flight beside the Squall Steps gate.
+climbs.gullstep_climb = climb(spot("SquallSteps", 350, 100, 0), 7, 7)
+
+-- Caches C022 to C024: Copper, in far corners of the wilds.
+for _, far in
+	{
+		{ relicId = "R028", at = spot("SquallSteps", 440, -110, 1) },
+		{ relicId = "R029", at = spot("DrownedFen", 885, -60, 1) },
+		{ relicId = "R030", at = spot("Thornwood", 860, -150, 1) },
+	}
+do
+	addCache(far.relicId, far.at.x, far.at.y, far.at.z, nil)
+end
+
+-- One Warden per trial, beside the road at a region's gate. The Harbour Warden stands at the
+-- head of the west Sluice, inside the ring the Hush Gardens blight does not reach.
+local harbour = spot("HushGardens", 285, 80, 0)
+local wardens: { [string]: Types.Vec3 } = {
+	tidewalk = harbour,
+	gullstep_climb = spot("SquallSteps", 300, 45, 0),
+	salt_post = spot("CinderFlats", 300, 45, 0),
+	cull_the_pack = spot("Thornwood", 300, 45, 0),
+	shellbreaker = spot("DrownedFen", 300, 45, 0),
+	tallymans_duel = spot("BastionReach", 300, 45, 0),
+}
+local duelArena = spot("BastionReach", 330, 120, 0)
+
+-- Course markers in order, at the height of a standing character's root (surface + 3).
+local MARKER_LIFT = 3
+local gullstep: { Types.Vec3 } = {}
+do
+	local first = climbs.gullstep_climb[1]
+	table.insert(gullstep, { x = first.x - LEDGE_STEP, y = MARKER_LIFT, z = first.z })
+	for _, ledge in climbs.gullstep_climb do
+		table.insert(gullstep, { x = ledge.x, y = ledge.top + MARKER_LIFT, z = ledge.z })
+	end
+end
+local courses: { [string]: { Types.Vec3 } } = {
+	-- Along the blight-free edge of the Hush Gardens, away from the harbour.
+	tidewalk = {
+		spot("HushGardens", 305, 65, MARKER_LIFT),
+		spot("HushGardens", 285, 30, MARKER_LIFT),
+		spot("HushGardens", 305, -10, MARKER_LIFT),
+		spot("HushGardens", 285, -35, MARKER_LIFT),
+		spot("HushGardens", 295, -95, MARKER_LIFT),
+		spot("HushGardens", 285, -125, MARKER_LIFT),
+	},
+	gullstep_climb = gullstep,
+}
+
+-- Creature dens, out in the wilds. Order matters: creature ids follow it.
+local function den(
+	kind: string,
+	count: number,
+	regionId: string,
+	along: number,
+	across: number
+): Types.Den
+	return { kind = kind, count = count, position = spot(regionId, along, across, 0) }
+end
+local dens: { Types.Den } = {
+	den("brinehound", 3, "Thornwood", 380, -110),
+	den("brinehound", 3, "Thornwood", 570, -260),
+	den("brinehound", 3, "BastionReach", 460, 190),
+	den("brinehound", 3, "BastionReach", 420, -60),
+	den("shellback", 2, "DrownedFen", 320, 130),
+	den("shellback", 2, "DrownedFen", 560, 270),
+	den("shellback", 2, "SquallSteps", 640, 200),
+	den("bogspitter", 2, "DrownedFen", 760, 300),
+	den("bogspitter", 2, "Thornwood", 900, 0),
+	den("bogspitter", 2, "CinderFlats", 380, -140),
+	den("brine_colossus", 1, "SquallSteps", 780, 240),
+}
+
+-- Den creature n (den order, then member order) has id CREATURE_ID_BASE - n. A duel champion
+-- has an id below CHAMPION_ID_BASE. Both are negative and clear of posts and Studio test
+-- players, so no fighter id is ever mistaken for another kind.
+local CREATURE_ID_BASE = -2000000
+local CHAMPION_ID_BASE = -3000000
+local creatureSlots: { { id: number, den: number, kind: string } } = {}
+for denIndex, entry in dens do
+	for _ = 1, entry.count do
+		table.insert(creatureSlots, {
+			id = CREATURE_ID_BASE - (#creatureSlots + 1),
+			den = denIndex,
+			kind = entry.kind,
+		})
+	end
+end
+
+local function creatureIndex(id: number): number?
+	local n = CREATURE_ID_BASE - id
+	if n >= 1 and n <= #creatureSlots and n == math.floor(n) then
+		return n
+	end
+	return nil
+end
+
+-- Written so NaN and infinities are refused.
+local function isChampion(id: number): boolean
+	local k = CHAMPION_ID_BASE - id
+	return k >= 1 and k < math.huge and k == math.floor(k)
+end
+
 local trainingPosts: { Types.Vec3 } = {
 	{ x = 55, y = 0, z = 0 },
 	{ x = 28, y = 0, z = 48 },
@@ -87,4 +235,15 @@ return {
 	townRadius = townRadius,
 	caches = caches,
 	cacheById = cacheById,
+	climbs = climbs,
+	wardens = wardens,
+	harbour = harbour,
+	duelArena = duelArena,
+	courses = courses,
+	dens = dens,
+	CREATURE_ID_BASE = CREATURE_ID_BASE,
+	creatureSlots = creatureSlots,
+	creatureIndex = creatureIndex,
+	CHAMPION_ID_BASE = CHAMPION_ID_BASE,
+	isChampion = isChampion,
 }

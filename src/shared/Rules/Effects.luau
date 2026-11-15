@@ -1,6 +1,8 @@
 --!strict
 -- Pure status-effect rules. Every "until" is exclusive: active while now < until.
 -- Comparisons are written so a NaN time reads as "not active" and never grants anything.
+local Types = require("../Types")
+
 export type Status = {
 	immuneUntil: number,
 	reduceUntil: number,
@@ -212,6 +214,26 @@ function Effects.tauntedBy(s: Status, now: number): number?
 		return s.tauntBy
 	end
 	return nil
+end
+
+-- The statuses an ability's landed hit leaves on its target, from the fighter `byId`: burn,
+-- root, slow and taunt, in that order. An ability with none of them returns `s` unchanged.
+function Effects.applyHit(s: Status, ability: Types.Ability, byId: number, now: number): Status
+	local out = s
+	local burn, rootFor, slow, taunt = ability.burn, ability.root, ability.slow, ability.taunt
+	if burn ~= nil then
+		out = Effects.applyBurn(out, burn.dps, burn.duration, byId, now)
+	end
+	if rootFor ~= nil then
+		out = Effects.applyRoot(out, rootFor, now)
+	end
+	if slow ~= nil then
+		out = Effects.applySlow(out, slow.factor, slow.duration, now)
+	end
+	if taunt ~= nil then
+		out = Effects.applyTaunt(out, byId, taunt, now)
+	end
+	return out
 end
 
 -- Returns the bonus while active and consumes it.
