@@ -134,3 +134,27 @@ T.test("recordClaim does not mutate its input", function()
 	T.eq(h, { ["1:2"] = 1000 })
 	T.eq(h2, { ["1:2"] = 1000, ["3:4"] = 2000 })
 end)
+
+T.test(
+	"creatures: the safe zone and the respawn shield stop them, the new-player shield does not",
+	function()
+		T.truthy(Protection.creatureCanHit(st(), 10))
+		T.truthy(Protection.creatureCanHit(st({ newShield = true }), 10))
+		T.falsy(Protection.creatureCanHit(st({ inSafeZone = true }), 10))
+		T.falsy(Protection.creatureCanHit(st({ inSafeZone = true, markedUntil = 100 }), 10))
+		T.falsy(Protection.creatureCanHit(st({ respawnShieldUntil = 70 }), 10))
+		T.truthy(Protection.creatureCanHit(st({ respawnShieldUntil = 70 }), 70))
+		T.falsy(Protection.creatureCanHit(st({ respawnShieldUntil = 0 / 0 }), 10))
+		T.falsy(Protection.creatureCanHit(st({ respawnShieldUntil = 70 }), 0 / 0))
+	end
+)
+
+T.test("hitting a creature: anyone outside the safe zone may", function()
+	T.eq({ Protection.canHitCreature(st()) }, { true })
+	T.eq({ Protection.canHitCreature(st({ newShield = true })) }, { true })
+	T.eq({ Protection.canHitCreature(st({ respawnShieldUntil = 1e9 })) }, { true })
+	T.eq(
+		{ Protection.canHitCreature(st({ inSafeZone = true, markedUntil = 999 })) },
+		{ false, "SAFE_ZONE" } :: { any }
+	)
+end)
