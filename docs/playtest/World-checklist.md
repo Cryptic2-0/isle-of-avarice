@@ -53,7 +53,7 @@ Most steps need one player. Steps marked (two players) need A and B. **A** is Pl
      | Bastion Reach | Bastion Reach: Rocks fall where the ground glows. Shelter under the roofs. |
 
      In Tallyport the status column also shows "Safe zone". Each signpost shows the region's name and the same rule.
-   - Extra check: each wild region has one copper cache just past its signpost, about 315 steps from the centre of town and 60 steps to the left of the road as you walk out. Hold E at one to open it. With the six in the Counting Fields, that makes 12 copper caches, and 18 caches with the six prize caches.
+   - Extra check: each wild region has one copper cache just past its signpost, about 315 steps from the centre of town and 60 steps to the left of the road as you walk out. Hold E at one to open it. With the six in the Counting Fields, that makes 12 copper caches, and 18 caches with the six prize caches. (Milestone 4 adds six more caches, three of them on top of stone stairways.)
 
 2. **A bridge and a river fall**
    - What to do: go to the first bridge over the river between Thornwood and Squall Steps. It lies on the line halfway between those two roads, 420 steps from the centre of town. Walk across the bridge. Then walk back onto it and step off its side.

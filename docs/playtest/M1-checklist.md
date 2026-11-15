@@ -29,7 +29,7 @@ Pillar colours show how rare a Relic is: copper (brown-orange) is common, silver
 
 5. **Open the Ledger**
    - What to do: press the B key, or click the "Ledger" button at the bottom left of the screen.
-   - What should happen: a book called "The Hoarder's Ledger" opens. It shows 12 numbered slots on the left. Your new card is in the free list on the right. The top of the book says "Relics: 0 / 12".
+   - What should happen: a book called "The Hoarder's Ledger" opens. It shows 30 numbered slots on the left. Your new card is in the free list on the right. The top of the book says "Relics: 0 / 30".
 
 6. **Claim a Relic**
    - What to do: click the "Claim" button next to your card.
@@ -52,8 +52,8 @@ Pillar colours show how rare a Relic is: copper (brown-orange) is common, silver
     - What should happen: a message says "Your free slots are full." The cache does not disappear.
 
 11. **Finish the Ledger**
-    - What to do: first claim or discard some spares, so your free slots are not full. Otherwise opening caches will fail with "Your free slots are full." Then claim all 12 Relics. There are 18 caches on the island. The six copper Relics come from the six copper caches in the Counting Fields. The six rarer Relics (three silver, two gold and one platinum) are the prize caches out in the wild regions, each one behind a hazard. The platinum one has a pale white-blue pillar. Step 14 of `docs/playtest/World-checklist.md` lists where each prize cache is and how to get to it. The other six caches, one just past each signpost, hold copper Relics too.
-    - What should happen: the top of the book says "Relics: 12 / 12 (complete!)". When you make the last claim, every player sees the message "(your name) has completed the Ledger!".
+    - What to do: first claim or discard some spares, so your free slots are not full. Otherwise opening caches will fail with "Your free slots are full." Then claim Relics 1 to 12. They come from the first 18 caches on the island. The six copper Relics come from the six copper caches in the Counting Fields. The six rarer Relics (three silver, two gold and one platinum) are the prize caches out in the wild regions, each one behind a hazard. The platinum one has a pale white-blue pillar. Step 14 of `docs/playtest/World-checklist.md` lists where each prize cache is and how to get to it. The other six caches, one just past each signpost, hold copper Relics too.
+    - What should happen: the top of the book says "Relics: 12 / 30". Since milestone 4 the Ledger has 30 slots: Relics 13 to 30 come from trials, creatures, a quest and six more caches (see `docs/playtest/M4-checklist.md`). Only when all 30 are claimed does the book say "Relics: 30 / 30 (complete!)" and every player see the message "(your name) has completed the Ledger!". The automated play test checks that message.
 
 12. **Check saving** (only if you did "How to make saving work" in the README)
     - What to do: stop the game, then press Play again.
