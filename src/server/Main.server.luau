@@ -2,6 +2,7 @@
 local AbilityService = require(script.Parent.AbilityService)
 local ClaimService = require(script.Parent.ClaimService)
 local CombatService = require(script.Parent.CombatService)
+local CreatureService = require(script.Parent.CreatureService)
 local DataService = require(script.Parent.DataService)
 local Fighters = require(script.Parent.Fighters)
 local HazardService = require(script.Parent.HazardService)
@@ -40,6 +41,7 @@ runStep("AbilityService.start", AbilityService.start)
 runStep("HazardService.start", HazardService.start)
 runStep("ClaimService.start", ClaimService.start)
 runStep("PathService.start", PathService.start)
+runStep("CreatureService.start", CreatureService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 

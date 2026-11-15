@@ -18,6 +18,8 @@ local StatusService = require(script.Parent.StatusService)
 type DamageOpts = { reflected: boolean?, tick: boolean?, passive: boolean?, path: string? }
 
 local STRIKE_PATH = "Strike"
+-- Damage a creature takes from a player's reflect counts as this Path.
+local REFLECT_PATH = "Bulwark"
 local POST_XP = 10
 local POST_XP_GAP = 0.5 -- seconds between paid hits, per post per attacker
 local POST_FLASH_SECONDS = 0.15
@@ -25,8 +27,13 @@ local POST_FLASH_COLOR = Color3.fromRGB(255, 235, 150)
 
 local CombatService = {}
 
--- Who last hit whom, keyed by victim UserId. Time from os.clock().
+-- Who last hit whom, keyed by victim UserId. Time from os.clock(). Player hits only.
 local hitLog: Combat.HitLog = {}
+-- The last creature to hit each player. Kept apart so a creature never takes a player's
+-- defeat credit, never counts for combat logging and never makes anyone an aggressor.
+local creatureLog: Combat.HitLog = {}
+local hitCallbacks: { (attackerId: number, targetId: number, amount: number, path: string) -> () } =
+	{}
 local lastStrike: { [Player]: number } = {}
 local defeatCallbacks: { (killer: Player, victim: Player) -> () } = {}
 local hitFx: RemoteEvent
@@ -71,10 +78,20 @@ local function fireDefeat(killer: Player, victim: Player)
 end
 
 -- Gives the kill to whoever hit the victim within the window, if they are still here.
-local function creditDefeat(victim: Player, windowSeconds: number)
+-- `byCreature`: when a creature struck the victim last, nobody gets it (a defeat by a
+-- creature gives no claim and no XP). Leaving the game ignores creatures: combat logging
+-- counts only damage between players.
+local function creditDefeat(victim: Player, windowSeconds: number, byCreature: boolean)
 	local now = os.clock()
-	local killerId = Combat.creditFor(hitLog, victim.UserId, now, windowSeconds)
+	local killerId = Combat.creditFor(
+		hitLog,
+		victim.UserId,
+		now,
+		windowSeconds,
+		if byCreature then creatureLog else nil
+	)
 	hitLog = Combat.clear(hitLog, victim.UserId)
+	creatureLog = Combat.clear(creatureLog, victim.UserId)
 	if killerId == nil then
 		return
 	end
@@ -215,6 +232,129 @@ local function damagePlayer(
 	return true
 end
 
+-- A creature hurts a player. The safe zone and the respawn shield stop it; the new-player
+-- shield does not. Nobody is Marked, no fight starts, and the hit goes in the creature log.
+-- The victim's own effects apply (immune, reduction, shield, reflect).
+local function creatureHitsPlayer(creatureId: number, victim: Player, amount: number): boolean
+	local victimHumanoid = Fighters.body(victim.UserId)
+	if victimHumanoid == nil then
+		return false
+	end
+	local now = os.clock()
+	-- No yielding call from here to the health change: statuses cannot go stale.
+	local victimStatus = ProtectionService.status(victim, now)
+	if victimStatus == nil or not Protection.creatureCanHit(victimStatus, now) then
+		return false
+	end
+
+	local immune, health, reflectBack = false, 0, 0
+	StatusService.update(victim.UserId, function(status, at)
+		immune = Effects.isImmune(status, at)
+		local out, toHealth, toReflect = Effects.resolveDamage(status, amount, at)
+		health, reflectBack = toHealth, toReflect
+		return out
+	end)
+	if immune and not (health > 0) then
+		return false
+	end
+
+	-- Recorded before the health change: Died can fire inside it.
+	creatureLog = Combat.recordHit(creatureLog, victim.UserId, creatureId, now)
+	if health > 0 then
+		-- Not TakeDamage: the new-player shield shows a ForceField, which would block it.
+		victimHumanoid.Health = math.max(0, victimHumanoid.Health - health)
+	end
+	CombatService.flash(victim.UserId)
+
+	-- A player the hit defeated reflects nothing.
+	if reflectBack > 0 and victimHumanoid.Health > 0 then
+		CombatService.damage(
+			victim.UserId,
+			creatureId,
+			reflectBack,
+			{ reflected = true, path = REFLECT_PATH }
+		)
+	end
+	return true
+end
+
+-- A player hurts a creature. Only standing in the safe zone stops it. It never Marks anyone;
+-- it does end the attacker's respawn shield. A creature walking home is immune.
+local function damageCreature(
+	attacker: Player,
+	creatureId: number,
+	amount: number,
+	opts: DamageOpts?
+): boolean
+	local reflected = opts ~= nil and opts.reflected == true
+	local tick = opts ~= nil and opts.tick == true
+	local passive = opts ~= nil and opts.passive == true
+	local humanoid = Fighters.body(creatureId)
+	if humanoid == nil then
+		return false
+	end
+	local now = os.clock()
+
+	-- No yielding call from here to TakeDamage: statuses cannot go stale.
+	if not reflected then
+		local attackerStatus = ProtectionService.status(attacker, now)
+		if attackerStatus == nil then
+			if not tick and DataService.get(attacker) == nil then
+				LedgerService.notify(attacker, "DATA_NOT_LOADED")
+			end
+			return false
+		end
+		local ok, code = Protection.canHitCreature(attackerStatus)
+		if not ok then
+			if not tick then
+				LedgerService.notify(attacker, code or "BAD_REQUEST")
+			end
+			return false
+		end
+		if not passive then
+			ProtectionService.endRespawnShield(attacker)
+		end
+	end
+
+	local total = amount
+	if not reflected and not tick then
+		local bonus = 0
+		StatusService.update(attacker.UserId, function(status, at)
+			local out, taken = Effects.takeEmpower(status, at)
+			bonus = taken
+			return out
+		end)
+		total += bonus
+	end
+
+	local immune, health = false, 0
+	StatusService.update(creatureId, function(status, at)
+		immune = Effects.isImmune(status, at)
+		-- A creature reflects nothing.
+		local out, toHealth = Effects.resolveDamage(status, total, at)
+		health = toHealth
+		return out
+	end)
+	if immune and not (health > 0) then
+		return false
+	end
+
+	-- The tally is told before the damage: Died can fire inside TakeDamage, and the last
+	-- hit must already count by then.
+	if health > 0 then
+		local path = if opts ~= nil and opts.path ~= nil then opts.path else ""
+		for _, callback in hitCallbacks do
+			local ok, err = pcall(callback, attacker.UserId, creatureId, health, path)
+			if not ok then
+				warn(`[IsleOfAvarice] onHit callback failed: {err}`)
+			end
+		end
+		humanoid:TakeDamage(health)
+	end
+	CombatService.flash(creatureId)
+	return true
+end
+
 -- HitFx to every client for the fighter `id`.
 function CombatService.flash(id: number)
 	hitFx:FireAllClients(id)
@@ -277,7 +417,8 @@ end
 -- `tick`: burn or zone damage, so refusals are not notified and no empower is used.
 -- `passive`: a zone tick on someone who walked in after it was placed; the damage and the
 -- protections are unchanged, but the attacker is not Marked and keeps their respawn shield.
--- `path`: the Path a post hit trains ("Strike" = the attacker's Calling).
+-- `path`: the Path a post hit trains and a creature hit is counted for ("Strike" = the
+-- attacker's Calling).
 function CombatService.damage(
 	attackerId: number,
 	targetId: number,
@@ -288,19 +429,24 @@ function CombatService.damage(
 	if attacker == nil or target == nil or not Fighters.mayFight(attackerId, targetId) then
 		return false
 	end
-	local attackerPlayer = attacker.player
+	local attackerPlayer, victimPlayer = attacker.player, target.player
+	if attacker.kind == "creature" then
+		-- A creature hurts players only: never a post, never another creature.
+		if target.kind == "player" and victimPlayer ~= nil then
+			return creatureHitsPlayer(attackerId, victimPlayer, amount)
+		end
+		return false
+	end
 	if attacker.kind ~= "player" or attackerPlayer == nil then
-		-- Creature attackers: Task 9.
 		return false
 	end
 	if target.kind == "post" then
 		return hitPost(attackerPlayer, attackerId, targetId, opts)
-	end
-	local victimPlayer = target.player
-	if target.kind == "player" and victimPlayer ~= nil then
+	elseif target.kind == "creature" then
+		return damageCreature(attackerPlayer, targetId, amount, opts)
+	elseif victimPlayer ~= nil then
 		return damagePlayer(attackerPlayer, victimPlayer, amount, opts)
 	end
-	-- Creature targets: Task 9.
 	return false
 end
 
@@ -340,7 +486,7 @@ local function onCharacterAdded(player: Player, character: Model)
 	humanoid.MaxHealth = Combat.MAX_HEALTH
 	humanoid.Health = Combat.MAX_HEALTH
 	humanoid.Died:Connect(function()
-		creditDefeat(player, Combat.KILL_CREDIT_SECONDS)
+		creditDefeat(player, Combat.KILL_CREDIT_SECONDS, true)
 	end)
 end
 
@@ -352,6 +498,18 @@ local function watchPlayer(player: Player)
 	if character ~= nil then
 		task.spawn(onCharacterAdded, player, character)
 	end
+end
+
+-- Runs for every hit that takes health off a creature, just before the damage: the attacker
+-- (a player), the creature, the health taken and the hit's Path ("Strike", a Path, or "").
+-- Callbacks must not yield.
+function CombatService.onHit(callback: (
+	attackerId: number,
+	targetId: number,
+	amount: number,
+	path: string
+) -> ())
+	table.insert(hitCallbacks, callback)
 end
 
 -- Player-versus-player defeats, and leaving within the combat-log window after being hit.
@@ -377,7 +535,7 @@ function CombatService.start(
 
 	-- Combat log: leaving soon after being hit counts as a defeat.
 	DataService.beforeRelease(function(player)
-		creditDefeat(player, Combat.COMBAT_LOG_SECONDS)
+		creditDefeat(player, Combat.COMBAT_LOG_SECONDS, false)
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		lastStrike[player] = nil
