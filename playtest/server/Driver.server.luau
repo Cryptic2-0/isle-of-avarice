@@ -1846,27 +1846,37 @@ local function runM5(A: Player, B: Player)
 	setFree(B, {})
 	setCoin(A, 40)
 	setCoin(B, 0)
-	check("M5 swap guard: a trade opens", openTrade(A, B))
-	fire(A, "trade", { kind = "offer", cards = { "R001" }, coin = 0 })
-	task.wait(2.4)
-	fire(A, "trade", { kind = "confirm" })
-	task.wait(0.5)
-	ProtectionService.mark(A, os.clock())
-	m = mark(A)
-	local mB = mark(B)
-	fire(B, "trade", { kind = "confirm" })
-	expectNote("M5 swap guard: A gets TRADE_CANCELLED", A, m, "TRADE_CANCELLED")
-	expectNote("M5 swap guard: B gets TRADE_CANCELLED", B, mB, "TRADE_CANCELLED")
-	check(
-		"M5 swap guard: A keeps the card, B gets nothing, no trade is open",
-		freeOf(A)[1] == "R001"
-			and #freeOf(B) == 0
-			and TradeService.session(A) == nil
-			and TradeService.session(B) == nil,
-		`{freeText(A)} / {freeText(B)}`
-	)
-	ProtectionService.endMark(A)
-	check("M5 swap guard: A is no longer Marked", not isMarkedNow(A))
+	-- The dealing checks left A at the clerk: both stand on the trade spots first.
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+	local swapOpen = openTrade(A, B)
+	check("M5 swap guard: a trade opens", swapOpen)
+	if not swapOpen then
+		log("M5 swap guard: no trade opened, the rest of this section is skipped")
+		ProtectionService.endMark(A)
+		fire(A, "trade", { kind = "cancel" })
+	else
+		fire(A, "trade", { kind = "offer", cards = { "R001" }, coin = 0 })
+		task.wait(2.4)
+		fire(A, "trade", { kind = "confirm" })
+		task.wait(0.5)
+		ProtectionService.mark(A, os.clock())
+		m = mark(A)
+		local mB = mark(B)
+		fire(B, "trade", { kind = "confirm" })
+		expectNote("M5 swap guard: A gets TRADE_CANCELLED", A, m, "TRADE_CANCELLED")
+		expectNote("M5 swap guard: B gets TRADE_CANCELLED", B, mB, "TRADE_CANCELLED")
+		check(
+			"M5 swap guard: A keeps the card, B gets nothing, no trade is open",
+			freeOf(A)[1] == "R001"
+				and #freeOf(B) == 0
+				and TradeService.session(A) == nil
+				and TradeService.session(B) == nil,
+			`{freeText(A)} / {freeText(B)}`
+		)
+		ProtectionService.endMark(A)
+		check("M5 swap guard: A is no longer Marked", not isMarkedNow(A))
+	end
 
 	-- Leave the world quiet.
 	ShopService.setRng(math.random)
