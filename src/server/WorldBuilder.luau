@@ -21,6 +21,7 @@ local LEDGE = Color3.fromRGB(96, 100, 110)
 local DEN = Color3.fromRGB(52, 46, 40)
 local MARKER = Color3.fromRGB(120, 230, 255)
 local SKIN = Color3.fromRGB(232, 200, 160)
+local CLERK_ROBE = Color3.fromRGB(70, 40, 100)
 local WARDEN_COLORS: { [string]: Color3 } = {
 	tidewalk = Color3.fromRGB(40, 110, 160),
 	gullstep_climb = Color3.fromRGB(150, 160, 175),
@@ -240,6 +241,52 @@ local function makeLabel(parent: Instance, text: string, lift: number, maxDistan
 	gui.Parent = parent
 end
 
+-- The Edict Hall clerk: a figure behind a low counter, with a "Shop" prompt. ShopService
+-- finds the body by its tag. The counter is on the plaza side, towards the centre.
+local function buildClerk(island: Folder)
+	local town = island:FindFirstChild("Tallyport") or island
+	local at = World.clerk
+	local model = Instance.new("Model")
+	model.Name = "EdictHallClerk"
+	local body = makePart(
+		model,
+		"Body",
+		Vector3.new(2, 4, 1.5),
+		Vector3.new(at.x, at.y + 2, at.z),
+		CLERK_ROBE,
+		Enum.Material.SmoothPlastic
+	)
+	local head = makePart(
+		model,
+		"Head",
+		Vector3.new(1.6, 1.6, 1.6),
+		Vector3.new(at.x, at.y + 4.8, at.z),
+		SKIN,
+		Enum.Material.SmoothPlastic
+	)
+	head.Shape = Enum.PartType.Ball
+	makePart(
+		model,
+		"Counter",
+		Vector3.new(6, 3, 2),
+		Vector3.new(at.x, at.y + 1.5, at.z + 2.5),
+		WOOD,
+		Enum.Material.Wood
+	)
+	model.PrimaryPart = body
+	CollectionService:AddTag(body, "ShopClerk")
+	makeLabel(body, "Edict Hall\nPacks, Copper Relics, selling", 5.5, 80)
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Shop"
+	prompt.ObjectText = "Edict Hall clerk"
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = body
+	model.Parent = town
+end
+
 -- A climb ledge: a rock block from the ground up to its top.
 local function buildLedge(island: Folder, ledge: Types.Ledge)
 	makePart(
@@ -371,6 +418,7 @@ function WorldBuilder.build()
 	TerrainBuilder.build(island)
 	SiteBuilder.build(island)
 	buildTallyport(island)
+	buildClerk(island)
 	for i, cache in World.caches do
 		buildCache(island, i, cache)
 	end

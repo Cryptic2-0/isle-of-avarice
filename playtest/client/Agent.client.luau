@@ -36,6 +36,22 @@ end)
 remotes:WaitForChild("TrialOffer").OnClientEvent:Connect(function(view)
 	report:FireServer("offer", view)
 end)
+-- M5: the Edict result window, the Veil and who has been met, the shop and the trade.
+remotes:WaitForChild("EdictResult").OnClientEvent:Connect(function(result)
+	report:FireServer("edictResult", result)
+end)
+remotes:WaitForChild("EdictSync").OnClientEvent:Connect(function(veilSeconds, met)
+	report:FireServer("edictSync", veilSeconds, met)
+end)
+remotes:WaitForChild("ShopOpen").OnClientEvent:Connect(function(view)
+	report:FireServer("shop", view)
+end)
+remotes:WaitForChild("TradeInvite").OnClientEvent:Connect(function(invite)
+	report:FireServer("tradeInvite", invite)
+end)
+remotes:WaitForChild("TradeSync").OnClientEvent:Connect(function(view)
+	report:FireServer("tradeSync", view)
+end)
 
 local function texts(container: Instance?): { string }
 	local result = {}
@@ -238,6 +254,34 @@ local function inspectUi()
 	else
 		ui.rootPos = "no character"
 	end
+
+	-- M5: the shop, trade and Edict result windows and the Veil line.
+	local shopGui = playerGui:FindFirstChild("ShopGui")
+	local shop = shopGui and shopGui:FindFirstChild("Shop")
+	ui.shopVisible = shop ~= nil and shop.Visible
+	local shopCoin = shop and shop:FindFirstChild("Coin")
+	ui.shopCoin = shopCoin and shopCoin.Text or ""
+	local tradeGui = playerGui:FindFirstChild("TradeGui")
+	local trade = tradeGui and tradeGui:FindFirstChild("Trade")
+	ui.tradeVisible = trade ~= nil and trade.Visible
+	local tradeStatus = trade and trade:FindFirstChild("Status")
+	ui.tradeStatus = tradeStatus and tradeStatus.Text or ""
+	local invite = tradeGui and tradeGui:FindFirstChild("Invite")
+	ui.inviteVisible = invite ~= nil and invite.Visible
+	local edictGui = playerGui:FindFirstChild("EdictGui")
+	local result = edictGui and edictGui:FindFirstChild("Result")
+	ui.resultVisible = result ~= nil and result.Visible
+	local resultTitle = result and result:FindFirstChild("Title")
+	ui.resultTitle = resultTitle and resultTitle.Text or ""
+	ui.veilLine = ""
+	local lines = statusGui and statusGui:FindFirstChild("Lines")
+	if lines ~= nil then
+		for _, label in lines:GetChildren() do
+			if label:IsA("TextLabel") and string.sub(label.Text, 1, 6) == "Veiled" then
+				ui.veilLine = label.Text
+			end
+		end
+	end
 	return ui
 end
 
@@ -301,6 +345,31 @@ cmd.OnClientEvent:Connect(function(op, arg)
 		if book ~= nil then
 			book.Visible = arg == true
 		end
+	elseif op == "edict" then
+		-- Any table, hostile ones included: the server must check it.
+		remotes.EdictUse:FireServer(arg)
+	elseif op == "shopOpen" then
+		-- Talk to the Edict Hall clerk the way the E key would.
+		local island = workspace:FindFirstChild("Island")
+		local town = island and island:FindFirstChild("Tallyport")
+		local clerk = town and town:FindFirstChild("EdictHallClerk")
+		local body = clerk and clerk:FindFirstChild("Body")
+		local prompt = body and body:FindFirstChildOfClass("ProximityPrompt")
+		if prompt == nil then
+			report:FireServer("error", "no clerk prompt")
+			return
+		end
+		prompt:InputHoldBegin()
+		task.wait(prompt.HoldDuration + 0.3)
+		prompt:InputHoldEnd()
+	elseif op == "shop" then
+		remotes.ShopAction:FireServer(arg)
+	elseif op == "tradeRequest" then
+		remotes.TradeRequest:FireServer()
+	elseif op == "tradeReply" then
+		remotes.TradeReply:FireServer(arg)
+	elseif op == "trade" then
+		remotes.TradeAction:FireServer(arg)
 	elseif op == "inspect" then
 		report:FireServer("ui", inspectUi())
 	end

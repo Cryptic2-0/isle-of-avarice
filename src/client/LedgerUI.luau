@@ -17,6 +17,8 @@ local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local LOCKED_COLOR = Color3.fromRGB(55, 55, 60)
 local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local VAULT_GOLD = Color3.fromRGB(255, 200, 40)
+-- An Edict has no tier, so it gets the colour of old paper.
+local PARCHMENT = Color3.fromRGB(214, 196, 150)
 
 local panel: Frame? = nil
 local slotGrid: ScrollingFrame? = nil
@@ -26,6 +28,7 @@ local freeLabel: TextLabel? = nil
 local vaultLabel: TextLabel? = nil
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 local vaultHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
+local useHandler: (card: LedgerView.FreeView) -> () = function(_card: LedgerView.FreeView) end
 
 local function tierColor(tier: Types.Tier): Color3
 	local color = Tiers.info[tier].color
@@ -154,7 +157,8 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	row.Name = "Free" .. card.index
 	row.LayoutOrder = card.index
 	row.Size = UDim2.new(1, 0, 0, 52)
-	row.BackgroundColor3 = tierColor(card.tier)
+	local tier = card.tier
+	row.BackgroundColor3 = if tier ~= nil then tierColor(tier) else PARCHMENT
 	addCorner(row, 8)
 
 	local name = makeLabel("Name", UDim2.fromScale(0.5, 1), UDim2.fromScale(0, 0), 22)
@@ -164,24 +168,71 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	addPadding(name, 6)
 	name.Parent = row
 
+	-- One request per row: a second click before the Ledger sync would pass the server's
+	-- "card on that row" check with the identical card next to it. The row is rebuilt on sync.
+	local sent = false
+	local buttons: { TextButton } = {}
+	local function setInert(inert: boolean)
+		sent = inert
+		for _, button in buttons do
+			button.Active = not inert
+			button.AutoButtonColor = not inert
+			button.BackgroundTransparency = if inert then 0.6 else 0
+			button.TextTransparency = if inert then 0.5 else 0
+		end
+	end
+	-- `rearmAfter`: for a button that only opens a picker, which may be cancelled with no
+	-- sync to rebuild the row.
+	local function once(send: () -> (), rearmAfter: number?): () -> ()
+		return function()
+			if sent then
+				return
+			end
+			setInert(true)
+			send()
+			if rearmAfter ~= nil then
+				task.delay(rearmAfter, function()
+					setInert(false)
+				end)
+			end
+		end
+	end
+
 	local discard = makeButton("Discard", "Discard", UDim2.new(0.22, 0, 1, -8))
 	discard.AnchorPoint = Vector2.new(1, 0.5)
 	discard.Position = UDim2.new(0.99, 0, 0.5, 0)
-	discard.Activated:Connect(function()
+	table.insert(buttons, discard)
+	discard.Activated:Connect(once(function()
 		actionHandler({ kind = "discard", freeIndex = card.index, cardId = card.cardId })
-	end)
+	end))
 	discard.Parent = row
 
 	if card.canClaim then
 		local claim = makeButton("Claim", "Claim", UDim2.new(0.22, 0, 1, -8))
 		claim.AnchorPoint = Vector2.new(1, 0.5)
 		claim.Position = UDim2.new(0.75, 0, 0.5, 0)
-		claim.Activated:Connect(function()
+		table.insert(buttons, claim)
+		claim.Activated:Connect(once(function()
 			actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
-		end)
+		end))
 		claim.Parent = row
+	elseif card.canUse then
+		-- An Edict is used, not claimed; the button sits where Claim would.
+		local use = makeButton("Use", "Use", UDim2.new(0.22, 0, 1, -8))
+		use.AnchorPoint = Vector2.new(1, 0.5)
+		use.Position = UDim2.new(0.75, 0, 0.5, 0)
+		table.insert(buttons, use)
+		use.Activated:Connect(once(function()
+			useHandler(card)
+		end, 1))
+		use.Parent = row
 	end
 	return row
+end
+
+-- What the "Use" button on an Edict row calls.
+function LedgerUI.setUseHandler(handler: (card: LedgerView.FreeView) -> ())
+	useHandler = handler
 end
 
 function LedgerUI.mount(

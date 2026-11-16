@@ -67,3 +67,28 @@ T.test("place adds the region first and hazards last", function()
 		{ text = "Safe zone", kind = "safe" },
 	})
 end)
+
+T.test("Veil shows after Marked and before hazards, rounded up", function()
+	T.eq(
+		StatusView.build(
+			{ newShield = false, respawnShieldSeconds = 0, markedSeconds = 60 },
+			false,
+			{ name = "Thornwood", hazards = { "Briars" } },
+			125.2
+		),
+		{
+			{ text = "Thornwood", kind = "region" },
+			{ text = "MARKED 1:00", kind = "marked" },
+			{ text = "Veiled 2:06", kind = "veil" },
+			{ text = "Briars", kind = "hazard" },
+		}
+	)
+end)
+
+T.test("Veil needs no status, and hostile numbers add no line", function()
+	T.eq(StatusView.build(nil, false, nil, 30), { { text = "Veiled 0:30", kind = "veil" } })
+	for _, bad in { 0, -4, 0 / 0, math.huge } do
+		T.eq(StatusView.build(nil, false, nil, bad), {})
+	end
+	T.eq(StatusView.build(nil, false, nil, nil), {})
+end)
