@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Trade = require(Shared:WaitForChild("Rules"):WaitForChild("Trade"))
+local DialogLayout = require(script.Parent.DialogLayout)
 
 local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local TEXT_DIM = Color3.fromRGB(170, 165, 160)
@@ -247,10 +248,6 @@ local function buildInvite(gui: ScreenGui)
 	banner.BackgroundColor3 = PANEL_COLOR
 	banner.Visible = false
 	addCorner(banner, 10)
-	local minimum = Instance.new("UISizeConstraint")
-	minimum.MinSize = Vector2.new(300, 44)
-	minimum.Parent = banner
-
 	local label = makeLabel("Text", "", UDim2.fromScale(0.44, 0.8), UDim2.fromScale(0.03, 0.1), 20)
 	label.Parent = banner
 	inviteLabel = label
@@ -275,6 +272,7 @@ local function buildInvite(gui: ScreenGui)
 
 	banner.Parent = gui
 	inviteBanner = banner
+	DialogLayout.bind(gui, banner, Vector2.new(300, 44))
 end
 
 local function buildWindow(gui: ScreenGui)
@@ -286,10 +284,6 @@ local function buildWindow(gui: ScreenGui)
 	frame.BackgroundColor3 = PANEL_COLOR
 	frame.Visible = false
 	addCorner(frame, 14)
-	local minimum = Instance.new("UISizeConstraint")
-	minimum.MinSize = Vector2.new(340, 320)
-	minimum.Parent = frame
-
 	local title =
 		makeLabel("Title", "", UDim2.fromScale(0.92, 0.08), UDim2.fromScale(0.04, 0.02), 28)
 	title.Font = Enum.Font.GothamBold
@@ -304,7 +298,8 @@ local function buildWindow(gui: ScreenGui)
 		UDim2.fromScale(0.02, 0.12),
 		UDim2.fromScale(0.3, 0.6)
 	)
-	freeList = makeList(free, UDim2.fromScale(0.04, 0.12), UDim2.fromScale(0.92, 0.86))
+	local freeCards = makeList(free, UDim2.fromScale(0.04, 0.12), UDim2.fromScale(0.92, 0.86))
+	freeList = freeCards
 
 	-- Middle: what you give, with the Coin steps.
 	local mine = makeColumn(
@@ -314,11 +309,13 @@ local function buildWindow(gui: ScreenGui)
 		UDim2.fromScale(0.34, 0.12),
 		UDim2.fromScale(0.32, 0.6)
 	)
-	mineCards = makeList(mine, UDim2.fromScale(0.04, 0.12), UDim2.fromScale(0.92, 0.46))
+	local offeredCards = makeList(mine, UDim2.fromScale(0.04, 0.12), UDim2.fromScale(0.92, 0.46))
+	mineCards = offeredCards
 	local give = makeLabel("Coin", "", UDim2.fromScale(0.92, 0.1), UDim2.fromScale(0.04, 0.6), 18)
 	give.TextColor3 = COIN_COLOR
 	give.Parent = mine
 	mineCoin = give
+	local coinButtons: { TextButton } = {}
 	for index, step in COIN_STEPS do
 		local text = if step > 0 then "+" .. step else tostring(step)
 		local button = makeButton("Coin" .. text, text, BUTTON_COLOR)
@@ -328,6 +325,7 @@ local function buildWindow(gui: ScreenGui)
 			changeCoin(step)
 		end)
 		button.Parent = mine
+		table.insert(coinButtons, button)
 	end
 
 	-- Right: what you get.
@@ -338,7 +336,8 @@ local function buildWindow(gui: ScreenGui)
 		UDim2.fromScale(0.68, 0.12),
 		UDim2.fromScale(0.3, 0.6)
 	)
-	theirCards = makeList(theirs, UDim2.fromScale(0.04, 0.12), UDim2.fromScale(0.92, 0.46))
+	local receivedCards = makeList(theirs, UDim2.fromScale(0.04, 0.12), UDim2.fromScale(0.92, 0.46))
+	theirCards = receivedCards
 	local get = makeLabel("Coin", "", UDim2.fromScale(0.92, 0.1), UDim2.fromScale(0.04, 0.6), 18)
 	get.TextColor3 = COIN_COLOR
 	get.Parent = theirs
@@ -373,6 +372,55 @@ local function buildWindow(gui: ScreenGui)
 
 	frame.Parent = gui
 	window = frame
+
+	-- The lists scroll above the Coin steps, status and bottom action row.
+	local compact: { DialogLayout.Placement } = {
+		{ object = title, position = UDim2.new(0.04, 0, 0, 6), size = UDim2.new(0.92, 0, 0, 24) },
+		{
+			object = status,
+			position = UDim2.new(0.02, 0, 1, -74),
+			size = UDim2.new(0.96, 0, 0, 20),
+		},
+		{ object = confirm, position = UDim2.new(0.1, 0, 1, -8), size = UDim2.new(0.35, 0, 0, 44) },
+		{ object = cancel, position = UDim2.new(0.9, 0, 1, -8), size = UDim2.new(0.35, 0, 0, 44) },
+	}
+	for _, column in { free, mine, theirs } do
+		table.insert(compact, {
+			object = column,
+			position = UDim2.new(column.Position.X.Scale, 0, 0, 34),
+			size = UDim2.new(column.Size.X.Scale, 0, 1, -162),
+		})
+		local heading = column:FindFirstChild("Heading") :: TextLabel
+		table.insert(compact, {
+			object = heading,
+			position = UDim2.new(0.04, 0, 0, 2),
+			size = UDim2.new(0.92, 0, 0, 18),
+		})
+	end
+	for _, list in { freeCards, offeredCards, receivedCards } do
+		local bottom = if list == freeCards then 4 else 22
+		table.insert(compact, {
+			object = list,
+			position = UDim2.new(0.04, 0, 0, 22),
+			size = UDim2.new(0.92, 0, 1, -(22 + bottom)),
+		})
+	end
+	for _, label in { give, get } do
+		table.insert(compact, {
+			object = label,
+			position = UDim2.new(0.04, 0, 1, -20),
+			size = UDim2.new(0.92, 0, 0, 18),
+		})
+	end
+	for index, button in coinButtons do
+		table.insert(compact, {
+			object = button,
+			position = UDim2.new(0.03 + (index - 1) * 0.24, 0, 1, -122),
+			size = UDim2.new(0.22, 0, 0, 44),
+			parent = frame,
+		})
+	end
+	DialogLayout.bind(gui, frame, Vector2.new(340, 320), compact)
 end
 
 function TradeUI.mount(playerGui: PlayerGui, given: Handlers)
