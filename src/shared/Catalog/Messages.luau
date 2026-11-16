@@ -98,6 +98,23 @@ local templates: { [string]: string } = {
 	TRADE_NO_ROOM = "Someone does not have enough free slots.",
 	TRADE_BAD_OFFER = "You cannot offer that.",
 	TRADE_NOT_OPEN = "You are not in a trade.",
+	PARTY_INVITE_SENT = "You invited {player} to your party.",
+	PARTY_DECLINED = "{player} does not want to join your party.",
+	PARTY_EXPIRED = "Your party invite ran out.",
+	PARTY_BUSY = "{player} is busy.",
+	PARTY_NO_INVITE = "There is no party invite to answer.",
+	PARTY_JOINED = "You joined {player}'s party.",
+	PARTY_MEMBER_JOINED = "{player} joined your party.",
+	PARTY_LEFT = "You left the party.",
+	PARTY_MEMBER_LEFT = "{player} left your party.",
+	PARTY_KICKED = "{player} removed you from the party.",
+	PARTY_MEMBER_KICKED = "{player} was removed from your party.",
+	PARTY_NEW_LEADER = "{player} now leads your party.",
+	PARTY_DISBANDED = "Your party broke up.",
+	PARTY_FULL = "Your party is full.",
+	PARTY_NOT_LEADER = "Only the party leader can do that.",
+	PARTY_TARGET_IN_PARTY = "{player} is already in a party.",
+	PARTY_NOT_IN = "You are not in a party.",
 }
 
 local function format(code: string, args: { [string]: string }?): string

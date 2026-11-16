@@ -158,3 +158,32 @@ T.test("M5 messages", function()
 	)
 	T.eq(Messages.format("SHOP_NO_ROOM", { count = "3" }), "You need 3 free slots.")
 end)
+
+T.test("M6 messages", function()
+	for _, code in
+		{
+			"PARTY_INVITE_SENT",
+			"PARTY_DECLINED",
+			"PARTY_EXPIRED",
+			"PARTY_BUSY",
+			"PARTY_NO_INVITE",
+			"PARTY_JOINED",
+			"PARTY_MEMBER_JOINED",
+			"PARTY_LEFT",
+			"PARTY_MEMBER_LEFT",
+			"PARTY_KICKED",
+			"PARTY_MEMBER_KICKED",
+			"PARTY_NEW_LEADER",
+			"PARTY_DISBANDED",
+			"PARTY_FULL",
+			"PARTY_NOT_LEADER",
+			"PARTY_TARGET_IN_PARTY",
+			"PARTY_NOT_IN",
+		}
+	do
+		T.truthy(Messages.format(code) ~= code, code)
+	end
+	T.eq(Messages.format("PARTY_JOINED", { player = "Ann" }), "You joined Ann's party.")
+	T.eq(Messages.format("PARTY_KICKED", { player = "Ann" }), "Ann removed you from the party.")
+	T.eq(Messages.format("PARTY_DISBANDED"), "Your party broke up.")
+end)
