@@ -448,3 +448,12 @@ T.test("no solid feature stands in the Fields", function()
 		end
 	end
 end)
+
+T.test("the Edict Hall clerk stands in Tallyport, away from the spawn pad", function()
+	local clerk = World.clerk
+	T.eq(clerk.y, 0)
+	local fromCentre = math.sqrt(clerk.x ^ 2 + clerk.z ^ 2)
+	T.truthy(fromCentre <= World.townRadius - 10, "well inside the safe zone")
+	T.truthy(flat(clerk, World.spawn) >= 15, "clear of the spawn pad")
+	T.eq(Geography.regionAt(clerk.x, clerk.z), "Tallyport")
+end)

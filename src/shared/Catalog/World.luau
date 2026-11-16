@@ -9,6 +9,8 @@ local islandHalfSize = 1380
 local groundY = 0
 local spawn: Types.Vec3 = { x = 0, y = 0.7, z = 0 }
 local townRadius = Geography.TOWN_RADIUS
+-- The Edict Hall clerk, between the two north buildings of Tallyport.
+local clerk: Types.Vec3 = { x = 0, y = 0, z = -24 }
 
 -- Caches C001 to C006 hold Relics R001 to R006 in the Counting Fields.
 local fieldLayout: { { number } } = {
@@ -233,6 +235,7 @@ return {
 	groundY = groundY,
 	spawn = spawn,
 	townRadius = townRadius,
+	clerk = clerk,
 	caches = caches,
 	cacheById = cacheById,
 	climbs = climbs,

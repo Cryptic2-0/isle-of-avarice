@@ -7,6 +7,7 @@ local Ledger = require("./Ledger")
 local Types = require("../Types")
 
 type Ledger = Types.Ledger
+type Vec3 = Types.Vec3
 
 export type Offer = { cards: { string }, coin: number }
 -- `offers` and `confirmed` are keyed by tostring(user id).
@@ -17,6 +18,7 @@ export type Session = {
 	confirmed: { [string]: boolean },
 	changedAt: number,
 }
+export type Body = { userId: number, position: Vec3 }
 export type CardView = { cardId: string, name: string }
 export type OfferView = { cards: { CardView }, coin: number }
 export type FreeRow = { index: number, cardId: string, name: string, offered: boolean }
@@ -113,6 +115,39 @@ function Trade.setOffer(
 		return nil, "TRADE_BAD_OFFER"
 	end
 	return withOffer(session, userId, offer, now), "OK"
+end
+
+-- Both confirmations cleared and the wait restarted, for a trade that failed at the swap.
+function Trade.unconfirm(session: Session, now: number): Session
+	return {
+		a = session.a,
+		b = session.b,
+		offers = session.offers,
+		confirmed = {},
+		changedAt = now,
+	}
+end
+
+-- The nearest other player within the invite range, or nil. A NaN position is never near.
+-- Ties go to the lower id.
+function Trade.nearest(asker: Body, others: { Body }): number?
+	local bestId: number? = nil
+	local best = math.huge
+	for _, other in others do
+		if other.userId == asker.userId then
+			continue
+		end
+		local a, b = asker.position, other.position
+		local gap = math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2)
+		if not (gap <= Trade.INVITE_RANGE) then
+			continue
+		end
+		if gap < best or (gap == best and bestId ~= nil and other.userId < bestId) then
+			best = gap
+			bestId = other.userId
+		end
+	end
+	return bestId
 end
 
 -- Refused for 2 seconds after any change, so nobody confirms an offer they have not seen.

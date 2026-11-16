@@ -249,3 +249,24 @@ T.test("no rule changes its arguments", function()
 	Trade.view(s, A, "Bea", ledgerA, 50, 200)
 	T.eq({ s, ledgerA, ledgerB }, { s0, a0, b0 } :: { any })
 end)
+
+T.test("unconfirm clears both confirmations and restarts the wait", function()
+	local s = bothConfirmed()
+	local cleared = Trade.unconfirm(s, 150)
+	T.eq({ cleared.confirmed, cleared.changedAt }, { {}, 150 } :: { any })
+	T.eq(cleared.offers, s.offers)
+	T.truthy(Trade.ready(s), "the session is not changed in place")
+end)
+
+T.test("nearest: who a trade request goes to", function()
+	local me = { userId = 1, position = { x = 0, y = 3, z = 0 } }
+	local others = {
+		{ userId = 1, position = { x = 0, y = 3, z = 0 } },
+		{ userId = 2, position = { x = 14, y = 3, z = 0 } },
+		{ userId = 3, position = { x = 0, y = 3, z = 15.1 } },
+	}
+	T.eq(Trade.nearest(me, others), 2)
+	T.eq(Trade.nearest(me, { others[1], others[3] }), nil)
+	T.eq(Trade.nearest(me, { { userId = 5, position = { x = 0, y = 3, z = 15 } } }), 5)
+	T.eq(Trade.nearest(me, { { userId = 5, position = { x = 0 / 0, y = 3, z = 0 } } }), nil)
+end)

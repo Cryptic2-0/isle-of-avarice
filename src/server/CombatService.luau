@@ -29,6 +29,8 @@ local CombatService = {}
 
 -- Who last hit whom, keyed by victim UserId. Time from os.clock(). Player hits only.
 local hitLog: Combat.HitLog = {}
+-- When each player last dealt or took player damage (os.clock). Player versus player only.
+local fightAt: { [Player]: number } = {}
 -- The last creature to hit each player. Kept apart so a creature never takes a player's
 -- defeat credit, never counts for combat logging and never makes anyone an aggressor.
 local creatureLog: Combat.HitLog = {}
@@ -220,6 +222,8 @@ local function damagePlayer(
 	-- Record the hit before the damage: with immediate signal behaviour, Died can fire
 	-- inside TakeDamage, and the kill must already be credited by then.
 	hitLog = Combat.recordHit(hitLog, victim.UserId, attacker.UserId, now)
+	fightAt[attacker] = now
+	fightAt[victim] = now
 	if health > 0 then
 		victimHumanoid:TakeDamage(health)
 	end
@@ -512,6 +516,11 @@ function CombatService.onHit(callback: (
 	table.insert(hitCallbacks, callback)
 end
 
+-- The os.clock() time the player last dealt or took player damage, or nil.
+function CombatService.lastFightAt(player: Player): number?
+	return fightAt[player]
+end
+
 -- Player-versus-player defeats, and leaving within the combat-log window after being hit.
 function CombatService.onDefeat(callback: (killer: Player, victim: Player) -> ())
 	table.insert(defeatCallbacks, callback)
@@ -539,6 +548,7 @@ function CombatService.start(
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		lastStrike[player] = nil
+		fightAt[player] = nil
 		postHits[player.UserId] = nil
 	end)
 end

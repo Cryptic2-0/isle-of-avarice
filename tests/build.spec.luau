@@ -47,6 +47,15 @@ T.test("built place contains the expected scripts", function()
 	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Rewards.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.Sight.ClassName, "ModuleScript")
 	T.eq(game:GetService("ReplicatedStorage").Shared.Net.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.EdictRules.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Shop.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Trade.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.Cards.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.Edicts.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.Shop.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.EdictService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.ShopService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.TradeService.ClassName, "ModuleScript")
 	T.eq(
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.TrialUI.ClassName,
 		"ModuleScript"
