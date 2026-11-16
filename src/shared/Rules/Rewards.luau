@@ -5,7 +5,9 @@ local Scarcity = require("./Scarcity")
 local Types = require("../Types")
 
 -- Damage dealt to one creature, per attacker. Key: tostring(attacker id).
-export type Tally = { [string]: { lastAt: number, total: number, byPath: { [string]: number } } }
+export type Tally = {
+	[string]: { lastAt: number, total: number, byPath: { [string]: number }, assist: string? },
+}
 -- room: free slots the player can still fill (0 when their Ledger is locked).
 export type Recipient = { calling: string, room: number }
 export type Award = {
@@ -42,6 +44,45 @@ function Rewards.record(
 	local out = table.clone(tally)
 	out[key] =
 		{ lastAt = now, total = (if old ~= nil then old.total else 0) + amount, byPath = byPath }
+	return out
+end
+
+-- Support that reaches someone who is already a contributor makes the helper one too, with no
+-- damage. Anything else (self, no contributor reached, not a Path, NaN time) changes nothing.
+function Rewards.assist(
+	tally: Tally,
+	helperId: number,
+	helpedIds: { number },
+	path: string,
+	now: number
+): Tally
+	if not Paths.isPath(path) then
+		return tally
+	end
+	local reached = false
+	for _, id in helpedIds do
+		local entry = tally[tostring(id)]
+		if
+			id ~= helperId
+			and entry ~= nil
+			and now - entry.lastAt <= Rewards.CONTRIBUTOR_SECONDS
+		then
+			reached = true
+			break
+		end
+	end
+	if not reached then
+		return tally
+	end
+	local key = tostring(helperId)
+	local old = tally[key]
+	local out = table.clone(tally)
+	out[key] = {
+		lastAt = now,
+		total = if old ~= nil then old.total else 0,
+		byPath = if old ~= nil then table.clone(old.byPath) else {},
+		assist = path,
+	}
 	return out
 end
 
@@ -89,6 +130,7 @@ function Rewards.xpPath(byPath: { [string]: number }, calling: string): string
 end
 
 -- One Award per contributor found in `recipients`, in contributors() order. Each contributor
+-- An assist-only contributor (no damage) is served last, as the order is by damage. Each contributor
 -- rolls every drop once, in drop order; a roll below the chance wins. A won Relic is sealed
 -- when the server already holds its cap (`held` plus the copies given earlier in this call),
 -- else lost when the contributor has no room left, else given.
@@ -107,7 +149,14 @@ function Rewards.awards(
 		if recipient == nil then
 			continue
 		end
-		local xpPath = Rewards.xpPath(tally[tostring(id)].byPath, recipient.calling)
+		local entry = tally[tostring(id)]
+		local xpPath
+		if entry.total == 0 and entry.assist ~= nil then
+			-- Support only: paid in the Path of the support, but never without a Calling.
+			xpPath = if recipient.calling == "" then "" else entry.assist
+		else
+			xpPath = Rewards.xpPath(entry.byPath, recipient.calling)
+		end
 		local award: Award = {
 			userId = id,
 			coin = reward.coin,

@@ -84,13 +84,15 @@ function Protection.canHitCreature(attacker: Status): (boolean, string?)
 	return true, nil
 end
 
--- True when this hit starts a fight: the victim is not Marked and did not hit the attacker recently.
+-- True when this hit starts a fight: the victim is not Marked and neither the victim nor
+-- anyone in `victimAllies` hit the attacker recently.
 function Protection.isAggressor(
 	log: Combat.HitLog,
 	attackerId: number,
 	victimId: number,
 	victimMarked: boolean,
-	now: number
+	now: number,
+	victimAllies: { number }?
 ): boolean
 	if victimMarked then
 		return false
@@ -98,7 +100,10 @@ function Protection.isAggressor(
 	local entry = log[tostring(attackerId)]
 	if
 		entry ~= nil
-		and entry.attackerId == victimId
+		and (entry.attackerId == victimId or (victimAllies ~= nil and table.find(
+			victimAllies,
+			entry.attackerId
+		) ~= nil))
 		and now - entry.at <= Protection.RETALIATE_SECONDS
 	then
 		return false
@@ -124,6 +129,20 @@ function Protection.recordClaim(
 ): ClaimHistory
 	local newHistory = table.clone(history)
 	newHistory[claimKey(killerId, victimId)] = now
+	return newHistory
+end
+
+-- A claim for every killer id (the killer's whole party).
+function Protection.recordClaims(
+	history: ClaimHistory,
+	killerIds: { number },
+	victimId: number,
+	now: number
+): ClaimHistory
+	local newHistory = table.clone(history)
+	for _, killerId in killerIds do
+		newHistory[claimKey(killerId, victimId)] = now
+	end
 	return newHistory
 end
 

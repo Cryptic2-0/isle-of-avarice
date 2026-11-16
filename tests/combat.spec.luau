@@ -113,3 +113,16 @@ T.test("creditFor: a creature's last blow is a creature defeat", function()
 	-- A creature hit on someone else changes nothing.
 	T.eq(Combat.creditFor(log, 2, 13, 15, Combat.recordHit({}, 3, -2000001, 12)), 7)
 end)
+
+T.test("creditFor: never to a party member of the victim", function()
+	local log = Combat.recordHit({}, 2, 7, 10)
+	T.eq(Combat.creditFor(log, 2, 13, 15, nil, { 7 }), nil)
+	T.eq(Combat.creditFor(log, 2, 13, 15, nil, { 8, 9 }), 7)
+	T.eq(Combat.creditFor(log, 2, 13, 15, nil, {}), 7)
+	T.eq(Combat.creditFor(log, 2, 13, 15), 7)
+	T.eq(Combat.creditFor(log, 2, 13, 15, Combat.recordHit({}, 2, -2000001, 9), { 7 }), nil)
+	T.eq(Combat.creditFor(log, 2, 13, 15, Combat.recordHit({}, 2, -2000001, 9), { 8 }), 7)
+	local allies = { 7 }
+	Combat.creditFor(log, 2, 13, 15, nil, allies)
+	T.eq(allies, { 7 })
+end)
