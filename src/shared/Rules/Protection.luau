@@ -1,6 +1,7 @@
 --!strict
 local World = require("../Catalog/World")
 local Combat = require("./Combat")
+local LedgerRules = require("./Ledger")
 local Types = require("../Types")
 
 type Vec3 = Types.Vec3
@@ -33,13 +34,9 @@ function Protection.inSafeZone(position: Vec3): boolean
 	return not (distance > World.townRadius)
 end
 
--- Claimed Relics plus spare ones.
+-- Claimed Relics plus spare ones. Edicts do not count.
 function Protection.shouldEndShield(ledger: Ledger): boolean
-	local count = #ledger.free
-	for _ in ledger.claimed do
-		count += 1
-	end
-	return count >= Protection.SHIELD_RELICS
+	return LedgerRules.relicCount(ledger) >= Protection.SHIELD_RELICS
 end
 
 function Protection.isMarked(status: Status, now: number): boolean

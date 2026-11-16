@@ -113,3 +113,48 @@ T.test("format fills in trial and creature messages", function()
 		"Bog Pearl is sealed on this server, so you did not get it."
 	)
 end)
+
+T.test("M5 messages", function()
+	local m5 = {
+		"NOT_A_RELIC",
+		"EDICT_NO_TARGET",
+		"EDICT_MARKED",
+		"EDICT_IN_COMBAT",
+		"EDICT_IN_TRIAL",
+		"EDICT_NOT_MET",
+		"EDICT_NOT_NOW",
+		"EDICT_VEILED",
+		"EDICT_VEIL_ON",
+		"AUDITED",
+		"EDICTS_LOST",
+		"PASSAGE_DONE",
+		"HOMECOMING_DONE",
+		"SHOP_NO_ROOM",
+		"SHOP_PACK",
+		"SHOP_BOUGHT",
+		"SHOP_SOLD",
+		"NOT_FOR_SALE",
+		"TRADE_SENT",
+		"TRADE_DECLINED",
+		"TRADE_BUSY",
+		"TRADE_EXPIRED",
+		"TRADE_CANCELLED",
+		"TRADE_DONE",
+		"TRADE_TOO_SOON",
+		"TRADE_NO_ROOM",
+		"TRADE_BAD_OFFER",
+		"TRADE_NOT_OPEN",
+	}
+	for _, code in m5 do
+		T.truthy(Messages.format(code) ~= code, code)
+	end
+	T.eq(
+		Messages.format("SHOP_SOLD", { name = "Bottled Squall", coin = "15" }),
+		"You sold Bottled Squall for 15 Coin."
+	)
+	T.eq(
+		Messages.format("EDICTS_LOST", { names = "Veil, Audit" }),
+		"Your defeat cost you: Veil, Audit."
+	)
+	T.eq(Messages.format("SHOP_NO_ROOM", { count = "3" }), "You need 3 free slots.")
+end)
