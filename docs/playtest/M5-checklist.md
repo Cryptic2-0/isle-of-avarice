@@ -4,7 +4,7 @@ Milestone 5 adds the Edicts, the Edict Hall and trading. An Edict is a single-us
 
 Many steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
-Automated run: not done yet.
+Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=448 failed=0`, with no errors from the game's scripts. 105 of those checks are for milestone 5. The steps below are the hand checks for how things look and feel, and for the phone layout.
 
 ## Words used here
 
