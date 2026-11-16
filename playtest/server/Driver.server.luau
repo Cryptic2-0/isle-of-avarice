@@ -1,7 +1,7 @@
 --!nonstrict
 -- Automated two-player play test. Only in the play-test build (playtest.project.json),
 -- never in dist. Start a local server with 2 players; this script walks through the M1,
--- M2, M3 and M4 checklists and the world checks (W.1 to W.7, for the nine-region island),
+-- M2, M3, M4 and M5 checklists and the world checks (W.1 to W.7, for the nine-region island),
 -- driving each player through their Agent, and prints one line per check:
 -- "[PLAYTEST] PASS ..." or "[PLAYTEST] FAIL ...", then a DONE summary.
 --
@@ -17,7 +17,7 @@
 -- in Tallyport), then M1 and M2, with M3.1 to M3.3 (first join, choosing a Calling) right
 -- after M2.1. A can claim B only once an hour and M2 makes that claim (and B's on A), so
 -- M2.8, M2.13 and M2.14 also check the Calling's defeat XP (M3.10). Then the rest of M3,
--- then M4 (creatures, trials and the quest), and M2.15, which ends B's session, last of all.
+-- then M4 (creatures, trials and the quest), then M5 (Edicts, the shop and trading), and M2.15, which ends B's session, last of all.
 -- Creatures are put to sleep for the whole run (CreatureService.setActive) and M4 wakes one
 -- at a time; it sets their health directly, fixes the drop rolls and skips trial time.
 local CollectionService = game:GetService("CollectionService")
@@ -26,14 +26,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Server = ServerScriptService:WaitForChild("Server")
+local CombatService = require(Server:WaitForChild("CombatService"))
 local CreatureService = require(Server:WaitForChild("CreatureService"))
 local DataService = require(Server:WaitForChild("DataService"))
+local EdictService = require(Server:WaitForChild("EdictService"))
 local Fighters = require(Server:WaitForChild("Fighters"))
 local LedgerService = require(Server:WaitForChild("LedgerService"))
 local PathService = require(Server:WaitForChild("PathService"))
 local ProtectionService = require(Server:WaitForChild("ProtectionService"))
+local ShopService = require(Server:WaitForChild("ShopService"))
 local Sight = require(Server:WaitForChild("Sight"))
+local SourceService = require(Server:WaitForChild("SourceService"))
 local StatusService = require(Server:WaitForChild("StatusService"))
+local TradeService = require(Server:WaitForChild("TradeService"))
 local TrialService = require(Server:WaitForChild("TrialService"))
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rules = Shared:WaitForChild("Rules")
@@ -85,6 +90,11 @@ local hitFx = {} -- player -> count of HitFx seen
 local uiReport = {} -- player -> last UI snapshot
 local cooldowns = {} -- player -> { { slot, seconds, at } }, each AbilityCooldown seen
 local offers = {} -- player -> last TrialOffer view
+local edictResults = {} -- player -> last EdictResult
+local edictSyncs = {} -- player -> { veilSeconds, met } of the last EdictSync
+local shopViews = {} -- player -> last ShopOpen view
+local tradeInvites = {} -- player -> last TradeInvite (false = closed, nil = never seen)
+local tradeViews = {} -- player -> last TradeSync view (false = closed, nil = never seen)
 local agentErrors = {}
 
 report.OnServerEvent:Connect(function(player, kind, a, b)
@@ -102,6 +112,16 @@ report.OnServerEvent:Connect(function(player, kind, a, b)
 		offers[player] = a
 	elseif kind == "hitfx" then
 		hitFx[player] = (hitFx[player] or 0) + 1
+	elseif kind == "edictResult" then
+		edictResults[player] = a
+	elseif kind == "edictSync" then
+		edictSyncs[player] = { veilSeconds = a, met = b }
+	elseif kind == "shop" then
+		shopViews[player] = a
+	elseif kind == "tradeInvite" then
+		tradeInvites[player] = if a == nil then false else a
+	elseif kind == "tradeSync" then
+		tradeViews[player] = if a == nil then false else a
 	elseif kind == "ui" then
 		uiReport[player] = a
 	elseif kind == "error" then
@@ -1111,6 +1131,690 @@ local function runM4(A: Player, B: Player)
 	place(B, B_TOWN, IN_TOWN)
 	waitAlive(A)
 	waitAlive(B)
+end
+
+------------------------------------------------------------------------------- M5 helpers
+
+local CLERK_SPOT = Vector3.new(4, 3, -18) -- 7 studs from the clerk, inside the shop's reach
+local FAR_FROM_CLERK = Vector3.new(0, 3, 6) -- 30 studs from the clerk
+local TRADE_A = Vector3.new(10, 3, 12)
+local TRADE_B = Vector3.new(10, 3, 20) -- 8 studs from TRADE_A
+local TRADE_FAR = Vector3.new(-30, 3, 12) -- 40 studs from TRADE_A, still in Tallyport
+
+-- Stands the player at `spot` and waits until the server sees them there.
+local function put(player: Player, spot: Vector3, face: Vector3)
+	place(player, spot, face)
+	waitFor(function()
+		return flatDistance(positionOf(player), spot) <= 1.5
+	end, 3)
+	task.wait(0.3)
+end
+
+local function setCoin(player: Player, amount: number)
+	SourceService.addCoin(player, amount - coinOf(player))
+end
+
+local function setFree(player: Player, free: { string }, claimed: { [string]: boolean }?)
+	LedgerService.set(player, { claimed = claimed or {}, free = free })
+end
+
+local function freeOf(player: Player): { string }
+	local ledger = LedgerService.get(player)
+	return if ledger ~= nil then ledger.free else {}
+end
+
+local function freeText(player: Player): string
+	return "{" .. table.concat(freeOf(player), ", ") .. "}"
+end
+
+local function isMarkedNow(player: Player): boolean
+	local status = ProtectionService.status(player, os.clock())
+	return status ~= nil and Protection.isMarked(status, os.clock())
+end
+
+-- Waits until 31 seconds have passed since the player's last fight.
+local function waitNoFight(player: Player)
+	local last = CombatService.lastFightAt(player)
+	if last ~= nil then
+		local need = last + 31 - os.clock()
+		if need > 0 then
+			log(`M5 waiting {fmt(need)} s for the 30-second fight rule`)
+			task.wait(need)
+		end
+	end
+end
+
+-- Waits for one of several codes; returns the note that came.
+local function expectOneOf(name: string, player: Player, from: number, codes: { string })
+	local found = nil
+	local ok = waitFor(function()
+		for _, code in codes do
+			local note = noteSince(player, from, code)
+			if note ~= nil then
+				found = note
+				return true
+			end
+		end
+		return false
+	end, 3)
+	check(name, ok, `{player.Name} got {codesSince(player, from)}`)
+	return found
+end
+
+-- Sends the request, then gives the server a moment (the rate limit is 5 a second).
+local function fire(player: Player, op: string, arg: any?)
+	send(player, op, arg)
+	task.wait(0.3)
+end
+
+local function edictCountOf(player: Player): number
+	local ledger = LedgerService.get(player)
+	return if ledger ~= nil then Ledger.edictCount(ledger) else -1
+end
+
+local function sessionOffers(player: Player): string
+	local session = TradeService.session(player)
+	if session == nil then
+		return "no session"
+	end
+	local parts = {}
+	for key, offer in session.offers do
+		table.insert(parts, `{key}:{table.concat(offer.cards, "+")}/{offer.coin}`)
+	end
+	table.sort(parts)
+	return table.concat(parts, " ")
+end
+
+local function lineHas(result, text: string): boolean
+	for _, line in (result and result.lines) or {} do
+		if string.find(line, text, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function linesOf(result): string
+	return if result ~= nil then table.concat(result.lines, " | ") else "no result"
+end
+
+-- Starts a trade: A asks, B accepts. True when both windows got a view.
+local function openTrade(A: Player, B: Player): boolean
+	tradeViews[A] = nil
+	tradeViews[B] = nil
+	tradeInvites[B] = nil
+	send(A, "tradeRequest")
+	if not waitFor(function()
+		return type(tradeInvites[B]) == "table"
+	end, 3) then
+		return false
+	end
+	task.wait(0.3)
+	send(B, "tradeReply", true)
+	return waitFor(function()
+		return type(tradeViews[A]) == "table" and type(tradeViews[B]) == "table"
+	end, 3)
+end
+
+-- Edicts, the Edict Hall and trading.
+local function runM5(A: Player, B: Player)
+	TrialService.setClocks(function()
+		return os.clock() + clockSkip
+	end, function()
+		return os.time() + realSkip
+	end)
+	waitAlive(A)
+	waitAlive(B)
+	ProtectionService.endRespawnShield(A)
+	ProtectionService.endRespawnShield(B)
+	heal(A)
+	heal(B)
+	local dataA, dataB = DataService.get(A), DataService.get(B)
+	dataA.trials = { cooldowns = {}, questStep = 0 }
+	dataB.trials = { cooldowns = {}, questStep = 0 }
+	setFree(A, {})
+	setFree(B, {})
+	setCoin(A, 100)
+	setCoin(B, 0)
+	EdictService.setRng(function()
+		return 0
+	end)
+	put(A, CLERK_SPOT, Vector3.new(0, 3, -24))
+	put(B, TRADE_FAR, TRADE_A)
+
+	-- The clerk and the shop window.
+	local clerks = CollectionService:GetTagged("ShopClerk")
+	check("M5 clerk: one part is tagged ShopClerk", #clerks == 1, tostring(#clerks))
+	shopViews[A] = nil
+	send(A, "shopOpen")
+	check(
+		"M5 clerk: the shop opens from the clerk's prompt",
+		waitFor(function()
+			return shopViews[A] ~= nil
+		end, 4)
+	)
+	local opened = shopViews[A] or {}
+	check(
+		"M5 clerk: the view's Coin line matches",
+		opened.coinText == `Coin: {coinOf(A)}`,
+		tostring(opened.coinText)
+	)
+	local ui = inspectUntil(A, function(snapshot)
+		return snapshot.shopVisible == true
+	end)
+	check(
+		"M5 clerk: the shop window is open and shows the Coin",
+		ui.shopVisible == true and ui.shopCoin == "Coin: 100",
+		`{tostring(ui.shopVisible)}, "{tostring(ui.shopCoin)}"`
+	)
+
+	-- Pack.
+	local rolls, rollIndex = { 0, 0.5, 0.9 }, 0
+	ShopService.setRng(function()
+		rollIndex += 1
+		return rolls[rollIndex] or 0
+	end)
+	shopViews[A] = nil
+	local m = mark(A)
+	fire(A, "shop", { kind = "pack" })
+	local pack = expectNote("M5 pack: SHOP_PACK", A, m, "SHOP_PACK")
+	check(
+		"M5 pack: names Summons, Veil, Homecoming",
+		pack ~= nil and pack.args ~= nil and pack.args.names == "Summons, Veil, Homecoming",
+		if pack ~= nil and pack.args ~= nil then tostring(pack.args.names) else "none"
+	)
+	local free = freeOf(A)
+	check(
+		"M5 pack: 40 Coin left and three Edicts in the free slots",
+		coinOf(A) == 40 and free[1] == "E001" and free[2] == "E003" and free[3] == "E005",
+		`{coinOf(A)} Coin, {freeText(A)}`
+	)
+	waitFor(function()
+		return shopViews[A] ~= nil
+	end, 3)
+	ui = inspectUntil(A, function(snapshot)
+		return snapshot.shopCoin == "Coin: 40"
+	end)
+	check(
+		"M5 pack: the window's Coin line follows",
+		ui.shopCoin == "Coin: 40",
+		`"{tostring(ui.shopCoin)}"`
+	)
+	m = mark(A)
+	fire(A, "shop", { kind = "pack" })
+	expectNote("M5 pack: 40 Coin is NOT_ENOUGH_COIN", A, m, "NOT_ENOUGH_COIN")
+	check(
+		"M5 pack: nothing changed when refused",
+		coinOf(A) == 40 and #freeOf(A) == 3,
+		`{coinOf(A)} Coin, {freeText(A)}`
+	)
+
+	-- Relic.
+	m = mark(A)
+	fire(A, "shop", { kind = "relic", relicId = "R003" })
+	expectNote("M5 relic: R003 at 40 Coin is SHOP_BOUGHT", A, m, "SHOP_BOUGHT")
+	check(
+		"M5 relic: Coin is 0 and the Relic is held",
+		coinOf(A) == 0 and hasFree(A, "R003"),
+		tostring(coinOf(A))
+	)
+	m = mark(A)
+	fire(A, "shop", { kind = "relic", relicId = "R007" })
+	expectNote("M5 relic: R007 is NOT_FOR_SALE", A, m, "NOT_FOR_SALE")
+
+	-- Sell.
+	local row = table.find(freeOf(A), "R003") or 0
+	m = mark(A)
+	fire(A, "shop", { kind = "sell", freeIndex = row, cardId = "R003" })
+	expectNote("M5 sell: SHOP_SOLD", A, m, "SHOP_SOLD")
+	check(
+		"M5 sell: +1 Coin and the Relic is gone",
+		coinOf(A) == 1 and not hasFree(A, "R003"),
+		`{coinOf(A)} Coin, {freeText(A)}`
+	)
+	m = mark(A)
+	fire(A, "shop", { kind = "sell", freeIndex = row, cardId = "R003" })
+	expectNote("M5 sell: the same request again is BAD_INDEX", A, m, "BAD_INDEX")
+	check("M5 sell: Coin unchanged by the repeat", coinOf(A) == 1, tostring(coinOf(A)))
+
+	-- Reach.
+	setCoin(A, 100)
+	put(A, FAR_FROM_CLERK, Vector3.new(0, 3, -24))
+	local freeBefore = freeText(A)
+	m = mark(A)
+	fire(A, "shop", { kind = "pack" })
+	expectNote("M5 reach: 30 studs from the clerk is TOO_FAR", A, m, "TOO_FAR")
+	check(
+		"M5 reach: nothing changed",
+		coinOf(A) == 100 and freeText(A) == freeBefore,
+		`{coinOf(A)} Coin, {freeText(A)}`
+	)
+	put(A, CLERK_SPOT, Vector3.new(0, 3, -24))
+
+	-- Hostile shop requests.
+	local hostile = {
+		{ "a string", "pack" },
+		{ "a number", 5 },
+		{ "an empty table", {} },
+		{ "kind steal", { kind = "steal" } },
+		{ "nil", nil },
+	}
+	freeBefore = freeText(A)
+	for _, entry in hostile do
+		m = mark(A)
+		fire(A, "shop", entry[2])
+		expectNote(`M5 hostile shop request ({entry[1]}): BAD_REQUEST`, A, m, "BAD_REQUEST")
+	end
+	check(
+		"M5 hostile shop requests changed nothing",
+		coinOf(A) == 100 and freeText(A) == freeBefore,
+		`{coinOf(A)} Coin, {freeText(A)}`
+	)
+
+	-- Veil.
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+	setFree(A, { "E003" })
+	m = mark(A)
+	fire(A, "edict", { freeIndex = 1, cardId = "E003" })
+	expectNote("M5 veil: EDICT_VEIL_ON", A, m, "EDICT_VEIL_ON")
+	check("M5 veil: the card is gone", #freeOf(A) == 0, freeText(A))
+	check("M5 veil: A is veiled", EdictService.isVeiled(A))
+	ui = inspectUntil(A, function(snapshot)
+		return string.sub(snapshot.veilLine or "", 1, 6) == "Veiled"
+	end)
+	check(
+		'M5 veil: the HUD shows a line starting "Veiled"',
+		string.sub(ui.veilLine or "", 1, 6) == "Veiled",
+		`"{tostring(ui.veilLine)}"`
+	)
+
+	-- Summons.
+	setFree(A, { "E001" })
+	setFree(B, {}, { R007 = true })
+	edictResults[A] = nil
+	fire(A, "edict", { freeIndex = 1, cardId = "E001", relicId = "R007" })
+	waitFor(function()
+		return edictResults[A] ~= nil
+	end, 3)
+	local summons = edictResults[A]
+	check(
+		'M5 summons: the result is titled "Summons: Bottled Squall"',
+		summons ~= nil and summons.title == "Summons: Bottled Squall",
+		if summons ~= nil then tostring(summons.title) else "no result"
+	)
+	check(
+		"M5 summons: it lists B's display name",
+		lineHas(summons, B.DisplayName),
+		linesOf(summons)
+	)
+	check("M5 summons: the card is gone", #freeOf(A) == 0, freeText(A))
+	ui = inspectUntil(A, function(snapshot)
+		return snapshot.resultVisible == true
+	end)
+	check(
+		"M5 summons: the result window is open with that title",
+		ui.resultVisible == true and ui.resultTitle == "Summons: Bottled Squall",
+		`{tostring(ui.resultVisible)}, "{tostring(ui.resultTitle)}"`
+	)
+
+	-- Audit (B is not veiled yet).
+	setFree(A, { "E002" })
+	put(A, TRADE_A, TRADE_B)
+	put(B, Vector3.new(10, 3, 22), TRADE_A)
+	edictResults[A] = nil
+	local mb = mark(B)
+	fire(A, "edict", { freeIndex = 1, cardId = "E002" })
+	waitFor(function()
+		return edictResults[A] ~= nil
+	end, 3)
+	local audit = edictResults[A]
+	check(
+		"M5 audit: the result is titled with B's name",
+		audit ~= nil and audit.title == "Audit: " .. B.DisplayName,
+		if audit ~= nil then tostring(audit.title) else "no result"
+	)
+	check(
+		'M5 audit: it shows "007 Bottled Squall (Silver)"',
+		lineHas(audit, "007 Bottled Squall (Silver)"),
+		linesOf(audit)
+	)
+	expectNote("M5 audit: B is told AUDITED", B, mb, "AUDITED")
+	check("M5 audit: the card is gone", #freeOf(A) == 0, freeText(A))
+	setFree(A, { "E002" })
+	put(B, TRADE_FAR, TRADE_A)
+	m = mark(A)
+	fire(A, "edict", { freeIndex = 1, cardId = "E002" })
+	expectNote("M5 audit: B 40 studs away is EDICT_NO_TARGET", A, m, "EDICT_NO_TARGET")
+	check("M5 audit: A still holds the card", freeOf(A)[1] == "E002", freeText(A))
+
+	-- Summons with B veiled (B uses a Veil of their own).
+	put(B, TRADE_B, TRADE_A)
+	setFree(B, { "E003" }, { R007 = true })
+	mb = mark(B)
+	fire(B, "edict", { freeIndex = 1, cardId = "E003" })
+	expectNote("M5 summons: B veils themselves", B, mb, "EDICT_VEIL_ON")
+	setFree(A, { "E001" })
+	edictResults[A] = nil
+	fire(A, "edict", { freeIndex = 1, cardId = "E001", relicId = "R007" })
+	waitFor(function()
+		return edictResults[A] ~= nil
+	end, 3)
+	check(
+		'M5 summons: with B veiled it says "Nobody else here holds it"',
+		lineHas(edictResults[A], "Nobody else here holds it"),
+		linesOf(edictResults[A])
+	)
+
+	-- Homecoming.
+	setFree(A, { "E005" })
+	put(A, OUTSIDE, Vector3.zero)
+	m = mark(A)
+	if isMarkedNow(A) then
+		fire(A, "edict", { freeIndex = 1, cardId = "E005" })
+		expectNote("M5.x Homecoming is refused while Marked", A, m, "EDICT_MARKED")
+		check("M5 homecoming: the card is kept", freeOf(A)[1] == "E005", freeText(A))
+		log("M5 homecoming success check skipped: A is still Marked from an earlier section")
+	else
+		waitNoFight(A)
+		put(A, OUTSIDE, Vector3.zero)
+		m = mark(A)
+		fire(A, "edict", { freeIndex = 1, cardId = "E005" })
+		expectNote("M5 homecoming: HOMECOMING_DONE", A, m, "HOMECOMING_DONE")
+		waitFor(function()
+			return flatDistance(positionOf(A), Vector3.zero) <= 40
+		end, 3)
+		check(
+			"M5 homecoming: A is within 40 studs of the centre",
+			flatDistance(positionOf(A), Vector3.zero) <= 40,
+			at(positionOf(A))
+		)
+		check("M5 homecoming: the card is gone", #freeOf(A) == 0, freeText(A))
+	end
+
+	-- Homecoming during a trial.
+	setFree(A, { "E005" })
+	dataA.trials = { cooldowns = {}, questStep = 0 }
+	m = mark(A)
+	local started = acceptTrial(A, "tidewalk")
+	check("M5 trial setup: A accepts Tidewalk", started, codesSince(A, m))
+	if started then
+		task.wait(0.5)
+		local spot = positionOf(A)
+		local expected = if isMarkedNow(A) then "EDICT_MARKED" else "EDICT_IN_TRIAL"
+		if expected == "EDICT_MARKED" then
+			log("M5 in-trial check shows EDICT_MARKED: A is still Marked")
+		else
+			waitNoFight(A)
+		end
+		m = mark(A)
+		fire(A, "edict", { freeIndex = 1, cardId = "E005" })
+		expectNote(`M5 homecoming during a trial: {expected}`, A, m, expected)
+		check(
+			"M5 homecoming during a trial: the card is kept and A did not move",
+			freeOf(A)[1] == "E005" and flatDistance(positionOf(A), spot) < 3,
+			`{freeText(A)}, {at(positionOf(A))}`
+		)
+		clockSkip += 200
+		waitFor(function()
+			return TrialService.run(A) == nil
+		end, 5)
+	end
+
+	-- Passage.
+	put(A, TRADE_A, TRADE_B)
+	put(B, OUTSIDE, TRADE_A)
+	setFree(A, { "E004" })
+	-- A and B have already met in the earlier sections and cannot be un-met, so "before
+	-- meeting" asks for a player who is not on the server.
+	m = mark(A)
+	fire(A, "edict", { freeIndex = 1, cardId = "E004", targetId = 7 })
+	expectNote("M5 passage: an unmet player is EDICT_NOT_MET", A, m, "EDICT_NOT_MET")
+	check("M5 passage: the card is kept", freeOf(A)[1] == "E004", freeText(A))
+	EdictService.meet(A, B)
+	if isMarkedNow(A) then
+		m = mark(A)
+		fire(A, "edict", { freeIndex = 1, cardId = "E004", targetId = B.UserId })
+		expectNote("M5.x Passage is refused while Marked", A, m, "EDICT_MARKED")
+		log("M5 passage success check skipped: A is still Marked from an earlier section")
+	else
+		waitNoFight(A)
+		put(B, OUTSIDE, TRADE_A)
+		m = mark(A)
+		fire(A, "edict", { freeIndex = 1, cardId = "E004", targetId = B.UserId })
+		expectNote("M5 passage: PASSAGE_DONE after meeting", A, m, "PASSAGE_DONE")
+		waitFor(function()
+			return flatDistance(positionOf(A), positionOf(B)) <= 10
+		end, 3)
+		check(
+			"M5 passage: A is within 10 studs of B",
+			flatDistance(positionOf(A), positionOf(B)) <= 10,
+			fmt(flatDistance(positionOf(A), positionOf(B)))
+		)
+	end
+
+	-- Hostile Edict requests.
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+	setFree(A, { "R001", "E002" })
+	local hostileUse = {
+		{ "a Relic row", { freeIndex = 1, cardId = "R001" } },
+		{ "a wrong card for the row", { freeIndex = 2, cardId = "E003" } },
+		{ "index 0", { freeIndex = 0, cardId = "E002" } },
+		{ "a table for freeIndex", { freeIndex = {}, cardId = "E002" } },
+		{ "nil", nil },
+	}
+	for _, entry in hostileUse do
+		m = mark(A)
+		fire(A, "edict", entry[2])
+		expectOneOf(
+			`M5 hostile Edict request ({entry[1]}) is refused`,
+			A,
+			m,
+			{ "BAD_REQUEST", "BAD_INDEX" }
+		)
+	end
+	check(
+		"M5 hostile Edict requests left the Ledger unchanged",
+		freeText(A) == "{R001, E002}",
+		freeText(A)
+	)
+
+	-- Defeat loss.
+	setFree(A, { "E001", "E002", "E003", "E004", "E005", "E001", "R001", "R002" })
+	check("M5 defeat setup: A holds 6 Edicts", edictCountOf(A) == 6, tostring(edictCountOf(A)))
+	m = mark(A)
+	local humanoid = humanoidOf(A)
+	if humanoid ~= nil then
+		humanoid.Health = 0
+	end
+	expectNote("M5 defeat: EDICTS_LOST", A, m, "EDICTS_LOST", 5)
+	check(
+		"M5 defeat: 4 Edicts are left and both Relics are kept",
+		edictCountOf(A) == 4 and hasFree(A, "R001") and hasFree(A, "R002"),
+		freeText(A)
+	)
+	waitAlive(A)
+	ProtectionService.endRespawnShield(A)
+	EdictService.setRng(math.random)
+
+	-- Trade.
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+	setFree(A, { "R001" })
+	setFree(B, { "E003" })
+	setCoin(A, 50)
+	setCoin(B, 5)
+	local totalBefore = coinOf(A) + coinOf(B)
+	tradeInvites[B] = nil
+	m = mark(A)
+	send(A, "tradeRequest")
+	local invited = waitFor(function()
+		return type(tradeInvites[B]) == "table"
+	end, 3)
+	check(
+		"M5 trade: B's invite names A",
+		invited and tradeInvites[B].from == A.DisplayName,
+		if type(tradeInvites[B]) == "table" then tostring(tradeInvites[B].from) else "no invite"
+	)
+	expectNote("M5 trade: A gets TRADE_SENT", A, m, "TRADE_SENT")
+	ui = inspectUntil(B, function(snapshot)
+		return snapshot.inviteVisible == true
+	end)
+	check("M5 trade: B's invite banner is showing", ui.inviteVisible == true)
+	tradeViews[A] = nil
+	tradeViews[B] = nil
+	send(B, "tradeReply", true)
+	check(
+		"M5 trade: B accepts and both get a view",
+		waitFor(function()
+			return type(tradeViews[A]) == "table" and type(tradeViews[B]) == "table"
+		end, 3)
+	)
+	fire(A, "trade", { kind = "offer", cards = { "R001" }, coin = 10 })
+	fire(B, "trade", { kind = "offer", cards = { "E003" }, coin = 0 })
+	local seen = waitFor(function()
+		local va, vb = tradeViews[A], tradeViews[B]
+		return type(va) == "table"
+			and type(vb) == "table"
+			and va.theirs.cards[1] ~= nil
+			and va.theirs.cards[1].cardId == "E003"
+			and vb.theirs.coin == 10
+			and vb.theirs.cards[1] ~= nil
+			and vb.theirs.cards[1].cardId == "R001"
+	end, 3)
+	check("M5 trade: each sees the other's offer", seen, sessionOffers(A))
+	ui = inspectUntil(A, function(snapshot)
+		return snapshot.tradeVisible == true
+	end)
+	check("M5 trade: A's trade window is open", ui.tradeVisible == true, tostring(ui.tradeStatus))
+	m = mark(A)
+	fire(A, "trade", { kind = "confirm" })
+	expectNote("M5 trade: confirming at once is TRADE_TOO_SOON", A, m, "TRADE_TOO_SOON")
+	task.wait(2.3)
+	local ma, mb2 = mark(A), mark(B)
+	fire(A, "trade", { kind = "confirm" })
+	fire(B, "trade", { kind = "confirm" })
+	expectNote("M5 trade: A gets TRADE_DONE", A, ma, "TRADE_DONE")
+	expectNote("M5 trade: B gets TRADE_DONE", B, mb2, "TRADE_DONE")
+	check(
+		"M5 trade: the cards changed hands",
+		hasFree(A, "E003")
+			and not hasFree(A, "R001")
+			and hasFree(B, "R001")
+			and not hasFree(B, "E003"),
+		`A {freeText(A)}, B {freeText(B)}`
+	)
+	check(
+		"M5 trade: 10 Coin moved and the total is unchanged",
+		coinOf(A) == 40 and coinOf(B) == 15 and coinOf(A) + coinOf(B) == totalBefore,
+		`A {coinOf(A)}, B {coinOf(B)}`
+	)
+	check("M5 trade: both windows closed", waitFor(function()
+		return tradeViews[A] == false and tradeViews[B] == false
+	end, 3) and TradeService.session(A) == nil)
+
+	-- The switch: a changed offer clears the confirmations.
+	setFree(A, { "R001" })
+	setFree(B, { "R007" })
+	check("M5 switch: a new trade opens", openTrade(A, B))
+	fire(A, "trade", { kind = "offer", cards = { "R001" }, coin = 0 })
+	fire(B, "trade", { kind = "offer", cards = { "R007" }, coin = 0 })
+	task.wait(2.4)
+	fire(A, "trade", { kind = "confirm" })
+	local session = TradeService.session(A)
+	check(
+		"M5 switch: A's confirmation is recorded",
+		session ~= nil and session.confirmed[tostring(A.UserId)] == true
+	)
+	fire(B, "trade", { kind = "offer", cards = {}, coin = 0 })
+	session = TradeService.session(A)
+	check(
+		"M5 switch: B changing the offer clears the confirmations",
+		session ~= nil and next(session.confirmed) == nil,
+		sessionOffers(A)
+	)
+	mb = mark(B)
+	fire(B, "trade", { kind = "confirm" })
+	expectNote("M5 switch: B confirming at once is TRADE_TOO_SOON", B, mb, "TRADE_TOO_SOON")
+
+	-- Cancel and leash.
+	ma, mb = mark(A), mark(B)
+	fire(B, "trade", { kind = "cancel" })
+	expectNote("M5 cancel: A gets TRADE_CANCELLED", A, ma, "TRADE_CANCELLED")
+	expectNote("M5 cancel: B gets TRADE_CANCELLED", B, mb, "TRADE_CANCELLED")
+	check("M5 leash: a new trade opens", openTrade(A, B))
+	ma, mb = mark(A), mark(B)
+	place(B, TRADE_FAR, TRADE_A)
+	expectNote(
+		"M5 leash: A gets TRADE_CANCELLED when B is 40 studs away",
+		A,
+		ma,
+		"TRADE_CANCELLED",
+		3
+	)
+	expectNote("M5 leash: B gets TRADE_CANCELLED too", B, mb, "TRADE_CANCELLED", 3)
+	put(B, TRADE_B, TRADE_A)
+
+	-- Hostile trade requests during a trade.
+	setFree(A, { "R001" })
+	setFree(B, { "R007" })
+	setCoin(A, 40)
+	check("M5 hostile trade: a new trade opens", openTrade(A, B))
+	fire(A, "trade", { kind = "offer", cards = { "R001" }, coin = 5 })
+	local offersBefore = sessionOffers(A)
+	local sevenCards = { "R001", "R001", "R001", "R001", "R001", "R001", "R001" }
+	local hostileTrade = {
+		{ "a card not held", { kind = "offer", cards = { "R002" }, coin = 0 } },
+		{ "7 cards", { kind = "offer", cards = sevenCards, coin = 0 } },
+		{ "Coin -5", { kind = "offer", cards = {}, coin = -5 } },
+		{ "Coin 1.5", { kind = "offer", cards = {}, coin = 1.5 } },
+		{ "more Coin than held", { kind = "offer", cards = {}, coin = 41 } },
+		{ "kind steal", { kind = "steal" } },
+	}
+	for _, entry in hostileTrade do
+		m = mark(A)
+		fire(A, "trade", entry[2])
+		expectOneOf(
+			`M5 hostile trade request ({entry[1]}) is refused`,
+			A,
+			m,
+			{ "TRADE_BAD_OFFER", "BAD_REQUEST" }
+		)
+	end
+	check(
+		"M5 hostile trade requests left the offers unchanged",
+		sessionOffers(A) == offersBefore,
+		`{offersBefore} -> {sessionOffers(A)}`
+	)
+	fire(A, "trade", { kind = "cancel" })
+	waitFor(function()
+		return TradeService.session(A) == nil
+	end, 3)
+
+	-- Decline.
+	tradeInvites[B] = nil
+	m = mark(A)
+	send(A, "tradeRequest")
+	waitFor(function()
+		return type(tradeInvites[B]) == "table"
+	end, 3)
+	task.wait(0.3)
+	send(B, "tradeReply", false)
+	expectNote("M5 decline: A gets TRADE_DECLINED", A, m, "TRADE_DECLINED")
+
+	-- Leave the world quiet.
+	ShopService.setRng(math.random)
+	EdictService.setRng(math.random)
+	TrialService.setClocks(os.clock, os.time)
+	waitAlive(A)
+	waitAlive(B)
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+	check(
+		"M5 ends with no trade open",
+		TradeService.session(A) == nil and TradeService.session(B) == nil
+	)
 end
 
 local function run()
@@ -2531,6 +3235,16 @@ local function run()
 	local m4Ok, m4Err = xpcall(runM4, debug.traceback, A, B)
 	check("M4 section ran to its end", m4Ok, tostring(m4Err))
 	CreatureService.setActive({})
+
+	--------------------------------------------------------------------------- M5 Edicts, shop, trading
+	-- In its own protected call, like M4.
+	local m5Ok, m5Err = xpcall(runM5, debug.traceback, A, B)
+	check("M5 section ran to its end", m5Ok, tostring(m5Err))
+	ShopService.setRng(math.random)
+	EdictService.setRng(math.random)
+	TrialService.setClocks(os.clock, os.time)
+	waitAlive(A)
+	waitAlive(B)
 
 	--------------------------------------------------------------------------- M2.15 combat log (ends B)
 	waitAlive(A)
