@@ -808,6 +808,17 @@ function CreatureService.spawnChampion(owner: Player, at: Vec3): number
 	return id
 end
 
+-- Support that reached allies: every live den creature notes the helper as an assist when one of
+-- `helpedIds` really hit it lately (Rewards.assist). Champions never take assists. Never yields.
+function CreatureService.assist(helperId: number, helpedIds: { number }, path: string)
+	local now = os.clock()
+	for _, creature in creatures do
+		if creature.owner == nil and not creature.gone then
+			creature.tally = Rewards.assist(creature.tally, helperId, helpedIds, path, now)
+		end
+	end
+end
+
 -- Removes a creature: no rewards, no respawn.
 function CreatureService.despawn(id: number)
 	local creature = creatures[id]
