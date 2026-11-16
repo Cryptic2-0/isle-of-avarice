@@ -168,30 +168,63 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	addPadding(name, 6)
 	name.Parent = row
 
+	-- One request per row: a second click before the Ledger sync would pass the server's
+	-- "card on that row" check with the identical card next to it. The row is rebuilt on sync.
+	local sent = false
+	local buttons: { TextButton } = {}
+	local function setInert(inert: boolean)
+		sent = inert
+		for _, button in buttons do
+			button.Active = not inert
+			button.AutoButtonColor = not inert
+			button.BackgroundTransparency = if inert then 0.6 else 0
+			button.TextTransparency = if inert then 0.5 else 0
+		end
+	end
+	-- `rearmAfter`: for a button that only opens a picker, which may be cancelled with no
+	-- sync to rebuild the row.
+	local function once(send: () -> (), rearmAfter: number?): () -> ()
+		return function()
+			if sent then
+				return
+			end
+			setInert(true)
+			send()
+			if rearmAfter ~= nil then
+				task.delay(rearmAfter, function()
+					setInert(false)
+				end)
+			end
+		end
+	end
+
 	local discard = makeButton("Discard", "Discard", UDim2.new(0.22, 0, 1, -8))
 	discard.AnchorPoint = Vector2.new(1, 0.5)
 	discard.Position = UDim2.new(0.99, 0, 0.5, 0)
-	discard.Activated:Connect(function()
+	table.insert(buttons, discard)
+	discard.Activated:Connect(once(function()
 		actionHandler({ kind = "discard", freeIndex = card.index, cardId = card.cardId })
-	end)
+	end))
 	discard.Parent = row
 
 	if card.canClaim then
 		local claim = makeButton("Claim", "Claim", UDim2.new(0.22, 0, 1, -8))
 		claim.AnchorPoint = Vector2.new(1, 0.5)
 		claim.Position = UDim2.new(0.75, 0, 0.5, 0)
-		claim.Activated:Connect(function()
+		table.insert(buttons, claim)
+		claim.Activated:Connect(once(function()
 			actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
-		end)
+		end))
 		claim.Parent = row
 	elseif card.canUse then
 		-- An Edict is used, not claimed; the button sits where Claim would.
 		local use = makeButton("Use", "Use", UDim2.new(0.22, 0, 1, -8))
 		use.AnchorPoint = Vector2.new(1, 0.5)
 		use.Position = UDim2.new(0.75, 0, 0.5, 0)
-		use.Activated:Connect(function()
+		table.insert(buttons, use)
+		use.Activated:Connect(once(function()
 			useHandler(card)
-		end)
+		end, 1))
 		use.Parent = row
 	end
 	return row

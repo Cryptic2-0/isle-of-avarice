@@ -203,6 +203,10 @@ local function changeCoin(step: number)
 		return
 	end
 	local coin = math.clamp(view.mine.coin + step, 0, math.max(0, view.coinHeld))
+	-- Already at the limit: nothing to send.
+	if coin == view.mine.coin then
+		return
+	end
 	sendOffer(offerIds(view), coin)
 end
 

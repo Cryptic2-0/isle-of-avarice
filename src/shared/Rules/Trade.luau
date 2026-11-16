@@ -100,6 +100,10 @@ function Trade.setOffer(
 	if type(raw) ~= "table" or type(raw.cards) ~= "table" or not isWholeAmount(raw.coin) then
 		return nil, "BAD_REQUEST"
 	end
+	-- Before the loop, so a huge client list is never walked.
+	if #raw.cards > Trade.MAX_CARDS then
+		return nil, "TRADE_BAD_OFFER"
+	end
 	local cards: { string } = {}
 	local count = 0
 	for key, id in raw.cards do

@@ -8,18 +8,22 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local EdictRules = require(ReplicatedStorage.Shared.Rules.EdictRules)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Trade = require(ReplicatedStorage.Shared.Rules.Trade)
 local Types = require(ReplicatedStorage.Shared.Types)
+local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
 local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
+local ProtectionService = require(script.Parent.ProtectionService)
 local SourceService = require(script.Parent.SourceService)
 
 -- Both traders map to the same Ref; `session` is replaced as the trade changes.
 type Ref = { session: Trade.Session, a: Player, b: Player }
-type Invite = { from: Player, expiresAt: number }
+type Invite = { from: Player }
 
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
@@ -68,6 +72,21 @@ local function fit(player: Player): boolean
 	end
 	local _, root = Fighters.body(player.UserId)
 	return root ~= nil
+end
+
+-- Not Marked and not just out of a fight (and so not moving cards out of a blind claim's
+-- reach). A player with no loaded data is not told more than "not now".
+local function canDealNow(player: Player): (boolean, string)
+	local now = os.clock()
+	local status = ProtectionService.status(player, now)
+	if status == nil then
+		return false, "EDICT_NOT_NOW"
+	end
+	local ok, code = EdictRules.canDeal({
+		marked = Protection.isMarked(status, now),
+		lastFightAt = CombatService.lastFightAt(player),
+	}, now)
+	return ok, code or "EDICT_NOT_NOW"
 end
 
 local function freeToTrade(player: Player): boolean
@@ -138,6 +157,9 @@ local function settle(ref: Ref)
 		or b.Parent ~= Players
 		or LedgerService.isLocked(a)
 		or LedgerService.isLocked(b)
+		or not fit(a)
+		or not fit(b)
+		or not withinKeepRange(a, b)
 	then
 		cancel(ref)
 		return
@@ -186,6 +208,11 @@ local function handleRequest(player: Player)
 		LedgerService.notify(player, "EDICT_NOT_NOW")
 		return
 	end
+	local canDeal, dealCode = canDealNow(player)
+	if not canDeal then
+		LedgerService.notify(player, dealCode)
+		return
+	end
 	local _, root = Fighters.body(player.UserId)
 	if root == nil then
 		LedgerService.notify(player, "EDICT_NOT_NOW")
@@ -212,7 +239,7 @@ local function handleRequest(player: Player)
 		return
 	end
 
-	local invite: Invite = { from = player, expiresAt = os.clock() + Trade.INVITE_SECONDS }
+	local invite: Invite = { from = player }
 	invites[target] = invite
 	asked[player] = target
 	inviteRemote:FireClient(target, { from = player.DisplayName, seconds = Trade.INVITE_SECONDS })
@@ -249,6 +276,19 @@ local function handleReply(player: Player, accept: any)
 		tell(player, "TRADE_CANCELLED")
 		return
 	end
+	-- The accepter hears their own reason; the asker's reason is not shared. The asker is
+	-- always told the trade is off.
+	local canDeal, dealCode = canDealNow(player)
+	if not canDeal then
+		tell(player, dealCode)
+		tell(asker, "TRADE_CANCELLED")
+		return
+	end
+	if not canDealNow(asker) then
+		tell(asker, "TRADE_CANCELLED")
+		tell(player, "TRADE_CANCELLED")
+		return
+	end
 	local ref: Ref = {
 		session = Trade.new(asker.UserId, player.UserId, os.clock()),
 		a = asker,
@@ -273,6 +313,18 @@ local function handleAction(player: Player, raw: any)
 		return
 	end
 	local kind = raw.kind
+	if kind ~= "cancel" then
+		-- A dead or locked trader cannot act; the watch ends the trade shortly.
+		local _, root = Fighters.body(player.UserId)
+		if root == nil then
+			LedgerService.notify(player, "EDICT_NOT_NOW")
+			return
+		end
+		if LedgerService.isLocked(player) then
+			LedgerService.notify(player, "LEDGER_LOCKED")
+			return
+		end
+	end
 	if kind == "offer" then
 		local data = DataService.get(player)
 		local session, code = Trade.setOffer(
@@ -290,6 +342,11 @@ local function handleAction(player: Player, raw: any)
 		ref.session = session
 		sync(ref)
 	elseif kind == "confirm" then
+		local canDeal, dealCode = canDealNow(player)
+		if not canDeal then
+			LedgerService.notify(player, dealCode)
+			return
+		end
 		local session, code = Trade.confirm(ref.session, player.UserId, os.clock())
 		if session == nil then
 			LedgerService.notify(player, code)
@@ -348,14 +405,18 @@ local function onRemoving(player: Player)
 	if ref ~= nil then
 		cancel(ref)
 	end
-	-- An invite to them.
+	-- An invite to them: the asker is told it is off.
+	local invite = invites[player]
+	if invite ~= nil then
+		tell(invite.from, "TRADE_CANCELLED")
+	end
 	clearInvite(player)
 	-- An invite from them: withdrawn from whoever was shown it.
 	local target = asked[player]
 	if target ~= nil then
 		asked[player] = nil
-		local invite = invites[target]
-		if invite ~= nil and invite.from == player then
+		local sent = invites[target]
+		if sent ~= nil and sent.from == player then
 			invites[target] = nil
 			if target.Parent == Players then
 				inviteRemote:FireClient(target, nil)

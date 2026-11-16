@@ -1276,6 +1276,12 @@ local function runM5(A: Player, B: Player)
 	setFree(B, {})
 	setCoin(A, 100)
 	setCoin(B, 0)
+	-- Selling and trading are refused for 30 seconds after a fight and while Marked, so start
+	-- from neither (earlier sections may have left A or B in a fight).
+	ProtectionService.endMark(A)
+	ProtectionService.endMark(B)
+	waitNoFight(A)
+	waitNoFight(B)
 	EdictService.setRng(function()
 		return 0
 	end)
@@ -1635,6 +1641,8 @@ local function runM5(A: Player, B: Player)
 	EdictService.setRng(math.random)
 
 	-- Trade.
+	waitNoFight(A)
+	waitNoFight(B)
 	put(A, TRADE_A, TRADE_B)
 	put(B, TRADE_B, TRADE_A)
 	setFree(A, { "R001" })
@@ -1799,6 +1807,39 @@ local function runM5(A: Player, B: Player)
 	task.wait(0.3)
 	send(B, "tradeReply", false)
 	expectNote("M5 decline: A gets TRADE_DECLINED", A, m, "TRADE_DECLINED")
+
+	-- No dealing while Marked: no trade request, no sale to the clerk (spec 3.13).
+	setFree(A, { "R001" })
+	setCoin(A, 40)
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+	ProtectionService.mark(A, os.clock())
+	tradeInvites[B] = nil
+	m = mark(A)
+	send(A, "tradeRequest")
+	expectNote("M5 dealing: a trade request while Marked is EDICT_MARKED", A, m, "EDICT_MARKED")
+	task.wait(0.5)
+	check(
+		"M5 dealing: B got no invite and no trade opened",
+		type(tradeInvites[B]) ~= "table"
+			and TradeService.session(A) == nil
+			and TradeService.session(B) == nil,
+		`invite {type(tradeInvites[B])}`
+	)
+	put(A, CLERK_SPOT, Vector3.new(0, 3, -24))
+	m = mark(A)
+	fire(A, "shop", { kind = "sell", freeIndex = 1, cardId = "R001" })
+	expectNote("M5 dealing: a sale while Marked is EDICT_MARKED", A, m, "EDICT_MARKED")
+	check(
+		"M5 dealing: the refused sale changed nothing",
+		freeOf(A)[1] == "R001" and coinOf(A) == 40,
+		`{freeText(A)}, {coinOf(A)} Coin`
+	)
+	ProtectionService.endMark(A)
+	check(
+		"M5 dealing: A is no longer Marked and no trade is open",
+		not isMarkedNow(A) and TradeService.session(A) == nil and TradeService.session(B) == nil
+	)
 
 	-- Leave the world quiet.
 	ShopService.setRng(math.random)

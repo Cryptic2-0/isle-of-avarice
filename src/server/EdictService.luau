@@ -155,8 +155,33 @@ local function travelAllowed(player: Player, now: number): (boolean, string)
 	return ok, code or "EDICT_NOT_NOW"
 end
 
-local function isClear(x: number, z: number): boolean
+-- Players, effects and creatures do not count as something solid to land in.
+local function overlapParams(): OverlapParams
+	local ignore: { Instance } = {}
+	for _, other in Players:GetPlayers() do
+		if other.Character ~= nil then
+			table.insert(ignore, other.Character)
+		end
+	end
+	for _, name in { "Effects", "Creatures" } do
+		local folder = workspace:FindFirstChild(name)
+		if folder ~= nil then
+			table.insert(ignore, folder)
+		end
+	end
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignore
+	params.RespectCanCollide = true
+	return params
+end
+
+local function isClear(x: number, z: number, y: number, params: OverlapParams): boolean
 	if not Geography.isLand(x, z) then
+		return false
+	end
+	-- Not inside a wall, a tree or a building.
+	if #workspace:GetPartBoundsInBox(CFrame.new(x, y, z), Vector3.new(4, 5, 4), params) > 0 then
 		return false
 	end
 	for _, hazard in Sites.hazards do
@@ -264,7 +289,11 @@ local function usePassage(
 		LedgerService.notify(player, code)
 		return
 	end
-	local spot = EdictRules.arrival(vec(targetRoot.Position), isClear)
+	local params = overlapParams()
+	local targetY = targetRoot.Position.Y
+	local spot = EdictRules.arrival(vec(targetRoot.Position), function(x: number, z: number)
+		return isClear(x, z, targetY, params)
+	end)
 	moveRoot(root, spot.x, spot.y, spot.z)
 	LedgerService.notify(player, "PASSAGE_DONE", { player = target.DisplayName })
 	consume(player, ledger, use)

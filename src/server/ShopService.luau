@@ -6,14 +6,18 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local EdictRules = require(ReplicatedStorage.Shared.Rules.EdictRules)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Shop = require(ReplicatedStorage.Shared.Rules.Shop)
 local ShopCatalog = require(ReplicatedStorage.Shared.Catalog.Shop)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
+local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
 local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
+local ProtectionService = require(script.Parent.ProtectionService)
 local SourceService = require(script.Parent.SourceService)
 
 local BUCKET_CAPACITY = 10
@@ -77,6 +81,25 @@ local function handleAction(player: Player, raw: any)
 	if not (distance <= ShopCatalog.REACH) then
 		LedgerService.notify(player, "TOO_FAR")
 		return
+	end
+
+	-- Selling is dealing: refused while Marked or just out of a fight, so cards cannot leave
+	-- reach of a blind claim. Buying stays open. A non-table request falls through to Shop.apply.
+	if type(raw) == "table" and raw.kind == "sell" then
+		local now = os.clock()
+		local status = ProtectionService.status(player, now)
+		if status == nil then
+			LedgerService.notify(player, "EDICT_NOT_NOW")
+			return
+		end
+		local canDeal, dealCode = EdictRules.canDeal({
+			marked = Protection.isMarked(status, now),
+			lastFightAt = CombatService.lastFightAt(player),
+		}, now)
+		if not canDeal then
+			LedgerService.notify(player, dealCode or "EDICT_NOT_NOW")
+			return
+		end
 	end
 
 	-- No yielding call from here to the writes: the Ledger and Coin read cannot go stale.

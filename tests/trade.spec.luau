@@ -71,6 +71,14 @@ T.test("setOffer: free-slot cards and Coin the player really has", function()
 			{ cards = { "R001", "R007", "E002", "R001", "R001", "R001", "R001" }, coin = 0 },
 			"TRADE_BAD_OFFER",
 		},
+		-- Too long a list is refused before any entry is read.
+		{
+			{
+				cards = { "R001", "R001", "R001", "R001", "R001", "R001", "R001", "junk" },
+				coin = 0,
+			},
+			"TRADE_BAD_OFFER",
+		},
 		{ { cards = { "nope" }, coin = 0 }, "BAD_REQUEST" },
 		{ { cards = { 5 }, coin = 0 }, "BAD_REQUEST" },
 		{ { cards = "R001", coin = 0 }, "BAD_REQUEST" },
@@ -92,6 +100,15 @@ T.test("setOffer: free-slot cards and Coin the player really has", function()
 			"case " .. i
 		)
 	end
+	local huge: { string } = {}
+	for i = 1, 500 do
+		huge[i] = "R001"
+	end
+	T.eq(
+		{ Trade.setOffer(s, A, { cards = huge, coin = 0 }, ledgerA, 50, 101) },
+		{ nil, "TRADE_BAD_OFFER" } :: { any },
+		"a huge list is refused"
+	)
 	T.eq({ Trade.setOffer(s, A, nil, ledgerA, 50, 101) }, { nil, "BAD_REQUEST" } :: { any })
 	T.eq(
 		{ Trade.setOffer(s, 33, { cards = {}, coin = 0 }, ledgerA, 50, 101) },

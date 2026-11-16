@@ -25,6 +25,12 @@ local packButton: TextButton? = nil
 local stockList: ScrollingFrame? = nil
 local sellList: ScrollingFrame? = nil
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
+-- One request per rendered view: a second click before the new view arrives would spend a
+-- second identical card or a second purchase.
+local lastView: Shop.View? = nil
+local viewSerial = 0
+local requestSent = false
+local RETRY_SECONDS = 1
 
 local function addCorner(parent: Instance, radius: number)
 	local corner = Instance.new("UICorner")
@@ -139,6 +145,40 @@ local function makeRow(
 	return row, button
 end
 
+local function dimButtons()
+	for _, container in { stockList, sellList } do
+		if container ~= nil then
+			for _, descendant in container:GetDescendants() do
+				if descendant:IsA("TextButton") then
+					setEnabled(descendant, false)
+				end
+			end
+		end
+	end
+	if packButton ~= nil then
+		setEnabled(packButton, false)
+	end
+end
+
+-- Sends at most one request per view. The server answers every request, but only a success
+-- sends a new view; so after a second without one the old view is drawn again, and a refused
+-- purchase does not leave the window dead.
+local function send(request: { [string]: any })
+	if requestSent then
+		return
+	end
+	requestSent = true
+	dimButtons()
+	actionHandler(request)
+	local serial = viewSerial
+	task.delay(RETRY_SECONDS, function()
+		local view = lastView
+		if requestSent and serial == viewSerial and view ~= nil and ShopUI.isOpen() then
+			ShopUI.show(view)
+		end
+	end)
+end
+
 local function hide()
 	local frame = window
 	if frame ~= nil then
@@ -197,7 +237,7 @@ function ShopUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: any 
 	buyPack.Size = UDim2.fromScale(0.24, 0.09)
 	buyPack.Activated:Connect(function()
 		if buyPack.Active then
-			actionHandler({ kind = "pack" })
+			send({ kind = "pack" })
 		end
 	end)
 	buyPack.Parent = frame
@@ -249,6 +289,9 @@ function ShopUI.show(view: Shop.View)
 	if frame == nil or stock == nil or sell == nil then
 		return
 	end
+	lastView = view
+	viewSerial += 1
+	requestSent = false
 	if coinLabel ~= nil then
 		coinLabel.Text = view.coinText
 	end
@@ -269,7 +312,7 @@ function ShopUI.show(view: Shop.View)
 		setEnabled(button, row.canBuy)
 		button.Activated:Connect(function()
 			if button.Active then
-				actionHandler({ kind = "relic", relicId = row.relicId })
+				send({ kind = "relic", relicId = row.relicId })
 			end
 		end)
 		made.Parent = stock
@@ -290,7 +333,9 @@ function ShopUI.show(view: Shop.View)
 	for order, row in view.sell do
 		local made, button = makeRow("Sell" .. row.index, order, row.name, row.priceText, "Sell")
 		button.Activated:Connect(function()
-			actionHandler({ kind = "sell", freeIndex = row.index, cardId = row.cardId })
+			if button.Active then
+				send({ kind = "sell", freeIndex = row.index, cardId = row.cardId })
+			end
 		end)
 		made.Parent = sell
 	end

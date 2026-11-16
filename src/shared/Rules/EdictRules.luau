@@ -18,6 +18,7 @@ export type Use = {
 	relicId: string?,
 	targetId: number?,
 }
+export type DealState = { marked: boolean, lastFightAt: number? }
 export type TravelState = { marked: boolean, inTrial: boolean, lastFightAt: number? }
 export type Person = { userId: number, name: string, ledger: Ledger, veiled: boolean }
 export type Body = { userId: number, position: Vec3 }
@@ -79,15 +80,25 @@ function EdictRules.parseUse(ledger: Ledger?, raw: any): (Use?, string)
 	return use, "OK"
 end
 
--- Passage and Homecoming: refused while Marked, within 30 seconds of dealing or taking
--- player damage, and during a trial. A clock that is not a number counts as "in combat".
-function EdictRules.canTravel(state: TravelState, now: number): (boolean, string?)
+-- Dealing (trades, sales to the clerk): refused while Marked and within 30 seconds of dealing
+-- or taking player damage, so cards cannot leave reach of a blind claim mid-fight. A clock
+-- that is not a number counts as "in combat".
+function EdictRules.canDeal(state: DealState, now: number): (boolean, string?)
 	if state.marked then
 		return false, "EDICT_MARKED"
 	end
 	local lastFightAt = state.lastFightAt
 	if lastFightAt ~= nil and not (now - lastFightAt >= EdictRules.COMBAT_SECONDS) then
 		return false, "EDICT_IN_COMBAT"
+	end
+	return true, nil
+end
+
+-- Passage and Homecoming: the same refusals as dealing, plus during a trial.
+function EdictRules.canTravel(state: TravelState, now: number): (boolean, string?)
+	local ok, code = EdictRules.canDeal(state, now)
+	if not ok then
+		return false, code
 	end
 	if state.inTrial then
 		return false, "EDICT_IN_TRIAL"

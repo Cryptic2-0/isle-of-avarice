@@ -124,6 +124,24 @@ T.test("canTravel: not while Marked, soon after a fight, or in a trial", functio
 	)
 end)
 
+T.test("canDeal: not while Marked or soon after a fight, trial or not", function()
+	T.eq({ E.canDeal({ marked = false }, 100) }, { true })
+	T.eq(
+		{ E.canDeal({ marked = true, lastFightAt = 99 }, 100) },
+		{ false, "EDICT_MARKED" } :: { any }
+	)
+	T.eq(
+		{ E.canDeal({ marked = false, lastFightAt = 71 }, 100) },
+		{ false, "EDICT_IN_COMBAT" } :: { any }
+	)
+	T.eq({ E.canDeal({ marked = false, lastFightAt = 70 }, 100) }, { true })
+	T.eq(
+		{ E.canDeal({ marked = false, lastFightAt = 70 }, 0 / 0) },
+		{ false, "EDICT_IN_COMBAT" } :: { any },
+		"a broken clock fails closed"
+	)
+end)
+
 T.test("Summons lists the others who hold the Relic, never the Veiled or the asker", function()
 	local people: { E.Person } = {
 		{
