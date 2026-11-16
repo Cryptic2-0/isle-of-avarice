@@ -4,9 +4,16 @@ local Paths = require("../Catalog/Paths")
 local Scarcity = require("./Scarcity")
 local Types = require("../Types")
 
--- Damage dealt to one creature, per attacker. Key: tostring(attacker id).
+-- Damage dealt to one creature, per attacker. Key: tostring(attacker id). lastAt is the last hit
+-- or assist; hitAt is the last real hit only (nil for a helper who never hit).
 export type Tally = {
-	[string]: { lastAt: number, total: number, byPath: { [string]: number }, assist: string? },
+	[string]: {
+		lastAt: number,
+		hitAt: number?,
+		total: number,
+		byPath: { [string]: number },
+		assist: string?,
+	},
 }
 -- room: free slots the player can still fill (0 when their Ledger is locked).
 export type Recipient = { calling: string, room: number }
@@ -42,13 +49,17 @@ function Rewards.record(
 	local byPath = if old ~= nil then table.clone(old.byPath) else {}
 	byPath[path] = (byPath[path] or 0) + amount
 	local out = table.clone(tally)
-	out[key] =
-		{ lastAt = now, total = (if old ~= nil then old.total else 0) + amount, byPath = byPath }
+	out[key] = {
+		lastAt = now,
+		hitAt = now,
+		total = (if old ~= nil then old.total else 0) + amount,
+		byPath = byPath,
+	}
 	return out
 end
 
--- Support that reaches someone who is already a contributor makes the helper one too, with no
--- damage. Anything else (self, no contributor reached, not a Path, NaN time) changes nothing.
+-- Support that reaches someone who hit the creature in the last 30 seconds makes the helper a
+-- contributor too, with no damage. An assist never sets or changes hitAt. Anything else (self, no contributor reached, not a Path, NaN time) changes nothing.
 function Rewards.assist(
 	tally: Tally,
 	helperId: number,
@@ -62,10 +73,12 @@ function Rewards.assist(
 	local reached = false
 	for _, id in helpedIds do
 		local entry = tally[tostring(id)]
+		-- Written positively so a NaN time helps nobody.
 		if
 			id ~= helperId
 			and entry ~= nil
-			and now - entry.lastAt <= Rewards.CONTRIBUTOR_SECONDS
+			and entry.hitAt ~= nil
+			and now - entry.hitAt <= Rewards.CONTRIBUTOR_SECONDS
 		then
 			reached = true
 			break
@@ -79,6 +92,7 @@ function Rewards.assist(
 	local out = table.clone(tally)
 	out[key] = {
 		lastAt = now,
+		hitAt = if old ~= nil then old.hitAt else nil,
 		total = if old ~= nil then old.total else 0,
 		byPath = if old ~= nil then table.clone(old.byPath) else {},
 		assist = path,

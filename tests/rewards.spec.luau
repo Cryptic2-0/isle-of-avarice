@@ -31,8 +31,8 @@ end
 T.test("record adds up damage per attacker and Path", function()
 	T.eq({ R.CONTRIBUTOR_SECONDS, R.STRIKE }, { 30, "Strike" } :: { any })
 	local t = sample()
-	T.eq(t["1"], { lastAt = 3, total = 39, byPath = { Strike = 20, Ember = 19 } })
-	T.eq(t["2"], { lastAt = 2, total = 22, byPath = { Fang = 22 } })
+	T.eq(t["1"], { lastAt = 3, hitAt = 3, total = 39, byPath = { Strike = 20, Ember = 19 } })
+	T.eq(t["2"], { lastAt = 2, hitAt = 2, total = 22, byPath = { Fang = 22 } })
 	for _, bad in { 0, -5, 0 / 0, math.huge } do
 		T.eq(R.record(t, 1, "Fang", bad, 4), t)
 	end
@@ -173,9 +173,35 @@ T.test("assist: support that reaches a contributor makes the helper one", functi
 	T.eq(R.assist(t, 5, { 1 }, "Nope", 10), t)
 	T.eq(R.assist(t, 5, { 1 }, "Mend", 0 / 0), t)
 	local both = R.assist(R.record(t, 5, "Mend", 14, 5), 5, { 1 }, "Mend", 12)
-	T.eq(both["5"], { lastAt = 12, total = 14, byPath = { Mend = 14 }, assist = "Mend" })
+	T.eq(both["5"], { lastAt = 12, hitAt = 5, total = 14, byPath = { Mend = 14 }, assist = "Mend" })
 	T.eq(t, before)
 end)
+
+T.test(
+	"assist: only an ally who really hit counts, and an assist never touches the ally",
+	function()
+		local t = R.record({}, 1, "Strike", 20, 0)
+		-- B (5) assists A (1); C (6) assists B, who only supported: C is no contributor.
+		local ab = R.assist(t, 5, { 1 }, "Mend", 10)
+		T.eq(ab["5"].hitAt, nil)
+		local abc = R.assist(ab, 6, { 5 }, "Mend", 11)
+		T.eq(abc, ab)
+		T.eq(abc["6"], nil)
+		T.eq(R.contributors(abc, 12), { 1, 5 })
+		-- A hit at 0; B assists at 29 (counts); at 31 A's last hit is 31 s old.
+		local first = R.assist(t, 5, { 1 }, "Mend", 29)
+		T.eq(first["1"], t["1"], "the ally's entry is not changed by an assist")
+		T.eq(first["5"].hitAt, nil)
+		T.eq(R.assist(first, 5, { 1 }, "Mend", 31), first)
+		-- A fresh hit by A makes it count again; the helper's own hitAt is kept through an assist.
+		local again = R.record(first, 1, "Strike", 5, 40)
+		local third = R.assist(R.record(again, 5, "Mend", 4, 41), 5, { 1 }, "Mend", 42)
+		T.eq(third["5"].hitAt, 41)
+		T.eq(third["1"], again["1"])
+		-- A NaN time helps nobody.
+		T.eq(R.assist(t, 5, { 1 }, "Mend", 0 / 0), t)
+	end
+)
 
 T.test(
 	"awards: an assist-only contributor is paid in the support's Path, and served last",
