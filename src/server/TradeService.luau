@@ -160,6 +160,9 @@ local function settle(ref: Ref)
 		or not fit(a)
 		or not fit(b)
 		or not withinKeepRange(a, b)
+		-- The early confirmer may have started a fight since: cards must not move then.
+		or not canDealNow(a)
+		or not canDealNow(b)
 	then
 		cancel(ref)
 		return

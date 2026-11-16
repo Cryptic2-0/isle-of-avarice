@@ -424,7 +424,7 @@ have 20 seconds to accept. Then both see one window:
   has their Ledger locked by a claim, or moves more than 25 studs away.
 - One-sided trades (gifts) are allowed. Trading never changes how many
   copies of a Relic the server holds.
-- A trade cannot be asked for, accepted or confirmed while you are Marked or within 30 seconds of dealing or taking player damage, and nothing can be sold to the clerk then either: cards cannot be moved out of reach of a blind claim in the middle of a fight.
+- A trade cannot be asked for, accepted or confirmed while you are Marked or within 30 seconds of dealing or taking player damage, and nothing can be sold to the clerk then either: cards cannot be moved out of reach of a blind claim in the middle of a fight. A trade is cancelled instead of completed if either trader is Marked or in a fight at the moment of the swap.
 
 Not in M5: Edicts as rewards from trials or creatures; shop stock beyond
 the six Copper Relics; a trade history.

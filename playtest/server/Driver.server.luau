@@ -1841,6 +1841,33 @@ local function runM5(A: Player, B: Player)
 		not isMarkedNow(A) and TradeService.session(A) == nil and TradeService.session(B) == nil
 	)
 
+	-- A trader who starts a fight after confirming early: the swap is cancelled.
+	setFree(A, { "R001" })
+	setFree(B, {})
+	setCoin(A, 40)
+	setCoin(B, 0)
+	check("M5 swap guard: a trade opens", openTrade(A, B))
+	fire(A, "trade", { kind = "offer", cards = { "R001" }, coin = 0 })
+	task.wait(2.4)
+	fire(A, "trade", { kind = "confirm" })
+	task.wait(0.5)
+	ProtectionService.mark(A, os.clock())
+	m = mark(A)
+	local mB = mark(B)
+	fire(B, "trade", { kind = "confirm" })
+	expectNote("M5 swap guard: A gets TRADE_CANCELLED", A, m, "TRADE_CANCELLED")
+	expectNote("M5 swap guard: B gets TRADE_CANCELLED", B, mB, "TRADE_CANCELLED")
+	check(
+		"M5 swap guard: A keeps the card, B gets nothing, no trade is open",
+		freeOf(A)[1] == "R001"
+			and #freeOf(B) == 0
+			and TradeService.session(A) == nil
+			and TradeService.session(B) == nil,
+		`{freeText(A)} / {freeText(B)}`
+	)
+	ProtectionService.endMark(A)
+	check("M5 swap guard: A is no longer Marked", not isMarkedNow(A))
+
 	-- Leave the world quiet.
 	ShopService.setRng(math.random)
 	EdictService.setRng(math.random)
