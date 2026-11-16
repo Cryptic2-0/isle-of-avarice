@@ -19,12 +19,15 @@ local Atmosphere = require(script.Parent.Atmosphere)
 local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
 local CreatureFx = require(script.Parent.CreatureFx)
+local EdictUI = require(script.Parent.EdictUI)
 local HazardController = require(script.Parent.HazardController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
 local PathUI = require(script.Parent.PathUI)
+local ShopUI = require(script.Parent.ShopUI)
 local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
+local TradeUI = require(script.Parent.TradeUI)
 local TrialUI = require(script.Parent.TrialUI)
 
 local HUD_REFRESH_SECONDS = 0.5
@@ -51,6 +54,16 @@ local trialOffer = remotes:WaitForChild(Net.TrialOffer) :: RemoteEvent
 local trialAccept = remotes:WaitForChild(Net.TrialAccept) :: RemoteEvent
 local trialSync = remotes:WaitForChild(Net.TrialSync) :: RemoteEvent
 local coinSync = remotes:WaitForChild(Net.CoinSync) :: RemoteEvent
+local edictUse = remotes:WaitForChild(Net.EdictUse) :: RemoteEvent
+local edictResult = remotes:WaitForChild(Net.EdictResult) :: RemoteEvent
+local edictSync = remotes:WaitForChild(Net.EdictSync) :: RemoteEvent
+local shopOpen = remotes:WaitForChild(Net.ShopOpen) :: RemoteEvent
+local shopAction = remotes:WaitForChild(Net.ShopAction) :: RemoteEvent
+local tradeRequest = remotes:WaitForChild(Net.TradeRequest) :: RemoteEvent
+local tradeInvite = remotes:WaitForChild(Net.TradeInvite) :: RemoteEvent
+local tradeReply = remotes:WaitForChild(Net.TradeReply) :: RemoteEvent
+local tradeAction = remotes:WaitForChild(Net.TradeAction) :: RemoteEvent
+local tradeSync = remotes:WaitForChild(Net.TradeSync) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -60,6 +73,7 @@ LedgerUI.mount(playerGui, function(request)
 end, function(request)
 	vaultAction:FireServer(request)
 end)
+LedgerUI.setUseHandler(EdictUI.use)
 Toast.mount(playerGui)
 StatusHUD.mount(playerGui, function()
 	shieldDrop:FireServer()
@@ -84,12 +98,35 @@ end)
 TrialUI.mount(playerGui, function(trialId)
 	trialAccept:FireServer(trialId)
 end)
+EdictUI.mount(playerGui, function(request)
+	edictUse:FireServer(request)
+end)
+ShopUI.mount(playerGui, function(request)
+	shopAction:FireServer(request)
+end)
+TradeUI.mount(playerGui, {
+	request = function()
+		tradeRequest:FireServer()
+	end,
+	reply = function(accept)
+		tradeReply:FireServer(accept)
+	end,
+	action = function(request)
+		tradeAction:FireServer(request)
+	end,
+})
 CombatController.start(function()
 	strikeRemote:FireServer()
 end, function(slot)
 	castAbility:FireServer(slot)
 end, function()
-	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen() or TrialUI.isOpen()
+	return LedgerUI.isOpen()
+		or ClaimUI.isOpen()
+		or PathUI.isOpen()
+		or TrialUI.isOpen()
+		or EdictUI.isOpen()
+		or ShopUI.isOpen()
+		or TradeUI.isOpen()
 end)
 HazardController.start()
 CreatureFx.start(localPlayer)
@@ -121,6 +158,27 @@ hitFx.OnClientEvent:Connect(function(fighterId)
 end)
 trialOffer.OnClientEvent:Connect(function(view)
 	TrialUI.showOffer(view)
+end)
+edictResult.OnClientEvent:Connect(function(result)
+	EdictUI.showResult(result)
+end)
+shopOpen.OnClientEvent:Connect(function(view)
+	ShopUI.show(view)
+end)
+tradeInvite.OnClientEvent:Connect(function(invite)
+	TradeUI.showInvite(invite)
+end)
+tradeSync.OnClientEvent:Connect(function(view)
+	TradeUI.render(view)
+end)
+
+-- The Veil's seconds left when the last sync arrived (local clock); it counts down here.
+local veilSeconds = 0
+local veilAt = 0
+edictSync.OnClientEvent:Connect(function(seconds, met)
+	veilSeconds = seconds
+	veilAt = os.clock()
+	EdictUI.setMet(met)
 end)
 
 -- The last path sync and when it arrived (local clock); cooldown text advances from it.
@@ -247,7 +305,12 @@ local function refreshHud()
 		Toast.show(place.name .. ": " .. place.hint)
 	end
 	StatusHUD.render(
-		StatusView.build(shown, localInSafeZone(), place),
+		StatusView.build(
+			shown,
+			localInSafeZone(),
+			place,
+			math.max(0, veilSeconds - (os.clock() - veilAt))
+		),
 		shown ~= nil and shown.newShield
 	)
 end

@@ -17,6 +17,8 @@ local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local LOCKED_COLOR = Color3.fromRGB(55, 55, 60)
 local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local VAULT_GOLD = Color3.fromRGB(255, 200, 40)
+-- An Edict has no tier, so it gets the colour of old paper.
+local PARCHMENT = Color3.fromRGB(214, 196, 150)
 
 local panel: Frame? = nil
 local slotGrid: ScrollingFrame? = nil
@@ -26,6 +28,7 @@ local freeLabel: TextLabel? = nil
 local vaultLabel: TextLabel? = nil
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 local vaultHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
+local useHandler: (card: LedgerView.FreeView) -> () = function(_card: LedgerView.FreeView) end
 
 local function tierColor(tier: Types.Tier): Color3
 	local color = Tiers.info[tier].color
@@ -154,7 +157,8 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	row.Name = "Free" .. card.index
 	row.LayoutOrder = card.index
 	row.Size = UDim2.new(1, 0, 0, 52)
-	row.BackgroundColor3 = tierColor(card.tier)
+	local tier = card.tier
+	row.BackgroundColor3 = if tier ~= nil then tierColor(tier) else PARCHMENT
 	addCorner(row, 8)
 
 	local name = makeLabel("Name", UDim2.fromScale(0.5, 1), UDim2.fromScale(0, 0), 22)
@@ -180,8 +184,22 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 			actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
 		end)
 		claim.Parent = row
+	elseif card.canUse then
+		-- An Edict is used, not claimed; the button sits where Claim would.
+		local use = makeButton("Use", "Use", UDim2.new(0.22, 0, 1, -8))
+		use.AnchorPoint = Vector2.new(1, 0.5)
+		use.Position = UDim2.new(0.75, 0, 0.5, 0)
+		use.Activated:Connect(function()
+			useHandler(card)
+		end)
+		use.Parent = row
 	end
 	return row
+end
+
+-- What the "Use" button on an Edict row calls.
+function LedgerUI.setUseHandler(handler: (card: LedgerView.FreeView) -> ())
+	useHandler = handler
 end
 
 function LedgerUI.mount(

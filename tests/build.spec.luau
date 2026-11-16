@@ -61,6 +61,18 @@ T.test("built place contains the expected scripts", function()
 		"ModuleScript"
 	)
 	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.EdictUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.ShopUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.TradeUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.CreatureFx.ClassName,
 		"ModuleScript"
 	)

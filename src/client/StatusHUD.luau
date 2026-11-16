@@ -1,5 +1,5 @@
 --!strict
--- Top-left: the Coin line, the status lines (region, safe zone, shields, Marked, hazards) and
+-- Top-left: the Coin line, the status lines (region, safe zone, shields, Marked, Veil, hazards) and
 -- the "Drop shield" button.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -17,6 +17,7 @@ local KIND_COLORS: { [string]: Color3 } = {
 	safe = Color3.fromRGB(90, 200, 110),
 	shield = Color3.fromRGB(110, 170, 255),
 	marked = Color3.fromRGB(235, 70, 70),
+	veil = Color3.fromRGB(170, 140, 220),
 }
 
 local COIN_COLOR = Color3.fromRGB(255, 215, 90)
@@ -129,7 +130,7 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	list.Name = "Lines"
 	list.BackgroundTransparency = 1
 	list.Position = UDim2.new(0, 12, 0, 12 + COIN_HEIGHT + 4)
-	list.Size = UDim2.new(0, 230, 0, 160)
+	list.Size = UDim2.new(0, 230, 0, 192)
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, 4)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -138,7 +139,7 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	column = list
 
 	local drop = makeButton("DropShield", "Drop shield", UDim2.new(0, 150, 0, 32))
-	drop.Position = UDim2.new(0, 12, 0, 176 + COIN_HEIGHT + 4)
+	drop.Position = UDim2.new(0, 12, 0, 208 + COIN_HEIGHT + 4)
 	drop.Visible = false
 	drop.Parent = gui
 	dropButton = drop
