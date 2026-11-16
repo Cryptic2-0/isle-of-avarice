@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Shop = require(Shared:WaitForChild("Rules"):WaitForChild("Shop"))
+local DialogLayout = require(script.Parent.DialogLayout)
 
 local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local TEXT_DIM = Color3.fromRGB(170, 165, 160)
@@ -203,10 +204,6 @@ function ShopUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: any 
 	frame.BackgroundColor3 = PANEL_COLOR
 	frame.Visible = false
 	addCorner(frame, 14)
-	local minimum = Instance.new("UISizeConstraint")
-	minimum.MinSize = Vector2.new(320, 340)
-	minimum.Parent = frame
-
 	local title = makeLabel(
 		"Title",
 		"Edict Hall",
@@ -244,27 +241,27 @@ function ShopUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: any 
 	packButton = buyPack
 
 	-- Relics for sale.
-	makeLabel(
+	local stockHeading = makeLabel(
 		"StockHeading",
 		"Relics for sale",
 		UDim2.fromScale(0.9, 0.05),
 		UDim2.fromScale(0.04, 0.23),
 		18
-	).Parent =
-		frame
+	)
+	stockHeading.Parent = frame
 	local stock = makeScroller("Stock", UDim2.fromScale(0.04, 0.285), UDim2.fromScale(0.92, 0.27))
 	stock.Parent = frame
 	stockList = stock
 
 	-- Cards to sell.
-	makeLabel(
+	local sellHeading = makeLabel(
 		"SellHeading",
 		"Sell a free-slot card",
 		UDim2.fromScale(0.9, 0.05),
 		UDim2.fromScale(0.04, 0.575),
 		18
-	).Parent =
-		frame
+	)
+	sellHeading.Parent = frame
 	local sell = makeScroller("Sell", UDim2.fromScale(0.04, 0.63), UDim2.fromScale(0.92, 0.22))
 	sell.Parent = frame
 	sellList = sell
@@ -279,6 +276,39 @@ function ShopUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: any 
 	frame.Parent = gui
 	window = frame
 	gui.Parent = playerGui
+	-- Split the space between the pack and the pinned Close button between the two lists.
+	DialogLayout.bind(gui, frame, Vector2.new(320, 340), {
+		{ object = title, position = UDim2.new(0.04, 0, 0, 6), size = UDim2.new(0.5, 0, 0, 24) },
+		{ object = coin, position = UDim2.new(0.56, 0, 0, 6), size = UDim2.new(0.4, 0, 0, 24) },
+		{ object = pack, position = UDim2.new(0.04, 0, 0, 32), size = UDim2.new(0.62, 0, 0, 22) },
+		{ object = odds, position = UDim2.new(0.04, 0, 0, 54), size = UDim2.new(0.62, 0, 0, 22) },
+		{
+			object = buyPack,
+			position = UDim2.new(0.96, 0, 0, 32),
+			size = UDim2.new(0.24, 0, 0, 44),
+		},
+		{
+			object = stockHeading,
+			position = UDim2.new(0.04, 0, 0, 80),
+			size = UDim2.new(0.92, 0, 0, 18),
+		},
+		{
+			object = stock,
+			position = UDim2.new(0.04, 0, 0, 98),
+			size = UDim2.new(0.92, 0, 0.5, -90),
+		},
+		{
+			object = sellHeading,
+			position = UDim2.new(0.04, 0, 0.5, 14),
+			size = UDim2.new(0.92, 0, 0, 18),
+		},
+		{
+			object = sell,
+			position = UDim2.new(0.04, 0, 0.5, 32),
+			size = UDim2.new(0.92, 0, 0.5, -90),
+		},
+		{ object = close, position = UDim2.new(0.5, 0, 1, -8), size = UDim2.new(0.36, 0, 0, 44) },
+	})
 end
 
 -- Opens the window, or refreshes it when it is already open.
