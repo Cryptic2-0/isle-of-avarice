@@ -56,6 +56,9 @@ T.test("built place contains the expected scripts", function()
 	T.eq(game:GetService("ServerScriptService").Server.EdictService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.ShopService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.TradeService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.PartyService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Party.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.PartyView.ClassName, "ModuleScript")
 	T.eq(
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.TrialUI.ClassName,
 		"ModuleScript"
