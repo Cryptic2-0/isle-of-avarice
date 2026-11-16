@@ -1506,50 +1506,52 @@ local function runM5(A: Player, B: Player)
 		linesOf(edictResults[A])
 	)
 
-	-- Homecoming.
+	-- Homecoming. Earlier sections may have left A Marked or in a fight: end both first.
+	ProtectionService.endMark(A)
+	ProtectionService.endMark(B)
+	waitNoFight(A)
+	waitNoFight(B)
 	setFree(A, { "E005" })
 	put(A, OUTSIDE, Vector3.zero)
+	-- First, while Marked, travel is refused and the card is kept.
+	ProtectionService.mark(A, os.clock())
 	m = mark(A)
-	if isMarkedNow(A) then
-		fire(A, "edict", { freeIndex = 1, cardId = "E005" })
-		expectNote("M5.x Homecoming is refused while Marked", A, m, "EDICT_MARKED")
-		check("M5 homecoming: the card is kept", freeOf(A)[1] == "E005", freeText(A))
-		log("M5 homecoming success check skipped: A is still Marked from an earlier section")
-	else
-		waitNoFight(A)
-		put(A, OUTSIDE, Vector3.zero)
-		m = mark(A)
-		fire(A, "edict", { freeIndex = 1, cardId = "E005" })
-		expectNote("M5 homecoming: HOMECOMING_DONE", A, m, "HOMECOMING_DONE")
-		waitFor(function()
-			return flatDistance(positionOf(A), Vector3.zero) <= 40
-		end, 3)
-		check(
-			"M5 homecoming: A is within 40 studs of the centre",
-			flatDistance(positionOf(A), Vector3.zero) <= 40,
-			at(positionOf(A))
-		)
-		check("M5 homecoming: the card is gone", #freeOf(A) == 0, freeText(A))
-	end
+	fire(A, "edict", { freeIndex = 1, cardId = "E005" })
+	expectNote("M5 homecoming is refused while Marked: EDICT_MARKED", A, m, "EDICT_MARKED")
+	check(
+		"M5 homecoming while Marked: the card is kept and A did not move",
+		freeOf(A)[1] == "E005" and flatDistance(positionOf(A), OUTSIDE) < 3,
+		`{freeText(A)}, {at(positionOf(A))}`
+	)
+	ProtectionService.endMark(A)
+	check("M5 homecoming setup: A is no longer Marked", not isMarkedNow(A))
+	m = mark(A)
+	fire(A, "edict", { freeIndex = 1, cardId = "E005" })
+	expectNote("M5 homecoming: HOMECOMING_DONE", A, m, "HOMECOMING_DONE")
+	waitFor(function()
+		return flatDistance(positionOf(A), Vector3.zero) <= World.townRadius
+	end, 3)
+	check(
+		"M5 homecoming: A is within the town radius",
+		flatDistance(positionOf(A), Vector3.zero) <= World.townRadius,
+		at(positionOf(A))
+	)
+	check("M5 homecoming: the card is gone", #freeOf(A) == 0, freeText(A))
 
 	-- Homecoming during a trial.
 	setFree(A, { "E005" })
 	dataA.trials = { cooldowns = {}, questStep = 0 }
+	ProtectionService.endMark(A)
+	waitNoFight(A)
 	m = mark(A)
 	local started = acceptTrial(A, "tidewalk")
 	check("M5 trial setup: A accepts Tidewalk", started, codesSince(A, m))
 	if started then
 		task.wait(0.5)
 		local spot = positionOf(A)
-		local expected = if isMarkedNow(A) then "EDICT_MARKED" else "EDICT_IN_TRIAL"
-		if expected == "EDICT_MARKED" then
-			log("M5 in-trial check shows EDICT_MARKED: A is still Marked")
-		else
-			waitNoFight(A)
-		end
 		m = mark(A)
 		fire(A, "edict", { freeIndex = 1, cardId = "E005" })
-		expectNote(`M5 homecoming during a trial: {expected}`, A, m, expected)
+		expectNote("M5 homecoming during a trial: EDICT_IN_TRIAL", A, m, "EDICT_IN_TRIAL")
 		check(
 			"M5 homecoming during a trial: the card is kept and A did not move",
 			freeOf(A)[1] == "E005" and flatDistance(positionOf(A), spot) < 3,
@@ -1562,6 +1564,7 @@ local function runM5(A: Player, B: Player)
 	end
 
 	-- Passage.
+	ProtectionService.endMark(A)
 	put(A, TRADE_A, TRADE_B)
 	put(B, OUTSIDE, TRADE_A)
 	setFree(A, { "E004" })
@@ -1572,26 +1575,19 @@ local function runM5(A: Player, B: Player)
 	expectNote("M5 passage: an unmet player is EDICT_NOT_MET", A, m, "EDICT_NOT_MET")
 	check("M5 passage: the card is kept", freeOf(A)[1] == "E004", freeText(A))
 	EdictService.meet(A, B)
-	if isMarkedNow(A) then
-		m = mark(A)
-		fire(A, "edict", { freeIndex = 1, cardId = "E004", targetId = B.UserId })
-		expectNote("M5.x Passage is refused while Marked", A, m, "EDICT_MARKED")
-		log("M5 passage success check skipped: A is still Marked from an earlier section")
-	else
-		waitNoFight(A)
-		put(B, OUTSIDE, TRADE_A)
-		m = mark(A)
-		fire(A, "edict", { freeIndex = 1, cardId = "E004", targetId = B.UserId })
-		expectNote("M5 passage: PASSAGE_DONE after meeting", A, m, "PASSAGE_DONE")
-		waitFor(function()
-			return flatDistance(positionOf(A), positionOf(B)) <= 10
-		end, 3)
-		check(
-			"M5 passage: A is within 10 studs of B",
-			flatDistance(positionOf(A), positionOf(B)) <= 10,
-			fmt(flatDistance(positionOf(A), positionOf(B)))
-		)
-	end
+	waitNoFight(A)
+	put(B, OUTSIDE, TRADE_A)
+	m = mark(A)
+	fire(A, "edict", { freeIndex = 1, cardId = "E004", targetId = B.UserId })
+	expectNote("M5 passage: PASSAGE_DONE after meeting", A, m, "PASSAGE_DONE")
+	waitFor(function()
+		return flatDistance(positionOf(A), positionOf(B)) <= 10
+	end, 3)
+	check(
+		"M5 passage: A is within 10 studs of B",
+		flatDistance(positionOf(A), positionOf(B)) <= 10,
+		fmt(flatDistance(positionOf(A), positionOf(B)))
+	)
 
 	-- Hostile Edict requests.
 	put(A, TRADE_A, TRADE_B)
@@ -1673,6 +1669,10 @@ local function runM5(A: Player, B: Player)
 	)
 	fire(A, "trade", { kind = "offer", cards = { "R001" }, coin = 10 })
 	fire(B, "trade", { kind = "offer", cards = { "E003" }, coin = 0 })
+	-- Straight away, before anything slow: the server has both offers now.
+	m = mark(A)
+	fire(A, "trade", { kind = "confirm" })
+	expectNote("M5 trade: confirming at once is TRADE_TOO_SOON", A, m, "TRADE_TOO_SOON")
 	local seen = waitFor(function()
 		local va, vb = tradeViews[A], tradeViews[B]
 		return type(va) == "table"
@@ -1688,9 +1688,6 @@ local function runM5(A: Player, B: Player)
 		return snapshot.tradeVisible == true
 	end)
 	check("M5 trade: A's trade window is open", ui.tradeVisible == true, tostring(ui.tradeStatus))
-	m = mark(A)
-	fire(A, "trade", { kind = "confirm" })
-	expectNote("M5 trade: confirming at once is TRADE_TOO_SOON", A, m, "TRADE_TOO_SOON")
 	task.wait(2.3)
 	local ma, mb2 = mark(A), mark(B)
 	fire(A, "trade", { kind = "confirm" })
@@ -3240,6 +3237,9 @@ local function run()
 	-- In its own protected call, like M4.
 	local m5Ok, m5Err = xpcall(runM5, debug.traceback, A, B)
 	check("M5 section ran to its end", m5Ok, tostring(m5Err))
+	-- A failed section must not leave a trade open.
+	send(A, "trade", { kind = "cancel" })
+	send(B, "trade", { kind = "cancel" })
 	ShopService.setRng(math.random)
 	EdictService.setRng(math.random)
 	TrialService.setClocks(os.clock, os.time)
