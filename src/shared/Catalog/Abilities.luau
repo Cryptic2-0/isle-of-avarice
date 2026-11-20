@@ -162,7 +162,8 @@ local list: { Ability } = {
 		damage = 14,
 		heal = 14,
 		healOnHit = true,
-		description = "Strike for 14 damage and heal 14 health if it hits.",
+		allyRadius = 15,
+		description = "Strike for 14 damage; if it hits, heal yourself and allies within 15 studs for 14.",
 	},
 	{
 		id = "ward",

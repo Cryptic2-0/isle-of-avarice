@@ -8,6 +8,7 @@ local EdictService = require(script.Parent.EdictService)
 local Fighters = require(script.Parent.Fighters)
 local HazardService = require(script.Parent.HazardService)
 local LedgerService = require(script.Parent.LedgerService)
+local PartyService = require(script.Parent.PartyService)
 local PathService = require(script.Parent.PathService)
 local ProtectionService = require(script.Parent.ProtectionService)
 local ShopService = require(script.Parent.ShopService)
@@ -50,6 +51,8 @@ runStep("TrialService.start", TrialService.start)
 runStep("EdictService.start", EdictService.start)
 runStep("ShopService.start", ShopService.start)
 runStep("TradeService.start", TradeService.start)
+-- After CombatService: a leaver's combat-log credit runs before they leave their party.
+runStep("PartyService.start", PartyService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 

@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 7, 2026-11-16: M5 Edicts, the shop and trading in section 3.13; revision 6, 2026-11-12: M4 in sections 3.9–3.12)
+**Date:** 2026-11-10 (revision 8, 2026-11-16: M6 parties in section 3.14; revision 7: M5 in 3.13; revision 6: M4 in 3.9–3.12)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -428,6 +428,128 @@ have 20 seconds to accept. Then both see one window:
 
 Not in M5: Edicts as rewards from trials or creatures; shop stock beyond
 the six Copper Relics; a trade history.
+
+### 3.14 Parties (M6 starting values)
+
+Rulings made while planning M6. They fill the gaps in 3.5, 3.9, 3.10, 3.13 and
+4.3 ("support reaches allies"). All numbers are starting values for play tests.
+
+**What a party is.** Up to 4 players who cannot hurt each other and whose heals
+and shields reach each other. A party lasts for the session only: nothing about
+it is saved, and leaving the game leaves the party.
+
+| Rule | Value |
+|---|---|
+| Party size | 4 players at most |
+| Who can be invited | the nearest other player within 15 studs (the same rule as trading) |
+| An invite lasts | 20 seconds |
+| Support reach (Siphon's heal, Ward, Renewal) | 15 studs from the caster |
+| "In a player fight" | Marked, or dealt or took player damage in the last 30 seconds |
+| Saved between sessions | no |
+
+**Forming and leaving.**
+
+- "Party" asks the nearest other player within 15 studs. They have 20 seconds
+  to accept. If the asker has no party, accepting makes a party of two led by
+  the asker; otherwise the new player joins the asker's party.
+- Only the leader invites. A player already in a party cannot be invited: they
+  must leave first. A full party cannot invite. One invite at a time, both for
+  the one asking and the one asked.
+- Anyone can leave at any time, in a fight or not. The leader can remove a
+  member and can hand the lead to another member.
+- When the leader leaves, the member who joined earliest leads. A party left
+  with one player breaks up.
+- Being defeated does not end a party. Leaving the game does.
+
+**No friendly fire.** Party members cannot hurt each other in any way: the
+Strike, every ability, zones, burns and reflected damage. An ally is not a
+target at all, so a Strike or a shot passes an ally and can hit the enemy or
+creature behind them. Effects carried by a hit (slow, root, burn, pull,
+knockback, taunt) never reach an ally either.
+
+**Joining in the middle of a fight.**
+
+- From the moment two players are in one party, their hits on each other stop:
+  a burn or a zone one of them placed stops hurting the other, and a taunt
+  stops forcing targets.
+- A Mark is never removed, shortened or shared by a party. Each player keeps
+  their own Mark for its full time.
+- A defeat is never credited to a party member of the victim. A hit landed
+  before joining therefore cannot earn a blind claim, XP or a combat-log claim
+  on someone who is now an ally. Party members can never blind-claim each other.
+- Leaving a party takes effect at once. Former allies can then fight under the
+  normal rules (whoever starts it is Marked).
+
+**Support reaches allies.** Siphon's heal, Ward's shield and Renewal's heal and
+cleanse reach the caster and every party member within 15 studs. Siphon gains
+this 15-stud reach (4.4 gave it none). Nothing else reaches anyone else: damage
+reduction (Shield Bash), reflect (Rebuke), immunity and the bonus hit
+(Afterimage) stay the caster's own. Support never reaches a player outside the
+caster's party.
+
+- A caster who cannot be attacked by players (the new-player shield, or standing
+  in Tallyport while not Marked) does not reach an ally who is in a player fight.
+  Their support still reaches themselves and allies who are not fighting players.
+- Support that reaches an ally in a player fight ends the caster's respawn
+  shield, as attacking does.
+- Support does not reach a player during The Tallyman's Duel (the duel stays
+  private), and others cannot hurt that player's champion, as before.
+- Heals and shields on yourself still work anywhere.
+
+**Creatures and trials.** Support counts as helping (3.9):
+
+- When a caster's support reaches an ally who has hit a creature in the last 30
+  seconds, the caster becomes a contributor to that creature too, unless the
+  caster is standing in Tallyport. The 30-second window then runs from the
+  support.
+- A contributor who dealt the creature no damage gets the full Coin, rolls its
+  drops like anyone else, and gets the XP in the Path of their support (Mend).
+  Contributors who did damage keep the old XP rule.
+- For a capped drop, contributors who only supported are served after everyone
+  who did damage.
+- Standing near a fight pays nothing. A party member who neither hit the
+  creature nor supported someone who did is not a contributor.
+- Because support counts as contributing, it also counts for hunts (3.10) and
+  for the quest's Brine Colossus step. Each member runs their own trial;
+  parties do not share trial progress.
+
+**Claims and the gang problem.** A party of four against one player is limited
+by these rules, and by nothing else:
+
+- Every attacker is Marked on their own first hit, as before.
+- Fighting back covers the whole party: a player is not Marked for hitting any
+  member of a party whose member hit them in the last 30 seconds.
+- The one-hour repeat-kill limit (3.5) counts for the whole party: when a claim
+  opens, the limit starts for the killer and for every member of the killer's
+  party at that moment. Leaving the party afterwards does not reset it.
+- The claim itself goes to whoever landed the defeat. A party shares no claim,
+  no taken Relic and no defeat XP.
+
+Two friends cannot farm each other inside a party: they cannot hurt each other,
+so there is no defeat, claim or XP to gain.
+
+**Other systems.**
+
+- Edicts: unchanged. Passage still needs a meeting this session; an invite needs
+  you within 15 studs, so you have always met whoever invited you or whom you
+  invited. Audit and Summons treat party members like anyone else.
+- Trading: unchanged. Party members trade like anyone else.
+- New-player shield: a shielded player may join a party. The party changes
+  nothing about the shield (see support above).
+
+**What players see.**
+
+- A "Party" button beside the "Trade" button, and an invite banner "<name>
+  invites you to their party" with Accept and Decline.
+- A party panel at the right of the screen: "Party 2 / 4", one row per member
+  with name, "(leader)" for the leader, health as "75 / 100" with a bar, or
+  "defeated". The leader's rows for other members have "Remove" and "Make
+  leader". A "Leave" button.
+- A green marker with the ally's name above each ally's head, seen only by
+  their party.
+
+Not in M6: party chat, shared claims or loot, invites from a player list,
+cross-server parties, a party finder, shared trial runs, guilds.
 
 ## 4. The Six Paths
 

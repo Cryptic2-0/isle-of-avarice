@@ -73,3 +73,22 @@ T.test("Paths.isPath", function()
 	T.falsy(Paths.isPath(nil))
 	T.falsy(Paths.isPath(4))
 end)
+
+T.test("only Siphon, Ward and Renewal reach allies, 15 studs, with support effects only", function()
+	local reach = {}
+	for _, ability in Abilities.list do
+		if ability.allyRadius ~= nil then
+			reach[ability.id] = ability.allyRadius
+			T.eq(
+				{ ability.immune, ability.empower, ability.reduction, ability.reflect },
+				{},
+				ability.id
+			)
+		end
+	end
+	T.eq(reach, { siphon = 15, ward = 15, renewal = 15 })
+	T.eq(
+		Abilities.byId.siphon.description,
+		"Strike for 14 damage; if it hits, heal yourself and allies within 15 studs for 14."
+	)
+end)

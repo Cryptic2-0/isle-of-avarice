@@ -90,7 +90,8 @@ local function creditDefeat(victim: Player, windowSeconds: number, byCreature: b
 		victim.UserId,
 		now,
 		windowSeconds,
-		if byCreature then creatureLog else nil
+		if byCreature then creatureLog else nil,
+		Fighters.allies(victim.UserId)
 	)
 	hitLog = Combat.clear(hitLog, victim.UserId)
 	creatureLog = Combat.clear(creatureLog, victim.UserId)
@@ -190,7 +191,14 @@ local function damagePlayer(
 			ProtectionService.endRespawnShield(attacker)
 			local victimMarked = Protection.isMarked(victimStatus, now)
 			if
-				Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now)
+				Protection.isAggressor(
+					hitLog,
+					attacker.UserId,
+					victim.UserId,
+					victimMarked,
+					now,
+					Fighters.allies(victim.UserId)
+				)
 			then
 				ProtectionService.mark(attacker, now)
 			end

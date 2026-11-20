@@ -9,6 +9,7 @@ local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
+local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
 
 local BUCKET_CAPACITY = 10
@@ -100,6 +101,10 @@ end
 -- Runs in the thread that reported the defeat. For a combat log that is the leaver's
 -- PlayerRemoving, so the hold is taken before their profile can be released.
 local function onDefeat(killer: Player, victim: Player)
+	-- Credit never names an ally; this is the second lock on the same door.
+	if Fighters.allied(killer.UserId, victim.UserId) then
+		return
+	end
 	if sessions[killer] ~= nil or LedgerService.isLocked(victim) then
 		return
 	end
@@ -114,7 +119,13 @@ local function onDefeat(killer: Player, victim: Player)
 		return
 	end
 
-	history = Protection.recordClaim(history, killer.UserId, victim.UserId, now)
+	-- Everyone in the killer's party gets the cooldown against this victim, so a party cannot
+	-- take turns claiming the same player.
+	local group: { number } = { killer.UserId }
+	for _, allyId in Fighters.allies(killer.UserId) do
+		table.insert(group, allyId)
+	end
+	history = Protection.recordClaims(history, group, victim.UserId, now)
 	local session: Session = {
 		killer = killer,
 		victim = victim,

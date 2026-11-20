@@ -64,4 +64,14 @@ return {
 	TradeAction = "TradeAction",
 	-- server -> one client: (view: Trade.View?) nil closes the window
 	TradeSync = "TradeSync",
+	-- client -> server: () invite the nearest player
+	PartyRequest = "PartyRequest",
+	-- server -> one client: (invite: { from: string, seconds: number }?) nil withdraws it
+	PartyInvite = "PartyInvite",
+	-- client -> server: (accept: boolean)
+	PartyReply = "PartyReply",
+	-- client -> server: (request: { kind: "leave" } | { kind: "kick", userId: number } | { kind: "promote", userId: number })
+	PartyAction = "PartyAction",
+	-- server -> one client: (sync: PartyView.Sync?) nil = not in a party
+	PartySync = "PartySync",
 }
