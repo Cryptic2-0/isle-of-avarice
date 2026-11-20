@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local Ledger = require(ReplicatedStorage.Shared.Rules.Ledger)
 local Net = require(ReplicatedStorage.Shared.Net)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Rounds = require(ReplicatedStorage.Shared.Rules.Rounds)
 local TrialRun = require(ReplicatedStorage.Shared.Rules.TrialRun)
 local TrialView = require(ReplicatedStorage.Shared.Rules.TrialView)
 local Trials = require(ReplicatedStorage.Shared.Catalog.Trials)
@@ -87,7 +88,7 @@ local function sync(player: Player)
 			secondsLeft = active.run.endsAt - clock(),
 		}
 	end
-	syncRemote:FireClient(player, state, data.trials.questStep)
+	syncRemote:FireClient(player, state, data.trials.questStep, data.rounds)
 end
 
 -- A quest step: a passed trial's id, or "colossus". Only the next step counts.
@@ -108,6 +109,35 @@ local function questEvent(player: Player, data: Types.PlayerData, event: string)
 		})
 	else
 		LedgerService.notify(player, "QUEST_STEP", { n = tostring(step) })
+	end
+end
+
+-- A round step: a passed trial's id for the Warden's Round, a creature kind for the Beast
+-- Tally. Each step counts once; the last one pays the round out through Payout.
+local function roundEvent(player: Player, data: Types.PlayerData, roundId: string, stepId: string)
+	local record, code = Rounds.advance(data.rounds, roundId, stepId)
+	if code == "" then
+		return
+	end
+	data.rounds = record
+	local round = Trials.roundById[roundId]
+	if round == nil then
+		return
+	end
+	if code == "ROUND_STEP" then
+		LedgerService.notify(player, code, {
+			name = round.name,
+			n = tostring(#record[roundId]),
+			total = tostring(#round.steps),
+		})
+	elseif code == "ROUND_COMPLETE" then
+		LedgerService.notify(player, code, { name = round.name, coin = tostring(round.coin) })
+		Payout.give(player, {
+			coin = round.coin,
+			xp = round.xp,
+			path = Payout.calling(player),
+			relics = { round.relicId },
+		})
 	end
 end
 
@@ -152,6 +182,7 @@ local function endRun(player: Player, passed: boolean, failCode: string?)
 			relics = { trial.relicId },
 		})
 		questEvent(player, data, trial.id)
+		roundEvent(player, data, "wardens", trial.id)
 	elseif failCode ~= nil then
 		LedgerService.notify(player, failCode, { name = trial.name })
 	end
@@ -361,13 +392,14 @@ local function onCreatureDefeated(
 			end
 		end
 	end
-	if kind == COLOSSUS then
-		for _, player in contributors do
-			local data = DataService.get(player)
-			if data ~= nil then
+	for _, player in contributors do
+		local data = DataService.get(player)
+		if data ~= nil then
+			if kind == COLOSSUS then
 				questEvent(player, data, QUEST_COLOSSUS)
-				sync(player)
 			end
+			roundEvent(player, data, "beasts", kind)
+			sync(player)
 		end
 	end
 end

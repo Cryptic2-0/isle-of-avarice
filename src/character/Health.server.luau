@@ -1,0 +1,3 @@
+--!strict
+-- A script named Health in StarterCharacterScripts replaces Roblox's default health regeneration.
+-- RegenService heals instead (spec 3.15).

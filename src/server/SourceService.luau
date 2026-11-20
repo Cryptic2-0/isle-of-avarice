@@ -114,6 +114,113 @@ local function distanceToPlayer(player: Player, part: BasePart): number
 	return (root.Position - part.Position).Magnitude
 end
 
+type Hold = { began: number, ended: number? }
+
+local state: Sources.SourceState = Sources.new(World.caches)
+local cacheParts: { BasePart } = {}
+-- part -> player -> when they started holding the prompt and when they let go. Cleared on every
+-- trigger and when the player leaves.
+local holds: { [BasePart]: { [Player]: Hold } } = {}
+
+local function refreshSealed()
+	for _, part in cacheParts do
+		local cacheId = part:GetAttribute("CacheId")
+		local cache = if type(cacheId) == "string" then World.cacheById[cacheId] else nil
+		if cache ~= nil then
+			showSealed(part, isSealed(cache.relicId))
+		end
+	end
+end
+
+-- Opens the cache at `part` for `player` and returns the code. A held cache is only opened
+-- by a hold the server saw begin and last long enough.
+local function open(player: Player, part: BasePart): string
+	local cacheId = part:GetAttribute("CacheId")
+	local cache = if type(cacheId) == "string" then World.cacheById[cacheId] else nil
+	if cache == nil then
+		return "CACHE_EMPTY"
+	end
+
+	-- No yielding call between tryCollect and storing the new state.
+	local now = os.clock()
+	local byPlayer = holds[part]
+	local h = if byPlayer ~= nil then byPlayer[player] else nil
+	local hold = if cache.hold ~= nil and cache.hold > 0 then cache.hold else nil
+	local began = if h ~= nil then h.began else nil
+	local ended = if h ~= nil then h.ended else nil
+	local holdOk = Sources.holdOk(hold, began, ended, now)
+	if byPlayer ~= nil then
+		byPlayer[player] = nil
+	end
+	local newState, newLedger, code, availableAt = Sources.tryCollect(
+		state,
+		LedgerService.get(player),
+		cache,
+		now,
+		distanceToPlayer(player, part),
+		isSealed(cache.relicId),
+		LedgerService.isLocked(player),
+		holdOk
+	)
+	if newLedger == nil or availableAt == nil then
+		LedgerService.notify(player, code)
+		return code
+	end
+	if not LedgerService.set(player, newLedger) then
+		-- The data went away; the cache stays as it was.
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return "DATA_NOT_LOADED"
+	end
+	state = newState
+	local relic = Relics.byId[cache.relicId]
+	LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
+
+	setVisible(part, false)
+	task.delay(availableAt - now, setVisible, part, true)
+	return code
+end
+
+-- Play-test seam: the prompt's path with no hold record. Returns the code ("CACHE_EMPTY" when
+-- no cache part has that id).
+function SourceService.tryOpen(player: Player, cacheId: string): string
+	for _, part in cacheParts do
+		if part:GetAttribute("CacheId") == cacheId then
+			return open(player, part)
+		end
+	end
+	return "CACHE_EMPTY"
+end
+
+local function connect(instance: Instance)
+	if not instance:IsA("BasePart") then
+		return
+	end
+	local part = instance
+	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+	if prompt == nil then
+		return
+	end
+	table.insert(cacheParts, part)
+	prompt.PromptButtonHoldBegan:Connect(function(player: Player)
+		local byPlayer = holds[part]
+		if byPlayer == nil then
+			byPlayer = {}
+			holds[part] = byPlayer
+		end
+		byPlayer[player] = { began = os.clock() }
+	end)
+	prompt.PromptButtonHoldEnded:Connect(function(player: Player)
+		local byPlayer = holds[part]
+		local h = if byPlayer ~= nil then byPlayer[player] else nil
+		if h ~= nil and h.ended == nil then
+			h.ended = os.clock()
+		end
+	end)
+	prompt.Triggered:Connect(function(player: Player)
+		open(player, part)
+	end)
+end
+
 function SourceService.start()
 	coinSync = LedgerService.makeRemote(Net.CoinSync)
 	DataService.onLoaded(function(player, data)
@@ -122,72 +229,16 @@ function SourceService.start()
 		end
 	end)
 
-	local state = Sources.new(World.caches)
-
-	local cacheParts: { BasePart } = {}
-
-	local function refreshSealed()
-		for _, part in cacheParts do
-			local cacheId = part:GetAttribute("CacheId")
-			local cache = if type(cacheId) == "string" then World.cacheById[cacheId] else nil
-			if cache ~= nil then
-				showSealed(part, isSealed(cache.relicId))
-			end
-		end
-	end
-
-	local function connect(part: Instance)
-		if not part:IsA("BasePart") then
-			return
-		end
-		local prompt = part:FindFirstChildOfClass("ProximityPrompt")
-		if prompt == nil then
-			return
-		end
-		table.insert(cacheParts, part)
-		prompt.Triggered:Connect(function(player: Player)
-			local cacheId = part:GetAttribute("CacheId")
-			local cache = if type(cacheId) == "string" then World.cacheById[cacheId] else nil
-			if cache == nil then
-				return
-			end
-
-			-- No yielding call between tryCollect and storing the new state.
-			local now = os.clock()
-			local newState, newLedger, code, availableAt = Sources.tryCollect(
-				state,
-				LedgerService.get(player),
-				cache,
-				now,
-				distanceToPlayer(player, part),
-				isSealed(cache.relicId),
-				LedgerService.isLocked(player)
-			)
-			if newLedger == nil or availableAt == nil then
-				LedgerService.notify(player, code)
-				return
-			end
-			if not LedgerService.set(player, newLedger) then
-				-- The data went away; the cache stays as it was.
-				LedgerService.notify(player, "DATA_NOT_LOADED")
-				return
-			end
-			state = newState
-			local relic = Relics.byId[cache.relicId]
-			LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
-
-			setVisible(part, false)
-			task.delay(availableAt - now, setVisible, part, true)
-		end)
-	end
-
 	for _, instance in CollectionService:GetTagged("Cache") do
 		connect(instance)
 	end
 
 	LedgerService.onChanged(refreshSealed)
 	DataService.onLoaded(refreshSealed)
-	Players.PlayerRemoving:Connect(function()
+	Players.PlayerRemoving:Connect(function(player)
+		for _, byPlayer in holds do
+			byPlayer[player] = nil
+		end
 		-- One frame later, once the leaving player's data is gone (held players stay counted).
 		task.defer(refreshSealed)
 	end)
