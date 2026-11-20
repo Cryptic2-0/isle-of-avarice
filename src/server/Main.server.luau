@@ -3,6 +3,7 @@ local AbilityService = require(script.Parent.AbilityService)
 local ClaimService = require(script.Parent.ClaimService)
 local CombatService = require(script.Parent.CombatService)
 local CreatureService = require(script.Parent.CreatureService)
+local CrownService = require(script.Parent.CrownService)
 local DataService = require(script.Parent.DataService)
 local EdictService = require(script.Parent.EdictService)
 local Fighters = require(script.Parent.Fighters)
@@ -55,6 +56,7 @@ runStep("TradeService.start", TradeService.start)
 -- After CombatService: a leaver's combat-log credit runs before they leave their party.
 runStep("PartyService.start", PartyService.start)
 runStep("LeaderboardService.start", LeaderboardService.start)
+runStep("CrownService.start", CrownService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 
