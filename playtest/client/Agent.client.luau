@@ -52,6 +52,13 @@ end)
 remotes:WaitForChild("TradeSync").OnClientEvent:Connect(function(view)
 	report:FireServer("tradeSync", view)
 end)
+-- M6: the party invite and the party as the server last sent them (nil = none).
+remotes:WaitForChild("PartyInvite").OnClientEvent:Connect(function(invite)
+	report:FireServer("partyInvite", invite)
+end)
+remotes:WaitForChild("PartySync").OnClientEvent:Connect(function(sync)
+	report:FireServer("partySync", sync)
+end)
 
 local function texts(container: Instance?): { string }
 	local result = {}
@@ -282,6 +289,56 @@ local function inspectUi()
 			end
 		end
 	end
+
+	-- M6: the party panel, the invite banner and the ally markers.
+	local partyGui = playerGui:FindFirstChild("PartyGui")
+	local partyPanel = partyGui and partyGui:FindFirstChild("Panel")
+	ui.partyVisible = partyPanel ~= nil and partyPanel.Visible
+	local partyTitle = partyPanel and partyPanel:FindFirstChild("Title")
+	ui.partyTitle = partyTitle and partyTitle.Text or ""
+	local partyRowList = {}
+	local partyRowsFrame = partyPanel and partyPanel:FindFirstChild("Rows")
+	if partyRowsFrame ~= nil then
+		local frames = {}
+		for _, row in partyRowsFrame:GetChildren() do
+			if row:IsA("Frame") and string.sub(row.Name, 1, 3) == "Row" then
+				table.insert(frames, row)
+			end
+		end
+		table.sort(frames, function(x, y)
+			return x.LayoutOrder < y.LayoutOrder
+		end)
+		for _, row in frames do
+			local rowName = row:FindFirstChild("Name")
+			local rowHealth = row:FindFirstChild("Health")
+			table.insert(partyRowList, {
+				name = rowName and rowName.Text or "",
+				health = rowHealth and rowHealth.Text or "",
+				remove = row:FindFirstChild("Remove") ~= nil,
+				lead = row:FindFirstChild("MakeLeader") ~= nil,
+			})
+		end
+	end
+	ui.partyRows = partyRowList
+	local partyInvite = partyGui and partyGui:FindFirstChild("Invite")
+	ui.partyInviteVisible = partyInvite ~= nil and partyInvite.Visible
+	local partyInviteText = partyInvite and partyInvite:FindFirstChild("Text")
+	ui.partyInviteText = partyInviteText and partyInviteText.Text or ""
+	-- Each marker hangs on its member's character; list the names, sorted.
+	local markerNames = {}
+	for _, other in Players:GetPlayers() do
+		local otherCharacter = other.Character
+		if otherCharacter ~= nil then
+			for _, child in otherCharacter:GetChildren() do
+				if child:IsA("BillboardGui") and string.sub(child.Name, 1, 11) == "AllyMarker_" then
+					local markerLabel = child:FindFirstChildOfClass("TextLabel")
+					table.insert(markerNames, markerLabel and markerLabel.Text or "")
+				end
+			end
+		end
+	end
+	table.sort(markerNames)
+	ui.allyMarkers = markerNames
 	return ui
 end
 
@@ -370,6 +427,13 @@ cmd.OnClientEvent:Connect(function(op, arg)
 		remotes.TradeReply:FireServer(arg)
 	elseif op == "trade" then
 		remotes.TradeAction:FireServer(arg)
+	elseif op == "partyRequest" then
+		remotes.PartyRequest:FireServer()
+	elseif op == "partyReply" then
+		-- Any value, hostile ones included: the server must check it.
+		remotes.PartyReply:FireServer(arg)
+	elseif op == "party" then
+		remotes.PartyAction:FireServer(arg)
 	elseif op == "inspect" then
 		report:FireServer("ui", inspectUi())
 	end
