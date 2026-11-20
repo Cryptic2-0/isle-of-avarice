@@ -3,16 +3,30 @@
 -- Crown, tells the island, lights the sky, and keeps the title, the circlet and the badge.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
 
 local Crown = require(ReplicatedStorage.Shared.Rules.Crown)
+local Ledger = require(ReplicatedStorage.Shared.Rules.Ledger)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Renounce = require(ReplicatedStorage.Shared.Rules.Renounce)
+local ClaimService = require(script.Parent.ClaimService)
+local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
 local Fighters = require(script.Parent.Fighters)
 local Fx = require(script.Parent.Fx)
 local LaunchConfig = require(script.Parent.LaunchConfig)
 local LedgerService = require(script.Parent.LedgerService)
+local ProtectionService = require(script.Parent.ProtectionService)
+local TradeService = require(script.Parent.TradeService)
+local TrialService = require(script.Parent.TrialService)
 
+local STONE_TAG = "TallyStone"
+local PROMPT_NAME = "RenouncePrompt"
+local BUCKET_CAPACITY = 10
+local BUCKET_REFILL_PER_SECOND = 5
 local TAG_NAME = "CrownTag"
 local CIRCLET_NAME = "GiltCirclet"
 local GOLD = Color3.fromRGB(255, 215, 90)
@@ -27,6 +41,12 @@ local ceremony: RemoteEvent
 local tried: { [Player]: boolean } = {}
 local badgeId: number = LaunchConfig.CROWNED_BADGE_ID
 local awardFn: ((userId: number, badgeId: number) -> boolean)? = nil
+local offerRemote: RemoteEvent
+-- The open Renounce offer per player, and the shared rate-limit buckets for prompt and remote.
+local offers: { [Player]: Renounce.Offer } = {}
+local buckets: { [Player]: RateLimiter.Bucket } = {}
+local clock: () -> number = os.clock
+local connected: { [Instance]: boolean } = {}
 
 local function realAward(userId: number, id: number): boolean
 	return game:GetService("BadgeService"):AwardBadge(userId, id)
@@ -247,6 +267,157 @@ function CrownService.setBadge(id: number, award: ((userId: number, badgeId: num
 	table.clear(tried)
 end
 
+-- True if the player has a token left in their rate-limit bucket (takes one).
+local function allowed(player: Player): boolean
+	local now = os.clock()
+	local bucket = buckets[player]
+	if bucket == nil then
+		bucket = RateLimiter.new(BUCKET_CAPACITY, now)
+		buckets[player] = bucket
+	end
+	return RateLimiter.allow(bucket, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_SECOND)
+end
+
+-- The facts Renounce.check needs, read fresh each time. No yield.
+local function state(player: Player, now: number): Renounce.State
+	local data = DataService.get(player)
+	local _, root = Fighters.body(player.UserId)
+	local status = ProtectionService.status(player, now)
+	return {
+		loaded = data ~= nil,
+		complete = data ~= nil and Ledger.isComplete(data.ledger),
+		crowns = if data ~= nil then data.crown.crowns else 0,
+		stars = if data ~= nil then data.crown.stars else 0,
+		alive = root ~= nil,
+		locked = LedgerService.isLocked(player),
+		claiming = ClaimService.isClaiming(player),
+		-- Only an open session counts; a pending invite is not a trade.
+		trading = TradeService.session(player) ~= nil,
+		inTrial = TrialService.run(player) ~= nil,
+		inTown = status ~= nil and status.inSafeZone,
+		marked = status ~= nil and Protection.isMarked(status, now),
+		lastFightAt = CombatService.lastFightAt(player),
+	}
+end
+
+local function closeOffer(player: Player)
+	offers[player] = nil
+	offerRemote:FireClient(player, nil)
+end
+
+-- The Tally Stone prompt: checks, then opens the offer window on the player's screen.
+-- Returns the message code (also the play-test seam's result).
+function CrownService.beginRenounce(player: Player): string
+	if player.Parent ~= Players or not allowed(player) then
+		return "SLOW_DOWN"
+	end
+	local ok, code = Renounce.check(state(player, os.clock()), os.clock())
+	if not ok then
+		LedgerService.notify(player, code)
+		return code
+	end
+	local data = DataService.get(player)
+	if data == nil then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return "DATA_NOT_LOADED"
+	end
+	offers[player] = Renounce.offer(clock())
+	offerRemote:FireClient(player, {
+		lines = Renounce.offerLines(data.crown),
+		seconds = Renounce.OFFER_SECONDS,
+	})
+	return "RENOUNCE_OFFER"
+end
+
+-- Play-test seam: the player's open offer, if any.
+function CrownService.offer(player: Player): Renounce.Offer?
+	return offers[player]
+end
+
+-- Play-test seam: the offer clock (default os.clock).
+function CrownService.setClock(newClock: () -> number)
+	clock = newClock
+end
+
+local function handleAction(player: Player, raw: any)
+	if player.Parent ~= Players or not allowed(player) then
+		return
+	end
+	local request = Renounce.parse(raw)
+	if request == nil then
+		LedgerService.notify(player, "BAD_REQUEST")
+		return
+	end
+	if request.kind == "cancel" then
+		if offers[player] ~= nil then
+			closeOffer(player)
+			LedgerService.notify(player, "RENOUNCE_CANCELLED")
+		else
+			LedgerService.notify(player, "RENOUNCE_NO_OFFER")
+		end
+		return
+	end
+
+	local word = request.word or ""
+	local confirmed, confirmCode = Renounce.confirm(offers[player], word, clock())
+	if not confirmed then
+		LedgerService.notify(player, confirmCode)
+		-- A wrong word keeps the offer open; an expired offer closes.
+		if confirmCode == "RENOUNCE_EXPIRED" then
+			closeOffer(player)
+		end
+		return
+	end
+	-- The world may have changed since the offer: check again with fresh facts.
+	local ok, code = Renounce.check(state(player, os.clock()), os.clock())
+	if not ok then
+		closeOffer(player)
+		LedgerService.notify(player, code)
+		return
+	end
+
+	-- No yielding call from here to the last write: all five parts change, or none.
+	local data = DataService.get(player)
+	if data == nil then
+		closeOffer(player)
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
+	local out = Renounce.apply({
+		ledger = data.ledger,
+		vault = data.vault,
+		crown = data.crown,
+		trials = data.trials,
+		rounds = data.rounds,
+	})
+	if not LedgerService.set(player, out.ledger) then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
+	LedgerService.setVault(player, out.vault)
+	data.crown = out.crown
+	data.trials = out.trials
+	data.rounds = out.rounds
+	offers[player] = nil
+
+	offerRemote:FireClient(player, nil)
+	LedgerService.notify(player, "RENOUNCE_DONE")
+	LedgerService.notifyAll("RENOUNCED", { player = player.DisplayName })
+	CrownService.refresh(player)
+	TrialService.resync(player)
+end
+
+local function hookStone(stone: Instance)
+	local prompt = stone:FindFirstChild(PROMPT_NAME)
+	if prompt == nil or not prompt:IsA("ProximityPrompt") or connected[prompt] then
+		return
+	end
+	connected[prompt] = true
+	prompt.Triggered:Connect(function(player: Player)
+		CrownService.beginRenounce(player)
+	end)
+end
+
 local function watchPlayer(player: Player)
 	player.CharacterAdded:Connect(function(character)
 		task.spawn(function()
@@ -264,6 +435,13 @@ end
 
 function CrownService.start()
 	ceremony = LedgerService.makeRemote(Net.Ceremony)
+	offerRemote = LedgerService.makeRemote(Net.RenounceOffer)
+	LedgerService.makeRemote(Net.RenounceAction).OnServerEvent:Connect(handleAction)
+
+	for _, stone in CollectionService:GetTagged(STONE_TAG) do
+		hookStone(stone)
+	end
+	CollectionService:GetInstanceAddedSignal(STONE_TAG):Connect(hookStone)
 
 	LedgerService.onChanged(function(player)
 		tryCrown(player)
@@ -280,6 +458,8 @@ function CrownService.start()
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		tried[player] = nil
+		offers[player] = nil
+		buckets[player] = nil
 	end)
 end
 

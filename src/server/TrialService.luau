@@ -383,6 +383,11 @@ local function connectWarden(instance: Instance)
 	end)
 end
 
+-- Sends the player their TrialSync now (used after a Renounce restarts the quest).
+function TrialService.resync(player: Player)
+	sync(player)
+end
+
 -- Play-test seam: the player's running trial, if any.
 function TrialService.run(player: Player): TrialRun.Run?
 	local active = runs[player]
