@@ -4,7 +4,7 @@ Milestone 6 adds parties. Up to four players can form a party. Party members can
 
 Almost every step needs two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2. Parties of three and four are covered by unit tests only; if you have more players, try them too.
 
-Automated run: not done yet.
+Automated run (2026-11-21, Studio, two players): `[PLAYTEST] DONE passed=586 failed=0`, with no errors from the game's scripts. 131 of those checks are for milestone 6. A two-player test cannot show parties of three or four, so steps that need more players are hand checks. The steps below are the hand checks for how things look and feel, and for the phone layout.
 
 ## Words used here
 
