@@ -23,6 +23,7 @@ local EdictUI = require(script.Parent.EdictUI)
 local HazardController = require(script.Parent.HazardController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
+local PartyUI = require(script.Parent.PartyUI)
 local PathUI = require(script.Parent.PathUI)
 local ShopUI = require(script.Parent.ShopUI)
 local StatusHUD = require(script.Parent.StatusHUD)
@@ -64,6 +65,11 @@ local tradeInvite = remotes:WaitForChild(Net.TradeInvite) :: RemoteEvent
 local tradeReply = remotes:WaitForChild(Net.TradeReply) :: RemoteEvent
 local tradeAction = remotes:WaitForChild(Net.TradeAction) :: RemoteEvent
 local tradeSync = remotes:WaitForChild(Net.TradeSync) :: RemoteEvent
+local partyRequest = remotes:WaitForChild(Net.PartyRequest) :: RemoteEvent
+local partyInvite = remotes:WaitForChild(Net.PartyInvite) :: RemoteEvent
+local partyReply = remotes:WaitForChild(Net.PartyReply) :: RemoteEvent
+local partyAction = remotes:WaitForChild(Net.PartyAction) :: RemoteEvent
+local partySync = remotes:WaitForChild(Net.PartySync) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -113,6 +119,17 @@ TradeUI.mount(playerGui, {
 	end,
 	action = function(request)
 		tradeAction:FireServer(request)
+	end,
+})
+PartyUI.mount(playerGui, {
+	request = function()
+		partyRequest:FireServer()
+	end,
+	reply = function(accept)
+		partyReply:FireServer(accept)
+	end,
+	action = function(request)
+		partyAction:FireServer(request)
 	end,
 })
 CombatController.start(function()
@@ -170,6 +187,12 @@ tradeInvite.OnClientEvent:Connect(function(invite)
 end)
 tradeSync.OnClientEvent:Connect(function(view)
 	TradeUI.render(view)
+end)
+partyInvite.OnClientEvent:Connect(function(invite)
+	PartyUI.showInvite(invite)
+end)
+partySync.OnClientEvent:Connect(function(view)
+	PartyUI.setParty(view)
 end)
 
 -- The Veil's seconds left when the last sync arrived (local clock); it counts down here.
@@ -319,6 +342,7 @@ task.spawn(function()
 	while true do
 		refreshHud()
 		renderTrial()
+		PartyUI.refresh(localPlayer)
 		task.wait(HUD_REFRESH_SECONDS)
 	end
 end)
