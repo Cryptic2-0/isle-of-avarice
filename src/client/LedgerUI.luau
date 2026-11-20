@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Tiers = require(Shared:WaitForChild("Catalog"):WaitForChild("Tiers"))
+local Crown = require(Shared:WaitForChild("Rules"):WaitForChild("Crown"))
 local LedgerView = require(Shared:WaitForChild("Rules"):WaitForChild("LedgerView"))
 local Types = require(Shared:WaitForChild("Types"))
 
@@ -19,6 +20,7 @@ local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local VAULT_GOLD = Color3.fromRGB(255, 200, 40)
 -- An Edict has no tier, so it gets the colour of old paper.
 local PARCHMENT = Color3.fromRGB(214, 196, 150)
+local CROWN_GOLD = Color3.fromRGB(255, 215, 90)
 
 local panel: Frame? = nil
 local slotGrid: ScrollingFrame? = nil
@@ -26,6 +28,12 @@ local freeList: ScrollingFrame? = nil
 local progressLabel: TextLabel? = nil
 local freeLabel: TextLabel? = nil
 local vaultLabel: TextLabel? = nil
+local crownLabel: TextLabel? = nil
+-- What the Crown line is drawn from: the attributes as last given, and whether the last
+-- Ledger view was complete.
+local shownCrowns: number? = nil
+local shownStars: number? = nil
+local lastComplete = false
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 local vaultHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 local useHandler: (card: LedgerView.FreeView) -> () = function(_card: LedgerView.FreeView) end
@@ -235,6 +243,14 @@ function LedgerUI.setUseHandler(handler: (card: LedgerView.FreeView) -> ())
 	useHandler = handler
 end
 
+-- Redraws the Crown line from the last attributes and the last Ledger view.
+local function drawCrown()
+	local label = crownLabel
+	if label ~= nil then
+		label.Text = Crown.bookLine(shownCrowns, shownStars, lastComplete)
+	end
+end
+
 function LedgerUI.mount(
 	playerGui: PlayerGui,
 	onAction: (request: { [string]: any }) -> (),
@@ -296,10 +312,18 @@ function LedgerUI.mount(
 	vault.Parent = book
 	vaultLabel = vault
 
+	local crownLine =
+		makeLabel("CrownLine", UDim2.fromScale(0.96, 0.04), UDim2.fromScale(0.02, 0.165), 18)
+	crownLine.TextColor3 = CROWN_GOLD
+	crownLine.TextXAlignment = Enum.TextXAlignment.Left
+	crownLine.Parent = book
+	crownLabel = crownLine
+	drawCrown()
+
 	local grid = Instance.new("ScrollingFrame")
 	grid.Name = "Slots"
-	grid.Position = UDim2.fromScale(0.02, 0.17)
-	grid.Size = UDim2.fromScale(0.46, 0.8)
+	grid.Position = UDim2.fromScale(0.02, 0.21)
+	grid.Size = UDim2.fromScale(0.46, 0.76)
 	grid.BackgroundTransparency = 1
 	grid.BorderSizePixel = 0
 	grid.ScrollBarThickness = 6
@@ -315,8 +339,8 @@ function LedgerUI.mount(
 
 	local list = Instance.new("ScrollingFrame")
 	list.Name = "FreeCards"
-	list.Position = UDim2.fromScale(0.52, 0.17)
-	list.Size = UDim2.fromScale(0.46, 0.8)
+	list.Position = UDim2.fromScale(0.52, 0.21)
+	list.Size = UDim2.fromScale(0.46, 0.76)
 	list.BackgroundTransparency = 1
 	list.BorderSizePixel = 0
 	list.ScrollBarThickness = 6
@@ -360,6 +384,9 @@ function LedgerUI.render(view: View)
 		vaultLabel.Text = "Vault: " .. view.vaultText
 	end
 
+	lastComplete = view.complete
+	drawCrown()
+
 	clearRows(grid)
 	for index, slot in view.slots do
 		makeSlot(slot, index).Parent = grid
@@ -368,6 +395,13 @@ function LedgerUI.render(view: View)
 	for _, card in view.free do
 		makeFreeRow(card).Parent = list
 	end
+end
+
+-- The player's Crowns and Stars attributes (nil while not set yet).
+function LedgerUI.setCrown(crowns: number?, stars: number?)
+	shownCrowns = crowns
+	shownStars = stars
+	drawCrown()
 end
 
 function LedgerUI.isOpen(): boolean

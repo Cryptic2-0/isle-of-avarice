@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local PartyView = require(Shared:WaitForChild("Rules"):WaitForChild("PartyView"))
+local Crown = require(Shared:WaitForChild("Rules"):WaitForChild("Crown"))
 
 local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
@@ -15,17 +16,18 @@ local ACCEPT_COLOR = Color3.fromRGB(60, 130, 80)
 local BAR_BACK_COLOR = Color3.fromRGB(20, 18, 24)
 local BAR_COLOR = Color3.fromRGB(80, 190, 110)
 local ALLY_COLOR = Color3.fromRGB(110, 220, 140)
+local TITLE_COLOR = Color3.fromRGB(255, 215, 90)
 
 local PANEL_WIDTH = 280
 local PANEL_PAD = 8
 local TITLE_HEIGHT = 26
-local ROW_HEIGHT = 34
+local ROW_HEIGHT = 48
 local ROW_GAP = 4
 local LEAVE_WIDTH = 64
 -- Kept free below the panel so it never reaches the bottom edge of the screen.
 local PANEL_BOTTOM_MARGIN = 12
--- The trial HUD at the top right is three 32-pixel lines with 4 between (108); stay under it.
-local PANEL_TOP_OFFSET = 114
+-- The trial HUD at the top right is four 28-pixel lines with 4 between (128); stay under it.
+local PANEL_TOP_OFFSET = 146
 -- A refused request sends only a message, not a sync; buttons come back after this long.
 local REARM_SECONDS = 1
 
@@ -215,7 +217,7 @@ end
 local function buildPanel(gui: ScreenGui)
 	local frame = Instance.new("Frame")
 	frame.Name = "Panel"
-	-- Under the trial HUD (anchor top right, 16% down, 108 pixels tall).
+	-- Under the trial HUD (anchor top right, 16% down, 128 pixels tall).
 	frame.AnchorPoint = Vector2.new(1, 0)
 	frame.Position = UDim2.new(1, -12, 0.16, PANEL_TOP_OFFSET)
 	frame.Size = UDim2.fromOffset(PANEL_WIDTH, 100)
@@ -270,6 +272,16 @@ local function buildPanel(gui: ScreenGui)
 	panel = frame
 end
 
+-- The Crowned title of a member, from the attributes the server keeps on their Player (empty
+-- when not Crowned or when the Player is gone).
+local function titleOf(userId: number): string
+	local player = Players:GetPlayerByUserId(userId)
+	if player == nil then
+		return ""
+	end
+	return Crown.title(player:GetAttribute("Crowns"), player:GetAttribute("Stars"))
+end
+
 local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	local frame = Instance.new("Frame")
 	frame.Name = "Row" .. row.userId
@@ -287,9 +299,20 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	health.TextXAlignment = Enum.TextXAlignment.Right
 	health.Parent = frame
 
+	-- Under the name; empty (and so invisible) unless the member is Crowned.
+	local crowned = makeLabel(
+		"Title",
+		titleOf(row.userId),
+		UDim2.new(1, -12, 0, 14),
+		UDim2.fromOffset(6, 22),
+		12
+	)
+	crowned.TextColor3 = TITLE_COLOR
+	crowned.Parent = frame
+
 	local bar = Instance.new("Frame")
 	bar.Name = "Bar"
-	bar.Position = UDim2.fromOffset(6, 24)
+	bar.Position = UDim2.fromOffset(6, 38)
 	bar.Size = UDim2.new(1, -12, 0, 6)
 	bar.BackgroundColor3 = BAR_BACK_COLOR
 	addCorner(bar, 3)
@@ -485,6 +508,14 @@ local function redraw()
 			local health = frameOfRow:FindFirstChild("Health")
 			if health ~= nil and health:IsA("TextLabel") and health.Text ~= row.healthText then
 				health.Text = row.healthText
+			end
+			-- Titles can change without a rebuild.
+			local crowned = frameOfRow:FindFirstChild("Title")
+			if crowned ~= nil and crowned:IsA("TextLabel") then
+				local title = titleOf(row.userId)
+				if crowned.Text ~= title then
+					crowned.Text = title
+				end
 			end
 			local bar = frameOfRow:FindFirstChild("Bar")
 			local fill = if bar ~= nil then bar:FindFirstChild("Fill") else nil

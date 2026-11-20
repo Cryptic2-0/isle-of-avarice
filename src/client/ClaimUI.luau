@@ -227,9 +227,9 @@ function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
 	cells.Position = UDim2.fromScale(0.03, 0.25)
 	cells.Size = UDim2.fromScale(0.94, 0.6)
 	local layout = Instance.new("UIGridLayout")
-	-- 30 slots: six columns by five rows.
-	layout.CellSize = UDim2.fromScale(0.15, 0.17)
-	layout.CellPadding = UDim2.fromScale(0.02, 0.035)
+	-- 50 slots: ten columns by five rows. Cell text keeps a minimum of 7 so a phone can read it.
+	layout.CellSize = UDim2.fromScale(0.088, 0.17)
+	layout.CellPadding = UDim2.fromScale(0.0133, 0.035)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = cells
 	cells.Parent = frame

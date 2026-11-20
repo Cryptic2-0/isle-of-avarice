@@ -11,12 +11,14 @@ local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages")
 local LedgerView = require(Rules:WaitForChild("LedgerView"))
 local PathView = require(Rules:WaitForChild("PathView"))
 local PlaceView = require(Rules:WaitForChild("PlaceView"))
+local Rounds = require(Rules:WaitForChild("Rounds"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local StatusView = require(Rules:WaitForChild("StatusView"))
 local TrialView = require(Rules:WaitForChild("TrialView"))
 local World = require(Shared:WaitForChild("Catalog"):WaitForChild("World"))
 local Atmosphere = require(script.Parent.Atmosphere)
 local ClaimUI = require(script.Parent.ClaimUI)
+local CeremonyUI = require(script.Parent.CeremonyUI)
 local CombatController = require(script.Parent.CombatController)
 local CreatureFx = require(script.Parent.CreatureFx)
 local EdictUI = require(script.Parent.EdictUI)
@@ -25,6 +27,7 @@ local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
 local PartyUI = require(script.Parent.PartyUI)
 local PathUI = require(script.Parent.PathUI)
+local RenounceUI = require(script.Parent.RenounceUI)
 local ShopUI = require(script.Parent.ShopUI)
 local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
@@ -70,6 +73,9 @@ local partyInvite = remotes:WaitForChild(Net.PartyInvite) :: RemoteEvent
 local partyReply = remotes:WaitForChild(Net.PartyReply) :: RemoteEvent
 local partyAction = remotes:WaitForChild(Net.PartyAction) :: RemoteEvent
 local partySync = remotes:WaitForChild(Net.PartySync) :: RemoteEvent
+local ceremonyRemote = remotes:WaitForChild(Net.Ceremony) :: RemoteEvent
+local renounceOffer = remotes:WaitForChild(Net.RenounceOffer) :: RemoteEvent
+local renounceAction = remotes:WaitForChild(Net.RenounceAction) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -132,6 +138,10 @@ PartyUI.mount(playerGui, {
 		partyAction:FireServer(request)
 	end,
 })
+RenounceUI.mount(playerGui, function(request)
+	renounceAction:FireServer(request)
+end)
+CeremonyUI.mount(playerGui)
 CombatController.start(function()
 	strikeRemote:FireServer()
 end, function(slot)
@@ -144,12 +154,32 @@ end, function()
 		or EdictUI.isOpen()
 		or ShopUI.isOpen()
 		or TradeUI.isOpen()
+		or RenounceUI.isOpen()
 end)
 HazardController.start()
 CreatureFx.start(localPlayer)
 
+-- The Tally Stone's Renounce prompt is enabled on this client only while Crowned this run
+-- with a complete Ledger. The server checks again on every use.
+local ledgerComplete = false
+local renouncePrompt: ProximityPrompt? = nil
+local function refreshRenouncePrompt()
+	local prompt = renouncePrompt
+	if prompt ~= nil then
+		local crowns = localPlayer:GetAttribute("Crowns")
+		local stars = localPlayer:GetAttribute("Stars")
+		prompt.Enabled = ledgerComplete
+			and type(crowns) == "number"
+			and type(stars) == "number"
+			and crowns > stars
+	end
+end
+
 ledgerSync.OnClientEvent:Connect(function(ledger, vault)
-	LedgerUI.render(LedgerView.build(ledger, vault))
+	local view = LedgerView.build(ledger, vault)
+	LedgerUI.render(view)
+	ledgerComplete = view.complete
+	refreshRenouncePrompt()
 end)
 notify.OnClientEvent:Connect(function(code, args)
 	Toast.show(Messages.format(code, args))
@@ -195,6 +225,36 @@ partySync.OnClientEvent:Connect(function(view)
 	PartyUI.setParty(view)
 end)
 
+ceremonyRemote.OnClientEvent:Connect(function(ceremony)
+	CeremonyUI.show(ceremony)
+end)
+renounceOffer.OnClientEvent:Connect(function(offer)
+	RenounceUI.show(offer)
+end)
+
+local function refreshCrown()
+	local crowns = localPlayer:GetAttribute("Crowns")
+	local stars = localPlayer:GetAttribute("Stars")
+	LedgerUI.setCrown(
+		if type(crowns) == "number" then crowns else nil,
+		if type(stars) == "number" then stars else nil
+	)
+	refreshRenouncePrompt()
+end
+localPlayer:GetAttributeChangedSignal("Crowns"):Connect(refreshCrown)
+localPlayer:GetAttributeChangedSignal("Stars"):Connect(refreshCrown)
+refreshCrown()
+task.spawn(function()
+	local island = workspace:WaitForChild("Island")
+	local town = island:WaitForChild("Tallyport")
+	local stone = town:WaitForChild("TallyStone"):WaitForChild("Stone")
+	local prompt = stone:WaitForChild("RenouncePrompt")
+	if prompt:IsA("ProximityPrompt") then
+		renouncePrompt = prompt
+		refreshRenouncePrompt()
+	end
+end)
+
 -- The Veil's seconds left when the last sync arrived (local clock); it counts down here.
 local veilSeconds = 0
 local veilAt = 0
@@ -235,6 +295,8 @@ end)
 -- The last trial sync and when it arrived (local clock); the trial clock counts down here.
 local trialState: TrialView.HudState? = nil
 local questStep = 0
+-- The rounds record from the last TrialSync; Rounds.line sanitises whatever arrived.
+local roundsRecord: any = nil
 local trialAt = 0
 local function renderTrial()
 	local state = trialState
@@ -252,12 +314,15 @@ local function renderTrial()
 			nextMarker = markers[state.progress + 1]
 		end
 	end
-	TrialUI.renderHud(TrialView.hud(shown, questStep))
+	local lines = TrialView.hud(shown, questStep)
+	table.insert(lines, Rounds.line(roundsRecord))
+	TrialUI.renderHud(lines)
 	TrialUI.setBeacon(nextMarker)
 end
-trialSync.OnClientEvent:Connect(function(state, step)
+trialSync.OnClientEvent:Connect(function(state, step, rounds)
 	trialState = state
 	questStep = step
+	roundsRecord = rounds
 	trialAt = os.clock()
 	renderTrial()
 end)
