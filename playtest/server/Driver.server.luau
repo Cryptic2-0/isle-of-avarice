@@ -43,6 +43,7 @@ local TradeService = require(Server:WaitForChild("TradeService"))
 local TrialService = require(Server:WaitForChild("TrialService"))
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rules = Shared:WaitForChild("Rules")
+local Combat = require(Rules:WaitForChild("Combat"))
 local Geography = require(Rules:WaitForChild("Geography"))
 local Hazards = require(Rules:WaitForChild("Hazards"))
 local Ledger = require(Rules:WaitForChild("Ledger"))
@@ -550,18 +551,91 @@ local function freshCreature(id: number, healthNow: number?): boolean
 	return true
 end
 
+-- What the game's Strike would hit from `spot`, facing `target`: the server's own sight filter
+-- and Combat.pickTarget over every fighter the player may hit (taunts aside).
+local function strikePick(player: Player, spot: Vector3, target: Vector3): number?
+	local look = Vector3.new(target.X - spot.X, 0, target.Z - spot.Z)
+	if not (look.Magnitude > 0) then
+		return nil
+	end
+	look = look.Unit
+	local attacker = {
+		id = player.UserId,
+		position = { x = spot.X, y = spot.Y, z = spot.Z },
+		look = { x = look.X, y = 0, z = look.Z },
+	}
+	local others = Sight.filter(spot, Fighters.list(player.UserId))
+	return Combat.pickTarget(attacker, others, nil, nil)
+end
+
+-- Every fighter within `radius` (level) of `center`, nearest first, for the log.
+local function fightersNear(player: Player, center: Vector3, radius: number): string
+	local found = {}
+	for _, other in Fighters.list(player.UserId) do
+		local p = Vector3.new(other.position.x, other.position.y, other.position.z)
+		local d = flatDistance(p, center)
+		if d <= radius then
+			local entry = Fighters.get(other.id)
+			table.insert(found, {
+				d = d,
+				text = `{other.id} {if entry ~= nil then entry.kind else "?"} at {at(p)} ({fmt(d)} studs, health {fmt(
+					other.health or -1
+				)})`,
+			})
+		end
+	end
+	table.sort(found, function(a, b)
+		return a.d < b.d
+	end)
+	local lines = {}
+	for _, f in found do
+		table.insert(lines, f.text)
+	end
+	return if #lines > 0 then table.concat(lines, "; ") else "none"
+end
+
+-- A spot 4 studs from the creature (on land, in clear sight) from which the game's own Strike
+-- picks that creature: a sleeping den-mate parked nearer in the arc would take the hit instead.
+-- Falls back to clearSpot (and logs why) when no spot qualifies.
+local function strikeSpot(player: Player, id: number, target: Vector3): Vector3
+	local plain = clearSpot(target, 4)
+	local plainPick = strikePick(player, plain, target)
+	if plainPick == id then
+		return plain
+	end
+	log(
+		`strikeCreature {player.Name} -> {id}: from {at(plain)} the Strike would take {tostring(
+			plainPick
+		)}; fighters near: {fightersNear(player, target, 10)}`
+	)
+	for step = 0, 15 do
+		local angle = step * math.pi / 8
+		local spot = target + Vector3.new(math.cos(angle) * 4, 0, math.sin(angle) * 4)
+		if
+			Geography.isLand(spot.X, spot.Z)
+			and Sight.inSight(spot, target, nil)
+			and strikePick(player, spot, target) == id
+		then
+			log(`strikeCreature {player.Name} -> {id}: using {at(spot)} instead`)
+			return spot
+		end
+	end
+	log(`strikeCreature {player.Name} -> {id}: no spot picks it; using {at(plain)}`)
+	return plain
+end
+
 -- Stands the player 4 studs from the creature, facing it, and Strikes. A teleport across the
 -- island can take a moment to settle, so a Strike that changed nothing is tried once more.
 -- `once`: for checks that expect the Strike to change nothing.
 local function strikeCreature(player: Player, id: number, once: boolean?)
-	for _ = 1, if once then 1 else 3 do
+	for attempt = 1, if once then 1 else 3 do
 		local _, root = creatureBody(id)
 		if root == nil then
 			return
 		end
 		local before = creatureHealth(id)
 		local target = Vector3.new(root.Position.X, 3, root.Position.Z)
-		local spot = clearSpot(target, 4)
+		local spot = strikeSpot(player, id, target)
 		place(player, spot, target)
 		waitFor(function()
 			return flatDistance(positionOf(player), spot) <= 1.5
@@ -570,6 +644,26 @@ local function strikeCreature(player: Player, id: number, once: boolean?)
 		strike(player)
 		if creatureHealth(id) ~= before then
 			return
+		end
+		if not once then
+			-- Evidence for a Strike that changed nothing: where everyone stood and what the
+			-- game's targeting picks from where the player really is.
+			local here = positionOf(player)
+			local me = Fighters.fighter(player.UserId)
+			local look = if me ~= nil
+				then Vector3.new(me.look.x, 0, me.look.z)
+				else Vector3.new(0 / 0, 0, 0)
+			log(
+				`strikeCreature {player.Name} -> {id} attempt {attempt} changed nothing: player at {at(
+					here
+				)} look {at(look)}, creature at {at(root.Position)} health {fmt(
+					creatureHealth(id)
+				)}, pick now {tostring(strikePick(player, here, root.Position))}; fighters near: {fightersNear(
+					player,
+					root.Position,
+					10
+				)}`
+			)
 		end
 	end
 end
@@ -3976,8 +4070,24 @@ local function run()
 		)
 
 		-- An unmarked player in Tallyport: A, just outside, casts Bog Snare at B just inside.
-		local insideEdge = Vector3.new(0, 3, 30)
-		local outsideEdge = Vector3.new(0, 3, 48)
+		-- The lane runs north-south across the south edge of town, beside the Tally Stone (which
+		-- stands on the plaza's south side and would block a lane through it), and clear of the
+		-- buildings; the first lane with a clear line is used.
+		local insideEdge, outsideEdge = Vector3.new(0, 3, 30), Vector3.new(0, 3, 48)
+		local stoneX = World.tallyStone.x
+		for _, dx in { 12, -12, 0 } do
+			local inside = Vector3.new(stoneX + dx, 3, 30)
+			local outside = Vector3.new(stoneX + dx, 3, 48)
+			if
+				flatDistance(inside, Vector3.zero) < World.townRadius
+				and flatDistance(outside, Vector3.zero) > World.townRadius
+				and Sight.inSight(outside, inside, nil)
+			then
+				insideEdge, outsideEdge = inside, outside
+				break
+			end
+		end
+		log(`M3.9 town-edge lane: B at {at(insideEdge)}, A at {at(outsideEdge)}`)
 		place(B, insideEdge, outsideEdge)
 		place(A, outsideEdge, insideEdge)
 		task.wait(0.6)
