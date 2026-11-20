@@ -497,6 +497,10 @@ function PartyUI.setParty(sync: PartyView.Sync?)
 	-- A new sync answers whatever was sent: the buttons come back.
 	pending = false
 	pendingToken += 1
+	-- The Leave button is outside the rows, so the rebuild does not touch it.
+	if leaveButton ~= nil then
+		setEnabled(leaveButton, true)
+	end
 	if sync == nil then
 		drawnKey = ""
 		if panel ~= nil then
