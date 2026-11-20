@@ -104,8 +104,13 @@ function Renounce.wordMatches(word: any): boolean
 	if type(word) ~= "string" then
 		return false
 	end
-	local trimmed = string.match(word, "^%s*(.-)%s*$") or ""
-	return string.upper(trimmed) == Renounce.WORD
+	-- The same cap as parse, so a long string is not scanned.
+	if #word > Renounce.MAX_WORD_LENGTH then
+		return false
+	end
+	-- Spec 3.15: any case, and spaces anywhere are ignored.
+	local squeezed = string.gsub(word, "%s", "")
+	return string.upper(squeezed) == Renounce.WORD
 end
 
 function Renounce.confirm(offer: Offer?, word: string, now: number): (boolean, string)

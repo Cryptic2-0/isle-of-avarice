@@ -99,14 +99,15 @@ T.test("parse: only confirm and cancel", function()
 end)
 
 T.test("the word", function()
-	for _, word in { "RENOUNCE", "renounce", "  Renounce  ", "ReNoUnCe" } do
+	for _, word in
+		{ "RENOUNCE", "renounce", "  Renounce  ", "ReNoUnCe", "re nounce", "re\tnou\nnce" }
+	do
 		T.truthy(Renounce.wordMatches(word), word)
 	end
-	for _, word in
-		{ "", "RENOUNC", "RENOUNCE!", "re nounce", "renounce please", "RENOUNCE RENOUNCE" }
-	do
+	for _, word in { "", "RENOUNC", "RENOUNCE!", "renounce please", "RENOUNCE RENOUNCE" } do
 		T.falsy(Renounce.wordMatches(word), word)
 	end
+	T.falsy(Renounce.wordMatches(string.rep("R", 33)))
 	T.falsy(Renounce.wordMatches(5))
 	T.falsy(Renounce.wordMatches(nil))
 end)
