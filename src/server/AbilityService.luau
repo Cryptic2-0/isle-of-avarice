@@ -189,7 +189,8 @@ end
 -- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. Every
 -- hit goes through CombatService.damage (a post trains the ability's Path and ignores every
 -- effect); its statuses and its pull or knockback follow only when that returned true.
--- Heal-on-hit heals the caster and allies when any hit landed.
+-- Heal-on-hit heals the caster when any hit landed, and reaches allies (and counts as an
+-- assist) only when a hit landed on a player or a creature, not on a training post alone.
 local function applyHits(
 	player: Player,
 	ability: Ability,
@@ -198,6 +199,7 @@ local function applyHits(
 	others: { Fighter }
 )
 	local connected = false
+	local struckFighter = false
 	for _, hit in plan.hits do
 		local id = hit.targetId
 		if not inSight(caster, others, id) then
@@ -207,6 +209,10 @@ local function applyHits(
 			continue
 		end
 		connected = true
+		local struck = Fighters.get(id)
+		if struck ~= nil and struck.kind ~= "post" then
+			struckFighter = true
+		end
 		StatusService.applyHit(player.UserId, id, ability)
 		-- No ability both pulls and knocks back; each point is for the plan's one target.
 		local destination = plan.pullTo or plan.knockbackTo
@@ -224,8 +230,12 @@ local function applyHits(
 	end
 	local amount = ability.heal
 	if connected and ability.healOnHit == true and amount ~= nil then
-		for _, ally in supportTargets(player, ability, os.clock()) do
-			heal(ally, amount)
+		if struckFighter then
+			for _, ally in supportTargets(player, ability, os.clock()) do
+				heal(ally, amount)
+			end
+		else
+			heal(player, amount)
 		end
 	end
 end

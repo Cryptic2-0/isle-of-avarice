@@ -2242,11 +2242,18 @@ local function runM6(A: Player, B: Player)
 	mB = mark(B)
 	fire(B, "partyRequest")
 	expectNote("M6.3 B is not the leader: PARTY_NOT_LEADER", B, mB, "PARTY_NOT_LEADER")
+	-- B stands 3 studs from A. The leader's own party mates are not asked: nobody else is in
+	-- range, so the request finds no one (and never refuses with B "already in a party").
+	put(B, clearSpot(IN_TOWN, 3), IN_TOWN)
 	mA = mark(A)
 	fire(A, "partyRequest")
-	local inParty =
-		expectNote("M6.3 A asks B again: PARTY_TARGET_IN_PARTY", A, mA, "PARTY_TARGET_IN_PARTY")
-	check("M6.3 the message names B", names(inParty, B))
+	expectNote("M6.3 A asks with only B near: EDICT_NO_TARGET", A, mA, "EDICT_NO_TARGET")
+	check(
+		"M6.3 and no PARTY_TARGET_IN_PARTY names B",
+		noteSince(A, mA, "PARTY_TARGET_IN_PARTY") == nil,
+		codesSince(A, mA)
+	)
+	check("M6.3 the party is unchanged by the request", pairIs(), partyText(A))
 	local hostile = {
 		{ label = "nil", value = nil },
 		{ label = "5", value = 5 },

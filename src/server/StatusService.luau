@@ -328,8 +328,14 @@ function StatusService.addZone(ownerId: number, zone: Casting.Zone, path: string
 	if not (math.abs(zone.center.y) < math.huge) then
 		return
 	end
-	for _, other in Fighters.list(ownerId) do
-		if zoneContains(entry, other.position) then
+	-- Every fighter standing in it counts, allies included: an ally removed from the party
+	-- later must not turn into a passive target.
+	for _, other in Fighters.all() do
+		if other.id == ownerId then
+			continue
+		end
+		local fighter = Fighters.fighter(other.id)
+		if fighter ~= nil and zoneContains(entry, fighter.position) then
 			entry.inside[other.id] = true
 		end
 	end

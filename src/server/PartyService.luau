@@ -153,6 +153,16 @@ local function handleRequest(player: Player)
 		return
 	end
 	local _, root = Fighters.body(player.UserId)
+	-- A member who cannot invite hears why even when nobody else is in range.
+	local own = Party.find(state, player.UserId)
+	if own ~= nil and own.leader ~= player.UserId then
+		LedgerService.notify(player, "PARTY_NOT_LEADER")
+		return
+	end
+	if own ~= nil and #own.members >= Party.MAX_SIZE then
+		LedgerService.notify(player, "PARTY_FULL")
+		return
+	end
 	if
 		DataService.get(player) == nil
 		or root == nil
@@ -162,9 +172,11 @@ local function handleRequest(player: Player)
 		LedgerService.notify(player, "EDICT_NOT_NOW")
 		return
 	end
+	-- The asker's own party mates are left out so one standing closest cannot hide a new player.
+	local mates = Party.allies(state, player.UserId)
 	local others: { Trade.Body } = {}
 	for userId, other in players do
-		if other ~= player and other.Parent == Players then
+		if other ~= player and other.Parent == Players and table.find(mates, userId) == nil then
 			local _, otherRoot = Fighters.body(userId)
 			if otherRoot ~= nil then
 				table.insert(others, { userId = userId, position = vec(otherRoot.Position) })
@@ -224,9 +236,10 @@ local function handleReply(player: Player, accept: any)
 		LedgerService.notify(player, "PARTY_NO_INVITE")
 		return
 	end
-	local joined, code = Party.join(state, asker.UserId, player.UserId)
+	local joined = Party.join(state, asker.UserId, player.UserId)
 	if joined == nil then
-		LedgerService.notify(player, code, { player = player.DisplayName })
+		-- The invitee hears it in their own words, naming the asker.
+		LedgerService.notify(player, "PARTY_JOIN_FAILED", { player = asker.DisplayName })
 		return
 	end
 	state = joined
@@ -308,7 +321,10 @@ local function onExit(player: Player)
 		end
 	end
 	buckets[player] = nil
-	players[player.UserId] = nil
+	-- Leave a rejoin under the same UserId alone.
+	if players[player.UserId] == player then
+		players[player.UserId] = nil
+	end
 end
 
 -- Play-test seam: a copy of the player's party (user ids), if any.

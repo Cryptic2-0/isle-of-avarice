@@ -179,6 +179,7 @@ T.test("M6 messages", function()
 			"PARTY_NOT_LEADER",
 			"PARTY_TARGET_IN_PARTY",
 			"PARTY_NOT_IN",
+			"PARTY_JOIN_FAILED",
 		}
 	do
 		T.truthy(Messages.format(code) ~= code, code)

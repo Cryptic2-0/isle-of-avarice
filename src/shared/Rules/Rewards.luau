@@ -143,11 +143,11 @@ function Rewards.xpPath(byPath: { [string]: number }, calling: string): string
 	return best
 end
 
--- One Award per contributor found in `recipients`, in contributors() order. Each contributor
--- An assist-only contributor (no damage) is served last, as the order is by damage. Each contributor
--- rolls every drop once, in drop order; a roll below the chance wins. A won Relic is sealed
--- when the server already holds its cap (`held` plus the copies given earlier in this call),
--- else lost when the contributor has no room left, else given.
+-- One Award per contributor found in `recipients`, in contributors() order (by damage, so an
+-- assist-only contributor is served last). Each contributor rolls every drop once, in drop
+-- order; a roll below the chance wins. A won Relic is sealed when the server already holds
+-- its cap (`held` plus the copies given earlier in this call), else lost when the contributor
+-- has no room left, else given.
 function Rewards.awards(
 	reward: Reward,
 	tally: Tally,

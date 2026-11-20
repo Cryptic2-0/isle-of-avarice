@@ -16,12 +16,14 @@ local BAR_BACK_COLOR = Color3.fromRGB(20, 18, 24)
 local BAR_COLOR = Color3.fromRGB(80, 190, 110)
 local ALLY_COLOR = Color3.fromRGB(110, 220, 140)
 
-local PANEL_WIDTH = 240
+local PANEL_WIDTH = 280
 local PANEL_PAD = 8
 local TITLE_HEIGHT = 26
-local ROW_HEIGHT = 58
+local ROW_HEIGHT = 34
 local ROW_GAP = 4
-local LEAVE_HEIGHT = 30
+local LEAVE_WIDTH = 64
+-- Kept free below the panel so it never reaches the bottom edge of the screen.
+local PANEL_BOTTOM_MARGIN = 12
 -- The trial HUD at the top right is three 32-pixel lines with 4 between (108); stay under it.
 local PANEL_TOP_OFFSET = 114
 -- A refused request sends only a message, not a sync; buttons come back after this long.
@@ -44,14 +46,18 @@ local inviteBanner: Frame? = nil
 local inviteLabel: TextLabel? = nil
 local panel: Frame? = nil
 local titleLabel: TextLabel? = nil
-local rowsFrame: Frame? = nil
+local rowsFrame: ScrollingFrame? = nil
 local leaveButton: TextButton? = nil
+local screenGui: ScreenGui? = nil
+-- The drawn rows by member id, so health updates in place.
+local rowFrames: { [number]: Frame } = {}
 -- Bumped on every invite change, so an old invite's timer cannot hide a newer one.
 local inviteToken = 0
 
 local current: PartyView.Sync? = nil
 local selfId = 0
--- The rows as last drawn, as one string, so health that did not change redraws nothing.
+-- Who is drawn, in what order, with which buttons, as one string: rows are rebuilt only when
+-- it changes; health changes update the rows in place.
 local drawnKey = ""
 -- One request per render: set on a click, cleared by the next sync or the re-arm timer.
 local pending = false
@@ -114,9 +120,12 @@ local function setEnabled(button: TextButton, enabled: boolean)
 	button.TextTransparency = if enabled then 0 else 0.5
 end
 
-local function clearChildren(container: Instance)
+-- Destroys the children of the given class (the rows, not the list layout).
+local function clearChildren(container: Instance, className: string)
 	for _, child in container:GetChildren() do
-		child:Destroy()
+		if child:IsA(className) then
+			child:Destroy()
+		end
 	end
 end
 
@@ -214,11 +223,14 @@ local function buildPanel(gui: ScreenGui)
 	frame.BackgroundTransparency = 0.15
 	frame.Visible = false
 	addCorner(frame, 10)
+	local minimum = Instance.new("UISizeConstraint")
+	minimum.MinSize = Vector2.new(PANEL_WIDTH, 0)
+	minimum.Parent = frame
 
 	local title = makeLabel(
 		"Title",
 		"",
-		UDim2.new(1, -2 * PANEL_PAD, 0, TITLE_HEIGHT),
+		UDim2.new(1, -(3 * PANEL_PAD + LEAVE_WIDTH), 0, TITLE_HEIGHT),
 		UDim2.fromOffset(PANEL_PAD, PANEL_PAD),
 		20
 	)
@@ -226,63 +238,74 @@ local function buildPanel(gui: ScreenGui)
 	title.Parent = frame
 	titleLabel = title
 
-	local rows = Instance.new("Frame")
-	rows.Name = "Rows"
-	rows.BackgroundTransparency = 1
-	rows.Position = UDim2.fromOffset(PANEL_PAD, PANEL_PAD + TITLE_HEIGHT + ROW_GAP)
-	rows.Size = UDim2.new(1, -2 * PANEL_PAD, 0, 0)
-	rows.Parent = frame
-	rowsFrame = rows
-
+	-- In the title row, so it shows whenever the panel does.
 	local leave = makeButton("Leave", "Leave", BUTTON_COLOR)
-	leave.AnchorPoint = Vector2.new(0, 1)
-	leave.Position = UDim2.new(0, PANEL_PAD, 1, -PANEL_PAD)
-	leave.Size = UDim2.new(1, -2 * PANEL_PAD, 0, LEAVE_HEIGHT)
+	leave.AnchorPoint = Vector2.new(1, 0)
+	leave.Position = UDim2.new(1, -PANEL_PAD, 0, PANEL_PAD)
+	leave.Size = UDim2.fromOffset(LEAVE_WIDTH, TITLE_HEIGHT)
 	leave.Activated:Connect(function()
 		send({ kind = "leave" })
 	end)
 	leave.Parent = frame
 	leaveButton = leave
 
+	local rows = Instance.new("ScrollingFrame")
+	rows.Name = "Rows"
+	rows.BackgroundTransparency = 1
+	rows.BorderSizePixel = 0
+	rows.Position = UDim2.fromOffset(PANEL_PAD, PANEL_PAD + TITLE_HEIGHT + ROW_GAP)
+	rows.Size = UDim2.new(1, -2 * PANEL_PAD, 0, 0)
+	rows.CanvasSize = UDim2.new()
+	rows.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	rows.ScrollingDirection = Enum.ScrollingDirection.Y
+	rows.ScrollBarThickness = 4
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, ROW_GAP)
+	layout.Parent = rows
+	rows.Parent = frame
+	rowsFrame = rows
+
 	frame.Parent = gui
 	panel = frame
 end
 
-local function buildRow(row: PartyView.Row, index: number, parent: Frame)
+local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	local frame = Instance.new("Frame")
 	frame.Name = "Row" .. row.userId
 	frame.LayoutOrder = index
-	frame.Position = UDim2.fromOffset(0, (index - 1) * (ROW_HEIGHT + ROW_GAP))
-	frame.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
+	-- Leaves room for the scroll bar.
+	frame.Size = UDim2.new(1, -6, 0, ROW_HEIGHT)
 	frame.BackgroundColor3 = ROW_COLOR
 	addCorner(frame, 8)
 
-	local name = makeLabel("Name", row.name, UDim2.new(0.58, -6, 0, 20), UDim2.fromOffset(6, 4), 16)
+	local name = makeLabel("Name", row.name, UDim2.fromOffset(98, 18), UDim2.fromOffset(6, 3), 14)
 	name.Parent = frame
 
 	local health =
-		makeLabel("Health", row.healthText, UDim2.new(0.4, -6, 0, 20), UDim2.new(0.6, 0, 0, 4), 16)
+		makeLabel("Health", row.healthText, UDim2.fromOffset(60, 18), UDim2.fromOffset(104, 3), 14)
 	health.TextXAlignment = Enum.TextXAlignment.Right
 	health.Parent = frame
 
 	local bar = Instance.new("Frame")
 	bar.Name = "Bar"
-	bar.Position = UDim2.fromOffset(6, 26)
-	bar.Size = UDim2.new(1, -12, 0, 8)
+	bar.Position = UDim2.fromOffset(6, 24)
+	bar.Size = UDim2.new(1, -12, 0, 6)
 	bar.BackgroundColor3 = BAR_BACK_COLOR
-	addCorner(bar, 4)
+	addCorner(bar, 3)
 	local fill = Instance.new("Frame")
 	fill.Name = "Fill"
 	fill.Size = UDim2.fromScale(row.share, 1)
 	fill.BackgroundColor3 = BAR_COLOR
-	addCorner(fill, 4)
+	addCorner(fill, 3)
 	fill.Parent = bar
 	bar.Parent = frame
 
 	if row.canRemove then
 		local remove = makeButton("Remove", "Remove", BUTTON_COLOR)
-		remove.Position = UDim2.new(0, 6, 0, 37)
-		remove.Size = UDim2.new(0.4, -6, 0, 18)
+		remove.AnchorPoint = Vector2.new(1, 0)
+		remove.Position = UDim2.new(1, -4, 0, 3)
+		remove.Size = UDim2.fromOffset(46, 18)
 		setEnabled(remove, not pending)
 		remove.Activated:Connect(function()
 			send({ kind = "kick", userId = row.userId })
@@ -290,9 +313,10 @@ local function buildRow(row: PartyView.Row, index: number, parent: Frame)
 		remove.Parent = frame
 	end
 	if row.canLead then
-		local lead = makeButton("MakeLeader", "Make leader", BUTTON_COLOR)
-		lead.Position = UDim2.new(0.42, 0, 0, 37)
-		lead.Size = UDim2.new(0.58, -6, 0, 18)
+		local lead = makeButton("MakeLeader", "Lead", BUTTON_COLOR)
+		lead.AnchorPoint = Vector2.new(1, 0)
+		lead.Position = UDim2.new(1, -54, 0, 3)
+		lead.Size = UDim2.fromOffset(40, 18)
 		setEnabled(lead, not pending)
 		lead.Activated:Connect(function()
 			send({ kind = "promote", userId = row.userId })
@@ -300,6 +324,7 @@ local function buildRow(row: PartyView.Row, index: number, parent: Frame)
 		lead.Parent = frame
 	end
 	frame.Parent = parent
+	rowFrames[row.userId] = frame
 end
 
 local function removeMarker(userId: number)
@@ -390,17 +415,17 @@ local function readHealths(sync: PartyView.Sync): { [string]: PartyView.Health }
 	return healths
 end
 
+-- What decides the rows' shape: who, in what order, the leader mark and the buttons. Health is
+-- not part of it.
 local function rowsKey(rows: { PartyView.Row }): string
 	local parts: { string } = {}
 	for _, row in rows do
 		table.insert(
 			parts,
 			string.format(
-				"%d|%s|%s|%.3f|%s|%s",
+				"%d|%s|%s|%s",
 				row.userId,
 				row.name,
-				row.healthText,
-				row.share,
 				tostring(row.canRemove),
 				tostring(row.canLead)
 			)
@@ -409,8 +434,27 @@ local function rowsKey(rows: { PartyView.Row }): string
 	return table.concat(parts, ";")
 end
 
--- Redraws the panel and markers from the current party; rows only when their text changed.
-local function redraw(force: boolean)
+-- Sets the panel's height: all the rows, but no lower than the screen allows (the rows then
+-- scroll, and the title row with Leave stays on screen).
+local function sizePanel(frame: Frame, rowsHolder: ScrollingFrame, count: number)
+	local wanted = count * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
+	local fixed = PANEL_PAD + TITLE_HEIGHT + ROW_GAP + PANEL_PAD
+	local gui = screenGui
+	local height = if gui ~= nil then gui.AbsoluteSize.Y else 0
+	local rowsHeight = wanted
+	if height > 0 then
+		local top = 0.16 * height + PANEL_TOP_OFFSET
+		local room = height - top - PANEL_BOTTOM_MARGIN - fixed
+		rowsHeight = math.min(wanted, math.max(room, ROW_HEIGHT))
+	end
+	rowsHolder.Size = UDim2.new(1, -2 * PANEL_PAD, 0, rowsHeight)
+	frame.Size = UDim2.fromOffset(PANEL_WIDTH, fixed + rowsHeight)
+end
+
+-- Redraws the panel and markers from the current party. Rows are rebuilt only when who is in
+-- the party, the order, the leader or the viewer's buttons changed; otherwise each row's health
+-- text and bar are updated where they stand, so a tap on a button is never lost to a rebuild.
+local function redraw()
 	local frame = panel
 	local rowsHolder = rowsFrame
 	local sync = current
@@ -419,23 +463,37 @@ local function redraw(force: boolean)
 	end
 	local rows = PartyView.rows(sync, selfId, readHealths(sync))
 	local key = rowsKey(rows)
-	local title = PartyView.title(sync)
-	if force or key ~= drawnKey or (titleLabel ~= nil and titleLabel.Text ~= title) then
-		drawnKey = key
-		if titleLabel ~= nil then
+	if titleLabel ~= nil then
+		local title = PartyView.title(sync)
+		if titleLabel.Text ~= title then
 			titleLabel.Text = title
 		end
-		clearChildren(rowsHolder)
+	end
+	if key ~= drawnKey then
+		drawnKey = key
+		clearChildren(rowsHolder, "Frame")
+		table.clear(rowFrames)
 		for index, row in rows do
 			buildRow(row, index, rowsHolder)
 		end
-		local rowsHeight = #rows * (ROW_HEIGHT + ROW_GAP)
-		rowsHolder.Size = UDim2.new(1, -2 * PANEL_PAD, 0, rowsHeight)
-		frame.Size = UDim2.fromOffset(
-			PANEL_WIDTH,
-			PANEL_PAD + TITLE_HEIGHT + ROW_GAP + rowsHeight + LEAVE_HEIGHT + PANEL_PAD
-		)
+	else
+		for _, row in rows do
+			local frameOfRow = rowFrames[row.userId]
+			if frameOfRow == nil then
+				continue
+			end
+			local health = frameOfRow:FindFirstChild("Health")
+			if health ~= nil and health:IsA("TextLabel") and health.Text ~= row.healthText then
+				health.Text = row.healthText
+			end
+			local bar = frameOfRow:FindFirstChild("Bar")
+			local fill = if bar ~= nil then bar:FindFirstChild("Fill") else nil
+			if fill ~= nil and fill:IsA("Frame") then
+				fill.Size = UDim2.fromScale(row.share, 1)
+			end
+		end
 	end
+	sizePanel(frame, rowsHolder, #rows)
 	frame.Visible = true
 	updateMarkers(sync)
 end
@@ -449,6 +507,7 @@ function PartyUI.mount(playerGui: PlayerGui, given: Handlers)
 	gui.ResetOnSpawn = false
 	-- With the other windows; below the messages (20).
 	gui.DisplayOrder = 16
+	screenGui = gui
 
 	-- Above the Trade button: the Ledger button fills 90% to 97% (bottom left), Paths 82% to 89%,
 	-- Trade 74% to 81%, and this one 66% to 73%.
@@ -497,28 +556,27 @@ function PartyUI.setParty(sync: PartyView.Sync?)
 	-- A new sync answers whatever was sent: the buttons come back.
 	pending = false
 	pendingToken += 1
-	-- The Leave button is outside the rows, so the rebuild does not touch it.
-	if leaveButton ~= nil then
-		setEnabled(leaveButton, true)
-	end
+	-- Rows are no longer rebuilt on every sync, so the buttons are re-enabled explicitly.
+	setPanelEnabled(true)
 	if sync == nil then
 		drawnKey = ""
 		if panel ~= nil then
 			panel.Visible = false
 		end
 		if rowsFrame ~= nil then
-			clearChildren(rowsFrame)
+			clearChildren(rowsFrame, "Frame")
 		end
+		table.clear(rowFrames)
 		clearMarkers()
 		return
 	end
-	redraw(true)
+	redraw()
 end
 
--- Called a few times a second: re-reads ally health, redraws changed rows, keeps markers right.
+-- Called a few times a second: re-reads ally health, updates the rows in place, keeps markers right.
 function PartyUI.refresh(localPlayer: Player)
 	selfId = localPlayer.UserId
-	redraw(false)
+	redraw()
 end
 
 return PartyUI

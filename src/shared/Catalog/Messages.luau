@@ -115,6 +115,7 @@ local templates: { [string]: string } = {
 	PARTY_NOT_LEADER = "Only the party leader can do that.",
 	PARTY_TARGET_IN_PARTY = "{player} is already in a party.",
 	PARTY_NOT_IN = "You are not in a party.",
+	PARTY_JOIN_FAILED = "You could not join {player}'s party.",
 }
 
 local function format(code: string, args: { [string]: string }?): string
