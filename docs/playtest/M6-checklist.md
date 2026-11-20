@@ -16,7 +16,7 @@ Automated run: not done yet.
 
 1. **Inviting with the Party button**
    - What to do: A and B stand in Tallyport about 8 steps apart. A presses the "Party" button (bottom left, above "Trade"). First try it with B far away (20 steps or more).
-   - What should happen: with B far away A sees "Nobody is close enough." With B close, A sees "You invited <B> to their party." and B sees the banner "<A> invites you to their party" with "Accept" and "Decline". If A presses "Party" again while the invite waits, A sees "You cannot do that now."
+   - What should happen: with B far away A sees "Nobody is close enough." With B close, A sees "You invited <B> to your party." and B sees the banner "<A> invites you to their party" with "Accept" and "Decline". If A presses "Party" again while the invite waits, A sees "You cannot do that now."
 
 2. **Declining and letting an invite run out**
    - What to do: B presses "Decline". Then A invites B again and nobody answers for 20 seconds.

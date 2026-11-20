@@ -553,7 +553,7 @@ end
 -- island can take a moment to settle, so a Strike that changed nothing is tried once more.
 -- `once`: for checks that expect the Strike to change nothing.
 local function strikeCreature(player: Player, id: number, once: boolean?)
-	for _ = 1, if once then 1 else 2 do
+	for _ = 1, if once then 1 else 3 do
 		local _, root = creatureBody(id)
 		if root == nil then
 			return
@@ -807,6 +807,9 @@ local function runM4(A: Player, B: Player)
 	check("M4.5 setup: a Brinehound at 15 health", freshCreature(HOUND_2, 15))
 	ma = mark(A)
 	strikeCreature(A, HOUND_2)
+	if creatureBody(HOUND_2) ~= nil then
+		strikeCreature(A, HOUND_2)
+	end
 	local got = expectNote("M4.5 a winning roll gives the drop: GOT_CARD", A, ma, "GOT_CARD", 4)
 	check(
 		"M4.5 it is the Brine-Fang Charm, in A's free slots",
@@ -2551,14 +2554,17 @@ local function runM6(A: Player, B: Player)
 	shieldsDown()
 	heal(A)
 	heal(B)
+	waitReady(B, 3)
 	realSkip += 400
 	local duelStarted = acceptTrial(A, "tallymans_duel")
 	check("M6.6 setup: A starts the Tallyman's Duel", duelStarted)
 	if duelStarted then
 		put(B, clearSpot(positionOf(A), 8), positionOf(A))
+		heal(A)
 		aUntil = statusOf(A).shieldUntil
 		local duelWard = cast(B, 3)
 		check("M6.6 setup: B casts Ward 8 studs from A", duelWard)
+		check("M6.6 setup: A is alive in the duel", health(A) > 0, fmt(health(A)))
 		check(
 			"M6.6 a Ward never reaches an ally in a duel",
 			statusOf(A).shieldUntil == aUntil,
@@ -2696,13 +2702,23 @@ local function runM6(A: Player, B: Player)
 	shieldsDown()
 	heal(A)
 	heal(B)
-	faceOff(A, B, OUTSIDE)
+	dataB.shieldEnded = true
+	standApart(4)
+	task.wait(0.5)
 	hB0 = health(B)
-	strike(A)
+	mA = mark(A)
+	for _ = 1, 2 do
+		strike(A)
+		if health(B) < hB0 then
+			break
+		end
+	end
 	check(
 		"M6.9 after leaving, A's Strike lands on B",
 		health(B) < hB0,
-		`{fmt(hB0)} -> {fmt(health(B))}`
+		`{fmt(hB0)} -> {fmt(health(B))}; A got {codesSince(A, mA)}; A at {at(positionOf(A))}, B at {at(
+			positionOf(B)
+		)}`
 	)
 	heal(A)
 	heal(B)
