@@ -56,11 +56,10 @@ function Crown.canCrown(record: CrownRecord, ledger: Ledger): boolean
 	return Ledger.isComplete(ledger) and record.crowns == record.stars and record.crowns < Crown.MAX
 end
 
--- Only the record is known here, so the Ledger check stays with canCrown; this adds the
--- Crown when this run has not yet given one.
-function Crown.crown(record: CrownRecord): CrownRecord
+-- Adds the Crown only when canCrown holds; otherwise an unchanged copy.
+function Crown.crown(record: CrownRecord, ledger: Ledger): CrownRecord
 	local out = table.clone(record)
-	if record.crowns == record.stars and record.crowns < Crown.MAX then
+	if Crown.canCrown(record, ledger) then
 		out.crowns = record.crowns + 1
 	end
 	return out
