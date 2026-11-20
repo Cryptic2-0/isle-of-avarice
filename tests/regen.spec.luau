@@ -1,0 +1,28 @@
+--!strict
+local T = require("./harness")
+local Regen = require("../src/shared/Rules/Regen")
+
+T.test("constants", function()
+	T.eq({ Regen.DELAY, Regen.PER_SECOND, Regen.MAX_STEP }, { 10, 1, 1 })
+end)
+
+T.test("health comes back 1 a second, 10 seconds after the last loss", function()
+	T.eq(Regen.step(50, 100, 0, 10, 0.5), 50.5)
+	T.eq(Regen.step(50, 100, 0, 9.9, 0.5), 50)
+	T.eq(Regen.step(99.8, 100, 0, 20, 0.5), 100)
+	T.eq(Regen.step(100, 100, 0, 20, 0.5), 100)
+	T.eq(Regen.step(50, 100, 0, 20, 5), 51, "at most one second per step")
+	T.eq(Regen.step(50, 100, -math.huge, 20, 0.5), 50.5, "never hurt")
+end)
+
+T.test("nothing for the defeated or for broken numbers", function()
+	T.eq(Regen.step(0, 100, 0, 20, 0.5), 0)
+	T.eq(Regen.step(-5, 100, 0, 20, 0.5), -5)
+	T.eq(Regen.step(50, 100, 0 / 0, 20, 0.5), 50)
+	T.eq(Regen.step(50, 100, 0, 0 / 0, 0.5), 50)
+	T.eq(Regen.step(50, 100, 0, 20, 0 / 0), 50)
+	T.eq(Regen.step(50, 100, 0, 20, -1), 50)
+	T.eq(Regen.step(50, 0, 0, 20, 0.5), 50)
+	T.eq(Regen.step(50, math.huge, 0, 20, 0.5), 50)
+	T.eq(Regen.step(0 / 0, 100, 0, 20, 0.5), 0 / 0)
+end)
