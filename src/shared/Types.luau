@@ -121,6 +121,8 @@ export type PlayerData = {
 	shieldEnded: boolean,
 	paths: PathProgress,
 	trials: TrialRecord,
+	crown: CrownRecord,
+	rounds: RoundsRecord,
 }
 export type RegionId =
 	"Tallyport"

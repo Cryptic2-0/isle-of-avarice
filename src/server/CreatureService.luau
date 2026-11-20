@@ -190,6 +190,34 @@ local LOOKS: { [string]: Look } = {
 			},
 		},
 	},
+	-- A tall gilded figure with a sash and a gavel.
+	gilded_bailiff = {
+		root = Vector3.new(6, 6, 5),
+		centre = 3,
+		pieces = {
+			{ name = "Body", size = Vector3.new(6, 9, 4), at = Vector3.new(0, 6.5, 0) },
+			{ name = "Head", size = Vector3.new(3, 3, 3), at = Vector3.new(0, 12.5, 0) },
+			{
+				name = "Sash",
+				size = Vector3.new(6.2, 1.2, 4.2),
+				at = Vector3.new(0, 8, 0),
+				color = PALE,
+			},
+			{ name = "Arm", size = Vector3.new(1.6, 6, 1.6), at = Vector3.new(-4, 7, 0) },
+			{
+				name = "GavelHandle",
+				size = Vector3.new(0.8, 5, 0.8),
+				at = Vector3.new(4, 6, -1.5),
+				color = DARK,
+			},
+			{
+				name = "GavelHead",
+				size = Vector3.new(3, 2, 2),
+				at = Vector3.new(4, 9, -1.5),
+				color = DARK,
+			},
+		},
+	},
 }
 
 local CreatureService = {}

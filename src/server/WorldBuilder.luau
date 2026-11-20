@@ -21,6 +21,7 @@ local LEDGE = Color3.fromRGB(96, 100, 110)
 local DEN = Color3.fromRGB(52, 46, 40)
 local MARKER = Color3.fromRGB(120, 230, 255)
 local SKIN = Color3.fromRGB(232, 200, 160)
+local SLATE = Color3.fromRGB(70, 74, 82)
 local CLERK_ROBE = Color3.fromRGB(70, 40, 100)
 local WARDEN_COLORS: { [string]: Color3 } = {
 	tidewalk = Color3.fromRGB(40, 110, 160),
@@ -29,6 +30,10 @@ local WARDEN_COLORS: { [string]: Color3 } = {
 	cull_the_pack = Color3.fromRGB(120, 60, 50),
 	shellbreaker = Color3.fromRGB(190, 160, 100),
 	tallymans_duel = Color3.fromRGB(30, 80, 80),
+	reed_run = Color3.fromRGB(110, 140, 70),
+	bellows_dance = Color3.fromRGB(200, 90, 40),
+	spitter_season = Color3.fromRGB(90, 120, 50),
+	grand_tally = Color3.fromRGB(150, 60, 200),
 }
 -- The west Sluice begins here; the Harbour Warden's dock points at it.
 local SLUICE_HEAD = Vector3.new(-330, 0, 30)
@@ -287,6 +292,74 @@ local function buildClerk(island: Folder)
 	model.Parent = town
 end
 
+-- The Tally Stone: the all-time board of the Crowned, and where a player may Renounce. It
+-- stands south of the plaza centre, clear of the spawn pad, the clerk and the buildings, and
+-- faces the plaza. LeaderboardService finds the board through the tag and fills in the text.
+local function buildTallyStone(island: Folder)
+	local town = island:FindFirstChild("Tallyport") or island
+	local at = World.tallyStone
+	local centre = Vector3.new(at.x, 4.5, at.z)
+	local model = Instance.new("Model")
+	model.Name = "TallyStone"
+	local stone =
+		makePart(model, "Stone", Vector3.new(12, 9, 2), centre, SLATE, Enum.Material.Slate)
+	stone.CFrame = CFrame.lookAt(centre, Vector3.new(0, 4.5, 0))
+	model.PrimaryPart = stone
+	CollectionService:AddTag(stone, "TallyStone")
+
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Board"
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 0
+	local function addText(
+		name: string,
+		top: number,
+		height: number,
+		color: Color3,
+		font: Enum.Font
+	)
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.Position = UDim2.fromScale(0.04, top)
+		label.Size = UDim2.fromScale(0.92, height)
+		label.BackgroundTransparency = 1
+		label.Text = ""
+		label.TextColor3 = color
+		label.TextScaled = true
+		label.TextXAlignment = if name == "Title" or name == "Subtitle"
+			then Enum.TextXAlignment.Center
+			else Enum.TextXAlignment.Left
+		label.Font = font
+		label.Parent = gui
+	end
+	addText("Title", 0, 0.14, Color3.fromRGB(255, 215, 90), Enum.Font.GothamBold)
+	addText("Subtitle", 0.14, 0.08, Color3.fromRGB(170, 170, 175), Enum.Font.Gotham)
+	for i = 1, 10 do
+		addText(
+			"Row" .. i,
+			0.22 + (i - 1) * 0.075,
+			0.075,
+			Color3.fromRGB(235, 235, 235),
+			Enum.Font.Gotham
+		)
+	end
+	gui.Parent = stone
+
+	makeLabel(stone, "Tally Stone\nThe Crowned", 6.5, 80)
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "RenouncePrompt"
+	prompt.ActionText = "Renounce"
+	prompt.ObjectText = "Tally Stone"
+	prompt.HoldDuration = 2
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = stone
+	model.Parent = town
+end
+
 -- A climb ledge: a rock block from the ground up to its top.
 local function buildLedge(island: Folder, ledge: Types.Ledge)
 	makePart(
@@ -419,6 +492,7 @@ function WorldBuilder.build()
 	SiteBuilder.build(island)
 	buildTallyport(island)
 	buildClerk(island)
+	buildTallyStone(island)
 	for i, cache in World.caches do
 		buildCache(island, i, cache)
 	end

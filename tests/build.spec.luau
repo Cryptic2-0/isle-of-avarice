@@ -127,5 +127,12 @@ T.test("built place contains the expected scripts", function()
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.Atmosphere.ClassName,
 		"ModuleScript"
 	)
+	T.eq(game:GetService("ServerScriptService").Server.LaunchConfig.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.LeaderboardService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Crown.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Renounce.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Rounds.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Leaderboard.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Regen.ClassName, "ModuleScript")
 	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")
 end)
