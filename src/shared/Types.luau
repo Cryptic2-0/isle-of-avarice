@@ -104,6 +104,13 @@ export type Round = {
 	steps: { string }, -- trial ids or creature kind ids
 }
 export type TrialRecord = { cooldowns: { [string]: number }, questStep: number } -- trial id -> os.time() it may be taken again
+export type CrownRecord = {
+	crowns: number,
+	stars: number,
+	boardCrowns: number,
+	badgeAwarded: boolean,
+}
+export type RoundsRecord = { [string]: { string } } -- round id -> step ids done this round, in order
 export type Den = { kind: string, count: number, position: Vec3 }
 export type Ledge = { x: number, z: number, size: number, top: number }
 export type PlayerData = {

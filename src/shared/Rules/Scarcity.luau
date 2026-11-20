@@ -9,11 +9,21 @@ type Ledger = Types.Ledger
 
 local Scarcity = {}
 
--- Copies of one Relic held across the given ledgers, claimed and spare alike.
+-- Copies of one Relic held across the given ledgers, claimed and spare alike; a complete
+-- Ledger counts only its spare copies.
 function Scarcity.countHeld(ledgers: { Ledger }, relicId: CardId): number
 	local total = 0
 	for _, ledger in ledgers do
-		total += Ledger.count(ledger, relicId)
+		if Ledger.isComplete(ledger) then
+			-- A Crowned Ledger steps aside: its claimed copies do not hold a Relic back from others.
+			for _, id in ledger.free do
+				if id == relicId then
+					total += 1
+				end
+			end
+		else
+			total += Ledger.count(ledger, relicId)
+		end
 	end
 	return total
 end
