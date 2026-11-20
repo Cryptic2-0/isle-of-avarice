@@ -51,6 +51,7 @@ local PathProgress = require(Rules:WaitForChild("PathProgress"))
 local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local Creatures = require(Shared:WaitForChild("Catalog"):WaitForChild("Creatures"))
+local Trials = require(Shared:WaitForChild("Catalog"):WaitForChild("Trials"))
 local Relics = require(Shared:WaitForChild("Catalog"):WaitForChild("Relics"))
 local Sites = require(Shared:WaitForChild("Catalog"):WaitForChild("Sites"))
 local World = require(Shared:WaitForChild("Catalog"):WaitForChild("World"))
@@ -670,8 +671,28 @@ local function runM4(A: Player, B: Player)
 		end
 	end
 	check("M4.1 every creature has its catalog health", #wrong == 0, table.concat(wrong, ", "))
-	check("M4.1 6 Wardens", #CollectionService:GetTagged("Warden") == 6)
-	check("M4.1 14 course markers", #CollectionService:GetTagged("TrialMarker") == 14)
+	local wardenWanted, markerWanted = 0, 0
+	for _, trial in Trials.list do
+		if World.wardens[trial.id] ~= nil then
+			wardenWanted += 1
+		end
+		local course = World.courses[trial.id]
+		if course ~= nil then
+			markerWanted += #course
+		end
+	end
+	local wardenCount = #CollectionService:GetTagged("Warden")
+	local markerCount = #CollectionService:GetTagged("TrialMarker")
+	check(
+		"M4.1 one Warden per trial",
+		wardenCount == wardenWanted,
+		`{wardenCount} of {wardenWanted}`
+	)
+	check(
+		"M4.1 every course marker is built",
+		markerCount == markerWanted,
+		`{markerCount} of {markerWanted}`
+	)
 
 	-- M4.2: wander, notice, chase, bite.
 	local den = denOf(HOUND_1)

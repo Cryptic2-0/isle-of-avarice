@@ -2,7 +2,7 @@
 
 Isle of Avarice is an original multiplayer game for Roblox. You explore an island, open caches and collect Relics left behind by the Hoarder.
 
-Your Ledger is a book with 30 numbered slots. Each Relic you claim fills one slot. Your goal is to fill the whole Ledger.
+Your Ledger is a book with 50 numbered slots. Each Relic you claim fills one slot. Your goal is to fill the whole Ledger.
 
 ## What is in the game now
 

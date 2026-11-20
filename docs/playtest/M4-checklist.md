@@ -27,9 +27,9 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 fai
 
 ## Steps
 
-1. **The Coin line and the 30-slot Ledger**
+1. **The Coin line and the 50-slot Ledger**
    - What to do: start a test. Look at the top left. Open the Ledger book.
-   - What should happen: a gold line reads "Coin: 0" above the status lines. The book shows 50 slots and "Relics: 0 / 50". Slots 13 to 30 have names and tiers like the first twelve.
+   - What should happen: a gold line reads "Coin: 0" above the status lines. The book shows 50 slots and "Relics: 0 / 50". Slots 13 to 30 (added with milestone 4) and slots 31 to 50 (added with milestone 7) have names and tiers like the first twelve.
 
 2. **A Brinehound pack**
    - What to do: as A, press "Drop shield", then "Yes". Walk north along the Thornwood road to the signpost, then go left (west) about 100 steps past the Copper cache until you see a "Brinehound den" label. Stop about 40 steps away and watch. Then walk closer.
