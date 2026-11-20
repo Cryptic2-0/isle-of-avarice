@@ -94,6 +94,15 @@ export type Trial = {
 	creature: string?,
 	count: number?,
 }
+export type Round = {
+	id: string, -- "wardens" | "beasts"
+	name: string, -- shown in messages: "The Warden's Round"
+	short: string, -- shown in the HUD line: "Warden's Round"
+	relicId: CardId,
+	coin: number,
+	xp: number,
+	steps: { string }, -- trial ids or creature kind ids
+}
 export type TrialRecord = { cooldowns: { [string]: number }, questStep: number } -- trial id -> os.time() it may be taken again
 export type Den = { kind: string, count: number, position: Vec3 }
 export type Ledge = { x: number, z: number, size: number, top: number }

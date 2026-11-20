@@ -1,6 +1,7 @@
 --!strict
 local Geography = require("../Rules/Geography")
 local Sites = require("./Sites")
+local Thornwood = require("./SiteData/Thornwood")
 local Types = require("../Types")
 
 type Cache = Types.Cache
@@ -11,6 +12,8 @@ local spawn: Types.Vec3 = { x = 0, y = 0.7, z = 0 }
 local townRadius = Geography.TOWN_RADIUS
 -- The Edict Hall clerk, between the two north buildings of Tallyport.
 local clerk: Types.Vec3 = { x = 0, y = 0, z = -24 }
+-- The Tally Stone, on the south side of the plaza.
+local tallyStone: Types.Vec3 = { x = 0, y = 0, z = 32 }
 
 -- Caches C001 to C006 hold Relics R001 to R006 in the Counting Fields.
 local fieldLayout: { { number } } = {
@@ -95,10 +98,16 @@ end
 -- Caches C019 to C021 sit on top of climbs: R017 above Thornwood's north shore, R018 on the
 -- far flank of Bastion Reach, and R026 on the Lookout's crag, the island's highest point.
 local climbs: { [string]: { Types.Ledge } } = {}
-local function addClimbCache(relicId: string, centre: Types.Vec3, count: number, perRow: number)
+local function addClimbCache(
+	relicId: string,
+	centre: Types.Vec3,
+	count: number,
+	perRow: number,
+	hold: number?
+)
 	local ledges = climb(centre, count, perRow)
 	local last = ledges[#ledges]
-	addCache(relicId, last.x, last.top + 1, last.z, nil)
+	addCache(relicId, last.x, last.top + 1, last.z, hold)
 	climbs[caches[#caches].id] = ledges
 end
 addClimbCache("R017", spot("Thornwood", 870, 160, 0), 5, 3)
@@ -118,6 +127,22 @@ do
 	addCache(far.relicId, far.at.x, far.at.y, far.at.z, nil)
 end
 
+-- Caches C025 to C031 (M7): two more far Copper caches, one at the blight's edge, one in the
+-- maze's dead end, one on the Rock (held), then two climbs (the second held, for the Crown).
+local mazeAlong, mazeAcross = Thornwood.cellCentre(14, 8)
+local m7Caches: { { relicId: string, at: Types.Vec3, hold: number? } } = {
+	{ relicId = "R032", at = spot("CinderFlats", 700, -260, 1) },
+	{ relicId = "R033", at = spot("BastionReach", 650, -260, 1) },
+	{ relicId = "R034", at = spot("HushGardens", 245, -115, 1) },
+	{ relicId = "R038", at = spot("Thornwood", mazeAlong, mazeAcross, 1) },
+	{ relicId = "R044", at = { x = 0, y = 1, z = 1290 }, hold = 3 },
+}
+for _, extra in m7Caches do
+	addCache(extra.relicId, extra.at.x, extra.at.y, extra.at.z, extra.hold)
+end
+addClimbCache("R039", spot("CinderFlats", 520, -270, 0), 6, 3)
+addClimbCache("R050", spot("DrownedFen", 650, 230, 0), 12, 4, 10)
+
 -- One Warden per trial, beside the road at a region's gate. The Harbour Warden stands at the
 -- head of the west Sluice, inside the ring the Hush Gardens blight does not reach.
 local harbour = spot("HushGardens", 285, 80, 0)
@@ -128,6 +153,11 @@ local wardens: { [string]: Types.Vec3 } = {
 	cull_the_pack = spot("Thornwood", 300, 45, 0),
 	shellbreaker = spot("DrownedFen", 300, 45, 0),
 	tallymans_duel = spot("BastionReach", 300, 45, 0),
+	reed_run = spot("DrownedFen", 300, -45, 0),
+	bellows_dance = spot("CinderFlats", 380, 55, 0),
+	spitter_season = spot("CinderFlats", 300, -45, 0),
+	-- The Crown Warden stands in Tallyport.
+	grand_tally = { x = -14, y = 0, z = 24 },
 }
 local duelArena = spot("BastionReach", 330, 120, 0)
 
@@ -152,6 +182,33 @@ local courses: { [string]: { Types.Vec3 } } = {
 		spot("HushGardens", 285, -125, MARKER_LIFT),
 	},
 	gullstep_climb = gullstep,
+	-- Along the boardwalks of the Drowned Fen, above the bog (the boardwalk top is 0.6).
+	reed_run = {
+		spot("DrownedFen", 420, 0, 3.6),
+		spot("DrownedFen", 510, 0, 3.6),
+		spot("DrownedFen", 600, 0, 3.6),
+		spot("DrownedFen", 700, 0, 3.6),
+		spot("DrownedFen", 780, 0, 3.6),
+		spot("DrownedFen", 850, 0, 3.6),
+	},
+	-- Across the vent centres of the Cinder Flats.
+	bellows_dance = {
+		spot("CinderFlats", 440, -80, 3),
+		spot("CinderFlats", 520, -40, 3),
+		spot("CinderFlats", 600, 0, 3),
+		spot("CinderFlats", 520, 40, 3),
+		spot("CinderFlats", 440, 80, 3),
+	},
+	-- One marker in every wild region, then Reckoning Rock.
+	grand_tally = {
+		spot("HushGardens", 440, 0, 3),
+		spot("BastionReach", 470, 30, 3),
+		spot("Thornwood", 450, 0, 3),
+		spot("SquallSteps", 450, 0, 3),
+		spot("CinderFlats", 410, 0, 3),
+		spot("DrownedFen", 390, -60, 3),
+		{ x = 40, y = 3, z = 1220 },
+	},
 }
 
 -- Creature dens, out in the wilds. Order matters: creature ids follow it.
@@ -176,6 +233,7 @@ local dens: { Types.Den } = {
 	den("bogspitter", 2, "Thornwood", 900, 0),
 	den("bogspitter", 2, "CinderFlats", 380, -140),
 	den("brine_colossus", 1, "SquallSteps", 780, 240),
+	den("gilded_bailiff", 1, "CinderFlats", 820, -230),
 }
 
 -- Den creature n (den order, then member order) has id CREATURE_ID_BASE - n. A duel champion
@@ -236,6 +294,7 @@ return {
 	spawn = spawn,
 	townRadius = townRadius,
 	clerk = clerk,
+	tallyStone = tallyStone,
 	caches = caches,
 	cacheById = cacheById,
 	climbs = climbs,

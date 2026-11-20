@@ -1,6 +1,6 @@
 # Play-test checklist for milestone 4
 
-Milestone 4 adds creatures and trials. Beasts live at dens out in the wild regions, fight back, and pay Coin, Path XP and sometimes a Relic to everyone who helped defeat them. Six Wardens, one at each region's gate, offer timed trials. Three of the trials and one great beast make up a quest, The Unpaid Debt. The Ledger now has 30 slots.
+Milestone 4 adds creatures and trials. Beasts live at dens out in the wild regions, fight back, and pay Coin, Path XP and sometimes a Relic to everyone who helped defeat them. Six Wardens, one at each region's gate, offer timed trials. Three of the trials and one great beast make up a quest, The Unpaid Debt. The Ledger had 30 slots at this milestone (50 since milestone 7).
 
 Some steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
@@ -29,7 +29,7 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 fai
 
 1. **The Coin line and the 30-slot Ledger**
    - What to do: start a test. Look at the top left. Open the Ledger book.
-   - What should happen: a gold line reads "Coin: 0" above the status lines. The book shows 30 slots and "Relics: 0 / 30". Slots 13 to 30 have names and tiers like the first twelve.
+   - What should happen: a gold line reads "Coin: 0" above the status lines. The book shows 50 slots and "Relics: 0 / 50". Slots 13 to 30 have names and tiers like the first twelve.
 
 2. **A Brinehound pack**
    - What to do: as A, press "Drop shield", then "Yes". Walk north along the Thornwood road to the signpost, then go left (west) about 100 steps past the Copper cache until you see a "Brinehound den" label. Stop about 40 steps away and watch. Then walk closer.
@@ -96,6 +96,6 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 fai
 
 17. **On a phone**
     - What to do: in Studio, open the Test tab, choose Device and pick a phone. Talk to a Warden, run a trial, and (with two players) open a claim screen.
-    - What should happen: the Warden's window fits the screen and both buttons can be tapped. The trial HUD at the top right does not cover the ability bar. The claim screen shows all 30 slots in six columns and five rows, and the names can be read.
+    - What should happen: the Warden's window fits the screen and both buttons can be tapped. The trial HUD at the top right does not cover the ability bar. The claim screen shows all 50 slots, and the names can be read.
 
 If any step fails, copy the red text from the Output window and send it back.

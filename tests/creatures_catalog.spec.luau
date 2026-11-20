@@ -65,10 +65,20 @@ local rows: { Row } = {
 		coin = 0,
 		respawn = 0,
 	},
+	{
+		id = "gilded_bailiff",
+		name = "Gilded Bailiff",
+		health = 2400,
+		speed = 12,
+		sight = 50,
+		xp = 900,
+		coin = 120,
+		respawn = 1200,
+	},
 }
 
 T.test("creature table values", function()
-	T.eq(#Creatures.list, 5)
+	T.eq(#Creatures.list, 6)
 	for i, row in rows do
 		local c = Creatures.list[i]
 		T.eq(c.id, row.id)
@@ -111,14 +121,35 @@ T.test("creature extras and drops", function()
 	T.eq(Creatures.byId.brinehound.keepAway, nil)
 	T.eq(Creatures.byId.drowned_tallyman.lunge, { distance = 12, damage = 18, interval = 8 })
 	T.eq(Creatures.byId.brinehound.lunge, nil)
-	T.eq(Creatures.byId.brinehound.drops, { { relicId = "R019", chance = 0.02 } })
-	T.eq(Creatures.byId.shellback.drops, { { relicId = "R020", chance = 0.05 } })
-	T.eq(Creatures.byId.bogspitter.drops, { { relicId = "R021", chance = 0.05 } })
 	T.eq(
-		Creatures.byId.brine_colossus.drops,
-		{ { relicId = "R022", chance = 1 }, { relicId = "R023", chance = 0.2 } }
+		Creatures.byId.brinehound.drops,
+		{ { relicId = "R019", chance = 0.02 }, { relicId = "R035", chance = 0.06 } }
 	)
+	T.eq(
+		Creatures.byId.shellback.drops,
+		{ { relicId = "R020", chance = 0.05 }, { relicId = "R036", chance = 0.08 } }
+	)
+	T.eq(
+		Creatures.byId.bogspitter.drops,
+		{ { relicId = "R021", chance = 0.05 }, { relicId = "R037", chance = 0.08 } }
+	)
+	T.eq(Creatures.byId.brine_colossus.drops, {
+		{ relicId = "R022", chance = 1 },
+		{ relicId = "R023", chance = 0.2 },
+		{ relicId = "R043", chance = 0.15 },
+	})
 	T.eq(Creatures.byId.drowned_tallyman.drops, {})
+	local bailiff = Creatures.byId.gilded_bailiff
+	T.eq(
+		bailiff.attack,
+		{ kind = "slam", name = "Gavel Slam", damage = 30, range = 12, interval = 3.5 }
+	)
+	T.eq(bailiff.lunge, { distance = 20, damage = 25, interval = 9 })
+	T.eq(bailiff.drops, { { relicId = "R048", chance = 1 }, { relicId = "R041", chance = 0.3 } })
+	T.eq(
+		{ bailiff.keepAway, bailiff.height, bailiff.color },
+		{ nil, 14, { r = 215, g = 170, b = 60 } } :: { any }
+	)
 end)
 
 T.test("every drop names a known Relic and ids match keys", function()

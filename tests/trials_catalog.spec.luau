@@ -71,6 +71,50 @@ local rows = {
 		80,
 		350,
 	},
+	{
+		"reed_run",
+		"Reed Run",
+		"Reed Warden",
+		"course",
+		"Touch 6 markers in order.",
+		70,
+		"R040",
+		40,
+		170,
+	},
+	{
+		"bellows_dance",
+		"The Bellows Dance",
+		"Bellows Warden",
+		"course",
+		"Touch 5 markers in order.",
+		50,
+		"R042",
+		90,
+		400,
+	},
+	{
+		"spitter_season",
+		"Spitter Season",
+		"Spitter Warden",
+		"hunt",
+		"Defeat 3 Bogspitters.",
+		180,
+		"R045",
+		80,
+		380,
+	},
+	{
+		"grand_tally",
+		"The Grand Tally",
+		"Crown Warden",
+		"course",
+		"Touch 7 markers in order: one in every wild region, then Reckoning Rock.",
+		300,
+		"R049",
+		200,
+		900,
+	},
 }
 
 T.test("trial table values", function()
@@ -95,6 +139,10 @@ T.test("hunt trials name a creature and count", function()
 	T.eq(Trials.byId.cull_the_pack.count, 5)
 	T.eq(Trials.byId.shellbreaker.creature, "shellback")
 	T.eq(Trials.byId.shellbreaker.count, 3)
+	T.eq(
+		{ Trials.byId.spitter_season.creature, Trials.byId.spitter_season.count },
+		{ "bogspitter", 3 }
+	)
 	for _, t in Trials.list do
 		if t.kind == "hunt" then
 			T.truthy(t.creature ~= nil and Creatures.byId[t.creature] ~= nil, t.id .. " creature")
@@ -119,4 +167,36 @@ T.test("the quest", function()
 	T.eq(Trials.quest.relicId, "R027")
 	T.eq(Trials.quest.coin, 150)
 	T.eq(Trials.quest.xp, 600)
+end)
+
+T.test("the two rounds", function()
+	T.eq(#Trials.rounds, 2)
+	local w, b = Trials.roundById.wardens, Trials.roundById.beasts
+	T.eq(
+		{ w.name, w.short, w.relicId, w.coin, w.xp },
+		{ "The Warden's Round", "Warden's Round", "R046", 250, 800 }
+	)
+	T.eq(
+		{ b.name, b.short, b.relicId, b.coin, b.xp },
+		{ "The Beast Tally", "Beast Tally", "R047", 250, 800 }
+	)
+	T.eq(w.steps, {
+		"tidewalk",
+		"gullstep_climb",
+		"salt_post",
+		"cull_the_pack",
+		"shellbreaker",
+		"tallymans_duel",
+		"reed_run",
+		"bellows_dance",
+		"spitter_season",
+	})
+	T.eq(b.steps, { "brinehound", "shellback", "bogspitter", "brine_colossus", "gilded_bailiff" })
+	for _, step in w.steps do
+		T.truthy(Trials.byId[step] ~= nil and step ~= "grand_tally", step)
+	end
+	for _, step in b.steps do
+		T.truthy(Creatures.byId[step] ~= nil, step)
+	end
+	T.eq(Trials.roundById.wardens, Trials.rounds[1])
 end)

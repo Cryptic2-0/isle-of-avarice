@@ -9,7 +9,7 @@ T.test("a fresh claim shows every slot open", function()
 	T.eq(view.picksText, "Picks left: 5")
 	T.eq(view.secondsLeft, 30)
 	T.eq(view.open, true)
-	T.eq(#view.slots, 30)
+	T.eq(#view.slots, 50)
 	for _, slot in view.slots do
 		T.eq(slot.state, "open")
 	end

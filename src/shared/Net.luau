@@ -40,7 +40,7 @@ return {
 	TrialOffer = "TrialOffer",
 	-- client -> server: (trialId: string)
 	TrialAccept = "TrialAccept",
-	-- server -> one client: (state: TrialView.HudState?, questStep: number)
+	-- server -> one client: (state: TrialView.HudState?, questStep: number, rounds: RoundsRecord)
 	TrialSync = "TrialSync",
 	-- server -> one client: (coin: number)
 	CoinSync = "CoinSync",
@@ -74,4 +74,10 @@ return {
 	PartyAction = "PartyAction",
 	-- server -> one client: (sync: PartyView.Sync?) nil = not in a party
 	PartySync = "PartySync",
+	-- server -> all clients: (ceremony: { userId: number, name: string, crowns: number })
+	Ceremony = "Ceremony",
+	-- server -> one client: (offer: { lines: { string }, seconds: number }?) nil closes the window
+	RenounceOffer = "RenounceOffer",
+	-- client -> server: (request: { kind: "confirm", word: string } | { kind: "cancel" })
+	RenounceAction = "RenounceAction",
 }

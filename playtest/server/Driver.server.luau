@@ -656,7 +656,7 @@ local function runM4(A: Player, B: Player)
 			models += 1
 		end
 	end
-	check("M4.1 25 creatures stand at their dens", models == 25, tostring(models))
+	check("M4.1 26 creatures stand at their dens", models == 26, tostring(models))
 	local wrong = {}
 	for _, slot in World.creatureSlots do
 		local humanoid = creatureBody(slot.id)
@@ -2774,7 +2774,7 @@ local function run()
 	local island = workspace:FindFirstChild("Island")
 	check("M1.1 island is built", island ~= nil)
 	local cacheCount = #CollectionService:GetTagged("Cache")
-	check("M1.1 24 caches tagged", cacheCount == 24, tostring(cacheCount))
+	check("M1.1 31 caches tagged", cacheCount == 31, tostring(cacheCount))
 	local town = island and island:FindFirstChild("Tallyport")
 	local spawnPad = town and town:FindFirstChild("Spawn")
 	check("M2 spawn gives no default force field", spawnPad ~= nil and spawnPad.Duration == 0)
@@ -3117,8 +3117,8 @@ local function run()
 	task.wait(0.5)
 	uiA = inspect(A)
 	check(
-		"M1.6 book shows Relics: 1 / 30",
-		uiA.progress == "Relics: 1 / 30",
+		"M1.6 book shows Relics: 1 / 50",
+		uiA.progress == "Relics: 1 / 50",
 		tostring(uiA.progress)
 	)
 	send(A, "toggleLedger", false)
