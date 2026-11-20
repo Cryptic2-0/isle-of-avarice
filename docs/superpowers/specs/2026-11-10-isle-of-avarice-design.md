@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 8, 2026-11-16: M6 parties in section 3.14; revision 7: M5 in 3.13; revision 6: M4 in 3.9–3.12)
+**Date:** 2026-11-10 (revision 9, 2026-11-21: M7 endgame in section 3.15; revision 8: M6 in 3.14; revision 7: M5 in 3.13; revision 6: M4 in 3.9–3.12)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -550,6 +550,220 @@ so there is no defeat, claim or XP to gain.
 
 Not in M6: party chat, shared claims or loot, invites from a player list,
 cross-server parties, a party finder, shared trial runs, guilds.
+
+### 3.15 The endgame (M7 starting values)
+
+Rulings made while planning M7. They fill the gaps in 3.1, 3.2, 3.8 and the
+backlog's launch items. With M7 the Ledger has all 50 slots. All numbers are
+starting values for play tests.
+
+**Relics 031 to 050.** Twenty new Relics, so the Ledger reaches 50. Every one
+has a source that can give it again, so a copy freed by a trade, a sale, a
+claim, a Renounce or a holder leaving can always be earned anew.
+
+| Slot | Name | Tier | Source | Description |
+|---|---|---|---|---|
+| 031 | Clerk's Brass Receipt | Copper | Edict Hall, 40 Coin | The Hoarder's clerks stamped one for every sale, and charged a coin for the stamp. |
+| 032 | Ash-Crusted Tally Bead | Copper | cache, far out in the Cinder Flats | A bead from an abacus left too near the vents; it still counts, just warmly. |
+| 033 | Rampart Toll Token | Copper | cache, far out in Bastion Reach | Every visitor to the fortress paid one to get in, and another to get out. |
+| 034 | Pressed Blight-Leaf | Copper | cache at the blight's edge in the Hush Gardens | Kept between the Ledger's pages, where the Hoarder pressed everything they could not sell. |
+| 035 | Hound-Tooth Tally | Silver | Brinehound, 6% | Each notch is a debtor a Brinehound chased all the way home. |
+| 036 | Barnacled Coin Purse | Silver | Shellback, 8% | Found inside a shellback, which the Hoarder then billed for storage. |
+| 037 | Spitter's Glass Eye | Silver | Bogspitter, 8% | A Bogspitter kept watch over the Hoarder's mud with it, and missed nothing. |
+| 038 | Hedge-Heart Locket | Silver | cache at a dead end of the Thornwood maze | The Hoarder hid it in a blind alley, then charged themselves rent for the space. |
+| 039 | Cinder-Shelf Coffer | Silver | cache on a climb in the Cinder Flats | Kept high above the hot ground, where only the nimble and the fireproof could reach it. |
+| 040 | Reed-Woven Wallet | Silver | trial: Reed Run | Woven from bog reeds and taken as the toll for walking the Hoarder's boardwalk. |
+| 041 | Bailiff's Gavel | Gold | Gilded Bailiff, 30% | One knock and the debt was due; two knocks and so was the house. |
+| 042 | Bellows Ember-Key | Gold | trial: The Bellows Dance | Forged in the Bellows and never quite cooled, so the Hoarder kept it in an oven mitt. |
+| 043 | Colossus Barnacle Crest | Gold | Brine Colossus, 15% | The biggest barnacle on the Brine Colossus, polished to a shine and listed as an asset. |
+| 044 | Tide-Turner's Hourglass | Gold | prize cache on Reckoning Rock (3 s hold) | It tells the time by the tide, and the Hoarder charged by the hour. |
+| 045 | Gilded Spittoon | Gold | trial: Spitter Season | Bogspitters were trained to aim for it, and the Hoarder sold tickets. |
+| 046 | Wardens' Seal of Service | Platinum | The Warden's Round | Every Warden pressed a thumb into it, swearing the Hoarder's trials were fair. |
+| 047 | The Menagerie Ledger | Platinum | The Beast Tally | Every creature on the isle, counted, priced and entered in platinum ink. |
+| 048 | The Gilded Sceptre | Crown | Gilded Bailiff, 100% | The Hoarder pointed it at whatever they wanted next, and the Bailiff went and fetched it. |
+| 049 | The Orb of Every Shore | Crown | trial: The Grand Tally | Look inside and you see the whole island at once, every shore the Hoarder charged a toll on. |
+| 050 | The Hoarder's Crown | Crown | the Throne: a climb in the Drowned Fen, then a 10 s hold | Heavy with every debt ever owed; the island crowns whoever fills the Ledger. |
+
+**Three Crowns, one unique challenge each.** Crowns are capped at 1 per server
+(3.2), cannot be Vaulted (3.4) and cannot be sold (3.13).
+
+- **The Gilded Bailiff** (R048) is a world boss: one den far out in the Cinder
+  Flats, too strong for most players alone. Its Sceptre drops for every
+  contributor, so under the cap it goes to the contributor who dealt the most
+  damage (3.12) and the rest are told it is sealed. A party makes it possible;
+  a soloist must keep away from the slam and use ranged abilities.
+- **The Grand Tally** (R049) is a course round the whole island under a hard
+  clock: one marker in every wild region, then Reckoning Rock, in order, in
+  300 seconds. The route crosses the Sluices at their bridges and ends across
+  the tide causeway, so the tide must be timed. The Crown Warden stands in
+  Tallyport. Passage and Homecoming are refused during a trial (3.13).
+- **The Throne** (R050) is a twelve-ledge climb on the dry east bank of the
+  Drowned Fen with the Crown cache on top. Opening it takes a 10-second hold,
+  checked by the server, while rivals can knock the holder off or defeat them.
+
+**The Gilded Bailiff.**
+
+| Health | Attack | Lunge | Speed | Sight | Base XP | Coin | Respawn | Drops |
+|---|---|---|---|---|---|---|---|---|
+| 2400 | Gavel Slam: 30 damage to every player within 12 studs, every 3.5 s | 20 studs, 25 damage, every 9 s | 12 | 50 | 900 | 120 | 20 min | R048 100%, R041 30% |
+
+It follows every creature rule of 3.9 and 3.12 (leash 60, heals at home, never
+enters Tallyport). Drops added to the M4 creatures: Brinehound R035 6%,
+Shellback R036 8%, Bogspitter R037 8%, Brine Colossus R043 15%.
+
+**Four new trials.** Ten Wardens in all.
+
+| Trial | Warden, where | Kind | Goal | Time | Relic | Coin | XP |
+|---|---|---|---|---|---|---|---|
+| **Reed Run** | Reed Warden, Drowned Fen gate | course | touch 6 markers on the boardwalks, in order | 70 s | R040 (Silver) | 40 | 170 |
+| **The Bellows Dance** | Bellows Warden, before the Bellows | course | touch 5 markers inside the vent field, in order | 50 s | R042 (Gold) | 90 | 400 |
+| **Spitter Season** | Spitter Warden, Cinder Flats gate | hunt | defeat 3 Bogspitters | 180 s | R045 (Gold) | 80 | 380 |
+| **The Grand Tally** | Crown Warden, Tallyport | course | touch 7 markers: one in every wild region, then Reckoning Rock | 300 s | R049 (Crown) | 200 | 900 |
+
+Reed Run's markers sit on both long boardwalks, so the rotted gap must be
+waded or walked round. The Bellows markers are vent centres. Every rule of
+3.10 applies (one trial at a time, cooldowns, Coin paid when the Relic is
+sealed).
+
+**Two rounds** (the multi-step Platinum sources). A round is a checklist done
+in any order; finishing it pays once and empties it, so it can be done again.
+
+| Round | Steps | Reward |
+|---|---|---|
+| **The Warden's Round** | pass each of the nine trials below the Crown (all but The Grand Tally) | R046, 250 Coin, 800 XP to the Calling |
+| **The Beast Tally** | contribute to defeating one of each: Brinehound, Shellback, Bogspitter, Brine Colossus, Gilded Bailiff | R047, 250 Coin, 800 XP to the Calling |
+
+Progress is saved. The trial HUD shows one line under the quest:
+"Warden's Round 3 / 9, Beast Tally 2 / 5". A step already done this round
+does not count again.
+
+**Scarcity at 50.**
+
+| Tier | Relics | Server cap per Relic |
+|---|---|---|
+| Copper | 13 | none |
+| Silver | 15 | 8 |
+| Gold | 15 | 4 |
+| Platinum | 4 | 2 |
+| Crown | 3 | 1 |
+
+Completing is meant to take many sessions: a third of the Ledger comes only
+from bosses, hard trials, rounds or contested caches, and each capped copy
+must be free on that server when it is earned. Nothing can block it forever:
+
+- **A complete Ledger steps aside.** The claimed Relics of a Ledger that has
+  every slot claimed no longer count against the caps (its spares still do).
+  A Crowned player who sits in Tallyport therefore blocks nobody, and others
+  can earn their own copies. The cap still blocks only new copies (3.2): if a
+  Crowned player later loses a Relic, the server may briefly hold more than
+  the cap.
+- The M2 to M5 valves stay: trading, the blind claim (a hoarder can Vault only
+  3 Relics, never a Crown), selling a capped spare, and holders leaving.
+- The last valve is the server itself: caps are per server, and a new server
+  starts with nothing held.
+
+**Completing the Ledger.** The moment every slot is claimed, the player is
+**Crowned**, at most once per run (a run is the time between a start and the
+next Renounce). Unclaiming and claiming again in the same run gives nothing.
+A Crowning happens wherever a Ledger becomes complete, and on joining with a
+complete Ledger that has not yet given its run's Crown.
+
+- **The ceremony.** Every player sees the message "<name> has claimed every
+  Relic and is Crowned!" and a gold banner across the top of the screen for 6
+  seconds ("<name> is Crowned!", or "<name> is Crowned again: 3 Crowns!").
+  A column of gold light 200 studs tall rises where the player stands and
+  fades over 6 seconds, visible across the island. The player is told "You
+  are Crowned! Your name goes on the Tally Stone in Tallyport."
+- **The title.** "Crowned", "Crowned twice", "Crowned 3 times", followed by
+  "★n" once the player has Renounced n times, for example "Crowned twice ★1".
+  It shows in gold above the player's head to everyone (above the MARKED tag
+  and the ally marker), under the player's name in the party panel, and on a
+  line of the Ledger book. Titles are permanent: Renouncing keeps them. The
+  Crowned are visible on purpose: their Crowns cannot be Vaulted.
+- **The cosmetic.** The Gilt Circlet: a ring of six small gold points worn on
+  the head by every player who has been Crowned, built from parts in code
+  (nothing to buy, nothing to equip). Each star adds a purple gem, up to six.
+- **The badge.** A Roblox badge, "Crowned", is awarded on the first Crowning.
+  Its id is a setting (`LaunchConfig.CROWNED_BADGE_ID`); while it is 0 nothing
+  is awarded. A player Crowned before the id was set gets the badge the next
+  time they join. It is awarded once.
+
+**The Tally Stone and the all-time board.** A stone tablet stands on the south
+side of the Tallyport plaza. Its face is the board, "The Crowned": the ten
+players with the most Crowns across every server, one line each
+("1. Ann: Crowned 3 times"). Crowns rank; ties go to the lower user id.
+
+| Rule | Value |
+|---|---|
+| Stored in | an ordered data store named `CrownedBoard_v1`: key the user id, value the Crown count |
+| Rows | 10 |
+| Read | every 120 s, and 5 s after a successful write |
+| Written | when a player's Crowns exceed what the board last stored for them; a write never lowers a stored count |
+| After a failed write | retried for that player no sooner than 60 s later |
+| When the store cannot be reached | the board says "This server only: the all-time records cannot be reached" and lists the Crowned players on this server |
+
+Present players count with their live Crowns, so a new Crown shows within
+seconds even before the store has it. Every data store and badge call runs in
+the background; none can delay joining, a request or a save.
+
+**Renounce.** A Crowned player whose Ledger is complete may Renounce at the
+Tally Stone: hold "Renounce" for 2 seconds, read what will happen, type the
+word RENOUNCE (any case, spaces ignored) and press "Renounce" within 60
+seconds. It cannot be undone.
+
+| Goes back to the island | Kept |
+|---|---|
+| Every Relic, claimed and spare | Coin |
+| Every Edict | Path levels, XP, Calling, abilities and loadout |
+| The Vault (it empties) | Trial cooldowns |
+| The Unpaid Debt's progress (back to step 0) | Crowns, title, badge, place on the board |
+| Both rounds' progress | The ended new-player shield (it never returns) |
+
+The player earns a **star**: a permanent prestige mark shown in the title and
+as a gem on the circlet. A new run starts: completing the Ledger again gives
+another Crown, ceremony and board update (no second badge).
+
+Renounce is refused, with nothing changed, while the player: has not loaded,
+is not Crowned this run or lacks a claimed slot, is defeated, has a Ledger
+locked by a claim, is making a claim, is trading, is in a trial, is outside
+Tallyport, is Marked, or dealt or took player damage in the last 30 seconds.
+All of these are checked again at the confirm. The offer ends if the player
+cancels, waits 60 seconds or leaves.
+
+**Saved data.** Two new fields, each with its own sanitize step on load, so
+`schemaVersion` stays 1 and old saves load unchanged:
+
+- `crown`: Crowns, stars, the count last written to the board, and whether the
+  badge was awarded. Stars are always the Crowns or one fewer; damaged values
+  are pulled into range, and an unreadable star count reads as "Crowned this
+  run", so a damaged save can never give a free Crown.
+- `rounds`: the steps done in each round, known ids only, no repeats.
+
+**Launch fixes** (from the backlog; the rest of it waits):
+
+- **Health regeneration.** Roblox's default regeneration is replaced by the
+  game's own: 1 health a second, starting 10 seconds after the player last
+  lost health from anything. Standing in a hazard therefore never
+  regenerates, and the hazard numbers of the Wide Isle mean what they say.
+- **Held caches are checked by the server.** A cache with a hold (the prize
+  caches, 3 or 4 s; the Rock's second prize, 3 s; the Throne, 10 s) opens
+  only if the player's hold, as the server saw it, lasted the hold time less
+  0.3 seconds.
+
+**What a two-player Studio test can check.** Data stores and badges do not
+work in an unpublished place, and ProfileStore keeps data in memory, so
+nothing survives a restart. The automated test checks the new world, the
+held caches, Crowning, the ceremony on both screens, the title, the circlet,
+the step-aside rule, the board through a stand-in store and in its offline
+form, the badge through a stand-in, every Renounce refusal it can stage, the
+two-step confirm, what Renounce returns and keeps, a second Crown, the Gilded
+Bailiff, the Beast Tally, the rounds line, regeneration and the 50-slot
+screens. The real board, the badge and saving across sessions are checked by
+the owner on the published game.
+
+Not in M7: a fastest-run board, a board window away from Tallyport, more
+cosmetics or a way to hide the circlet, titles in chat, global (cross-server)
+scarcity, sounds, the UI polish pass of the backlog, paid items.
 
 ## 4. The Six Paths
 
