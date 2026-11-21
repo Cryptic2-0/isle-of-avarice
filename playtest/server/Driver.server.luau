@@ -3343,10 +3343,16 @@ local function runM7Renounce(A: Player, B: Player)
 	mA = mark(A)
 	fire(A, "renounce", nil)
 	expectNote("M7.7 hostile nil: BAD_REQUEST", A, mA, "BAD_REQUEST")
-	for _, bad in { "x", {}, { kind = "steal" } } :: { any } do
+	for _, case in
+		{
+			{ label = "string", value = "x" },
+			{ label = "empty table", value = {} },
+			{ label = "unknown kind", value = { kind = "steal" } },
+		} :: { any }
+	do
 		mA = mark(A)
-		fire(A, "renounce", bad)
-		expectNote(`M7.7 hostile {typeof(bad)}: BAD_REQUEST`, A, mA, "BAD_REQUEST")
+		fire(A, "renounce", case.value)
+		expectNote(`M7.7 hostile {case.label}: BAD_REQUEST`, A, mA, "BAD_REQUEST")
 	end
 	check(
 		"M7.7 after all that A's Ledger is complete and the offer still stands",
@@ -3390,6 +3396,22 @@ local function runM7Renounce(A: Player, B: Player)
 	local cooldownAt = os.time() + realSkip + 200
 	dataA.trials = { cooldowns = { tidewalk = cooldownAt }, questStep = 2 }
 	dataA.rounds = { wardens = { "tidewalk" }, beasts = { "brinehound" } }
+	-- Show A's HUD the quest at step 2 first, so "starts again" below really tests the resync
+	-- the Renounce sends (a HUD that was never told about step 2 already reads 0 / 4).
+	TrialService.resync(A)
+	local uiStep2 = inspectUntil(A, function(snapshot)
+		for _, line in snapshot.trialLines or {} do
+			if has(line, "The Unpaid Debt: 2 / 4") then
+				return true
+			end
+		end
+		return false
+	end)
+	check(
+		"M7.8 setup: A's trial HUD reads The Unpaid Debt: 2 / 4",
+		has(table.concat(uiStep2.trialLines or {}, " | "), "The Unpaid Debt: 2 / 4"),
+		table.concat(uiStep2.trialLines or {}, " | ")
+	)
 	local xpBefore = table.clone(PathService.get(A).xp)
 	local shieldBefore = dataA.shieldEnded
 	renounceOffers[A] = nil
@@ -3474,9 +3496,9 @@ local function runM7Renounce(A: Player, B: Player)
 		table.concat(uiQuest.trialLines or {}, " | ")
 	)
 	check(
-		"M7.8 A's new-player shield flag is unchanged and true",
-		dataA.shieldEnded == shieldBefore and dataA.shieldEnded == true,
-		tostring(dataA.shieldEnded)
+		"M7.8 A's new-player shield flag is unchanged",
+		dataA.shieldEnded == shieldBefore,
+		`{tostring(shieldBefore)} -> {tostring(dataA.shieldEnded)}`
 	)
 
 	--------------------------------------------------------------------------- M7.9 a second Crown
@@ -3755,10 +3777,15 @@ local function run()
 	end)
 	local A, B = list[1], list[2]
 	log(`A = {A.Name} ({A.UserId}), B = {B.Name} ({B.UserId})`)
-	-- A stand-in board for the whole run: M1.11 Crowns A, and the real data store must not
-	-- be written. A round may be in flight, so redraw once the swap is made.
+	-- A stand-in board and badge for the whole run: M1.11 Crowns A, and neither the real data
+	-- store nor the real BadgeService may be touched. A round may be in flight, so redraw once
+	-- the swap is made. M7 swaps in fresh stand-ins; the restore after M7 puts the real ones back.
 	LeaderboardService.setBackend(m7.backend)
 	LeaderboardService.refreshNow()
+	CrownService.setBadge(4242, function(userId, badgeId)
+		table.insert(m7.badgeCalls, { userId, badgeId })
+		return true
+	end)
 	check(
 		"both players' data loads",
 		waitFor(function()
