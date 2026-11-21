@@ -6,7 +6,7 @@ Most steps need two players. Start a two-player test the same way as in `docs/pl
 
 Automated run (2026-11-12, Studio, two players): `[PLAYTEST] DONE passed=230 failed=0`, no script errors. The steps below are the hand checks for feel, visuals and phone layout.
 
-Each test starts fresh, so every new test gives both players the Calling picker again. Saving between tests works only after the steps in the README under "How to make saving work".
+Each test starts fresh, so every new test gives both players the Calling picker again. Saving between tests works only after the steps in the README under "How to publish" (step 2).
 
 ## Words used here
 

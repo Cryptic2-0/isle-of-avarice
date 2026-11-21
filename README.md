@@ -12,6 +12,7 @@ Your Ledger is a book with 50 numbered slots. Each Relic you claim fills one slo
 - **Milestone 4, creatures and trials:** beasts live at dens in the wild regions. They fight back, and defeating one pays Coin, Path XP and sometimes a Relic to everyone who helped. Six Wardens, one at each region's gate, offer timed trials: two courses, a delivery, two hunts and a private duel. Three trials and the Brine Colossus make up a quest, The Unpaid Debt. Relics 13 to 30 come from trials, creatures, the quest and hard-to-reach caches.
 - **Milestone 5, Edicts and trading:** five single-use Edict cards (Summons, Audit, Veil, Passage, Homecoming) live in your free slots. The clerk of the Edict Hall in Tallyport sells packs of Edicts and Copper Relics and buys spare cards. Two players standing close can trade cards and Coin, with a short wait before either can confirm. A defeat destroys a third of the Edicts you hold (never Relics).
 - **Milestone 6, parties:** up to four players can form a party (the "Party" button asks the nearest player). Allies cannot hurt each other, heals and shields from Mend abilities reach them, and a player who supports an ally against a creature shares in its reward. A panel shows each member's health and a green marker hangs over each ally.
+- **Milestone 7, the endgame:** the Ledger has 50 Relics. Three Crown Relics sit at the top: the Gilded Sceptre (from the Gilded Bailiff), the Orb of Every Shore (the reward of The Grand Tally) and the Hoarder's Crown (a cache on the Throne, opened by a 10-second hold). A player who claims every Relic is Crowned, with a ceremony on every screen, a title and a gilt circlet. The all-time board of the Crowned stands on the Tally Stone in Tallyport. A Crowned player may Renounce there, give every card back and earn a star. Health comes back slowly, but only after 10 seconds out of danger.
 
 ## How to play-test
 
@@ -26,19 +27,20 @@ You need Roblox Studio. It is the free program Roblox provides for making and te
 7. Then follow the steps in `docs/playtest/M4-checklist.md` (creatures and trials, partly with two players).
 8. Then follow the steps in `docs/playtest/M5-checklist.md` (Edicts, the shop and trading, mostly with two players).
 9. Then follow the steps in `docs/playtest/M6-checklist.md` (parties, with two players).
+10. Then follow the steps in `docs/playtest/M7-checklist.md` (the endgame: the 50-slot Ledger, Crowning, the Tally Stone and Renouncing, mostly with two players).
 
 If a step fails, see the last line of the checklist.
 
-## How to make saving work
+## How to publish
 
-Without this, your progress resets every time you press Play.
+You do this once, as the owner of the game. Until you publish, progress resets every time you press Play.
 
-1. In Studio, publish the place to Roblox. Choose File, then Publish to Roblox. Keep it private.
-2. Choose Home, then Game Settings, then Security.
-3. Turn on "Enable Studio Access to API Services".
-4. Click Save.
-
-Now your Ledger is kept between play sessions.
+1. Open the game in Studio. Choose File, then Publish to Roblox. Keep it private for now.
+2. Choose Home, then Game Settings, then Security, and turn on "Enable Studio Access to API Services". Click Save. (Live servers save without this; it lets saving and the board work when you press Play in Studio.)
+3. Create the badge on the Creator Dashboard (create.roblox.com): open your experience, find Badges (under Associated Items or Engagement), choose Create a Badge, name it "Crowned", describe it as "Claimed every Relic of the Hoarder's Ledger.", and upload a square image. Roblox may ask for Robux beyond a small free allowance of badges; read the page before you confirm. Copy the badge's number (its id).
+4. In Studio, open ServerScriptService, then Server, then LaunchConfig, and replace the 0 after `CROWNED_BADGE_ID =` with the id. Publish again. Tell the developer the id so `src/server/LaunchConfig.luau` keeps it in the next build.
+5. Before making the game public, fill in the experience questionnaire (content maturity) and the description in Game Settings, then set the game to Public.
+6. Check: in a live server, the Tally Stone in Tallyport should say "All time, every server" within a few minutes. "This server only" means the data store cannot be reached (step 2, or a Roblox outage).
 
 ## For developers
 
@@ -47,7 +49,7 @@ The rest of this page is for people who write code.
 - Install the tools: `rokit install`
 - Run all checks (format, lint, build, tests): `bash scripts/check.sh`
 - Live-sync into Studio: `rojo serve`
-- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2, M3, M4, M5 and M6 checklists and the world checks, and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
+- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2, M3, M4, M5, M6 and M7 checklists and the world checks, and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
 
 The playable file in `dist/IsleOfAvarice.rbxlx` is a copy of `build/IsleOfAvarice.rbxlx`. Copy it again after any code change, once the checks pass.
 

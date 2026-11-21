@@ -59,6 +59,13 @@ end)
 remotes:WaitForChild("PartySync").OnClientEvent:Connect(function(sync)
 	report:FireServer("partySync", sync)
 end)
+-- M7: the Crowning banner and the Renounce offer (nil = closed).
+remotes:WaitForChild("Ceremony").OnClientEvent:Connect(function(payload)
+	report:FireServer("ceremony", payload)
+end)
+remotes:WaitForChild("RenounceOffer").OnClientEvent:Connect(function(offer)
+	report:FireServer("renounceOffer", offer)
+end)
 
 local function texts(container: Instance?): { string }
 	local result = {}
@@ -72,6 +79,15 @@ local function texts(container: Instance?): { string }
 	end
 	table.sort(result)
 	return result
+end
+
+-- The Tally Stone's Renounce prompt, or nil.
+local function stonePromptOf()
+	local island = workspace:FindFirstChild("Island")
+	local town = island and island:FindFirstChild("Tallyport")
+	local model = town and town:FindFirstChild("TallyStone")
+	local stone = model and model:FindFirstChild("Stone")
+	return stone and stone:FindFirstChild("RenouncePrompt")
 end
 
 -- A snapshot of the game's UI as this player sees it.
@@ -103,6 +119,14 @@ local function inspectUi()
 	end
 	ui.ledgerSlots = slotTexts
 	ui.vaultButtons = vaultButtons
+	-- M7: how many numbered slots the book draws, and its Crown line.
+	local slotCount = 0
+	for _ in slotTexts do
+		slotCount += 1
+	end
+	ui.ledgerSlotCount = slotCount
+	local crownLine = book and book:FindFirstChild("CrownLine")
+	ui.crownLine = crownLine and crownLine.Text or ""
 
 	local statusGui = playerGui:FindFirstChild("StatusGui")
 	ui.statusLines = texts(statusGui and statusGui:FindFirstChild("Lines"))
@@ -203,7 +227,7 @@ local function inspectUi()
 	local trialLines = {}
 	local hud = trialGui and trialGui:FindFirstChild("Hud")
 	if hud ~= nil then
-		for index = 1, 3 do
+		for index = 1, 4 do
 			local line = hud:FindFirstChild("Line" .. index)
 			if line ~= nil then
 				trialLines[index] = line.Text
@@ -311,9 +335,11 @@ local function inspectUi()
 		for _, row in frames do
 			local rowName = row:FindFirstChild("Name")
 			local rowHealth = row:FindFirstChild("Health")
+			local rowTitle = row:FindFirstChild("Title")
 			table.insert(partyRowList, {
 				name = rowName and rowName.Text or "",
 				health = rowHealth and rowHealth.Text or "",
+				title = rowTitle and rowTitle.Text or "",
 				remove = row:FindFirstChild("Remove") ~= nil,
 				lead = row:FindFirstChild("MakeLeader") ~= nil,
 			})
@@ -339,6 +365,21 @@ local function inspectUi()
 	end
 	table.sort(markerNames)
 	ui.allyMarkers = markerNames
+
+	-- M7: the Crowning banner, the Renounce window and the Tally Stone's prompt.
+	local ceremonyGui = playerGui:FindFirstChild("CeremonyGui")
+	local banner = ceremonyGui and ceremonyGui:FindFirstChild("Banner")
+	ui.ceremonyVisible = banner ~= nil and banner.Visible
+	local bannerLine1 = banner and banner:FindFirstChild("Line1")
+	local bannerLine2 = banner and banner:FindFirstChild("Line2")
+	ui.ceremonyText = (bannerLine1 and bannerLine1.Text or "")
+		.. " / "
+		.. (bannerLine2 and bannerLine2.Text or "")
+	local renounceGui = playerGui:FindFirstChild("RenounceGui")
+	local renounceWindow = renounceGui and renounceGui:FindFirstChild("Renounce")
+	ui.renounceVisible = renounceWindow ~= nil and renounceWindow.Visible
+	local stonePrompt = stonePromptOf()
+	ui.stonePromptEnabled = stonePrompt ~= nil and stonePrompt.Enabled
 	return ui
 end
 
@@ -434,6 +475,19 @@ cmd.OnClientEvent:Connect(function(op, arg)
 		remotes.PartyReply:FireServer(arg)
 	elseif op == "party" then
 		remotes.PartyAction:FireServer(arg)
+	elseif op == "renouncePrompt" then
+		-- Hold the Tally Stone's prompt the way the E key would.
+		local prompt = stonePromptOf()
+		if prompt == nil then
+			report:FireServer("error", "no Tally Stone prompt")
+			return
+		end
+		prompt:InputHoldBegin()
+		task.wait(prompt.HoldDuration + 0.3)
+		prompt:InputHoldEnd()
+	elseif op == "renounce" then
+		-- Any value, hostile ones included: the server must check it.
+		remotes.RenounceAction:FireServer(arg)
 	elseif op == "inspect" then
 		report:FireServer("ui", inspectUi())
 	end

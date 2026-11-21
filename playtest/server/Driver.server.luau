@@ -1,7 +1,7 @@
 --!nonstrict
 -- Automated two-player play test. Only in the play-test build (playtest.project.json),
 -- never in dist. Start a local server with 2 players; this script walks through the M1,
--- M2, M3, M4, M5 and M6 checklists and the world checks (W.1 to W.7, for the nine-region island),
+-- M2, M3, M4, M5, M6 and M7 checklists and the world checks (W.1 to W.7, for the nine-region island),
 -- driving each player through their Agent, and prints one line per check:
 -- "[PLAYTEST] PASS ..." or "[PLAYTEST] FAIL ...", then a DONE summary.
 --
@@ -17,9 +17,14 @@
 -- in Tallyport), then M1 and M2, with M3.1 to M3.3 (first join, choosing a Calling) right
 -- after M2.1. A can claim B only once an hour and M2 makes that claim (and B's on A), so
 -- M2.8, M2.13 and M2.14 also check the Calling's defeat XP (M3.10). Then the rest of M3,
--- then M4 (creatures, trials and the quest), then M5 (Edicts, the shop and trading), then M6 (parties), and M2.15, which ends B's session, last of all.
+-- then M4 (creatures, trials and the quest), then M5 (Edicts, the shop and trading), then M6 (parties), then M7 (held caches, Crowning, the board, Renounce, the
+-- Crown Relics, health regeneration), and M2.15, which ends B's session, last of all.
 -- Creatures are put to sleep for the whole run (CreatureService.setActive) and M4 wakes one
--- at a time; it sets their health directly, fixes the drop rolls and skips trial time.
+-- at a time; it sets their health directly, fixes the drop rolls and skips trial time. The Tally
+-- Stone's board and the badge are stand-ins from the start of the run to the end of M7 (M1.11
+-- already Crowns A, and M7 Crowns A again from scratch). Health regenerates 1 a second, but only
+-- 10 seconds after the last loss (setting Humanoid.Health lower counts as a loss), so a check
+-- that measures damage reads health right before and right after, never across 10 seconds.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,9 +33,12 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Server = ServerScriptService:WaitForChild("Server")
 local CombatService = require(Server:WaitForChild("CombatService"))
 local CreatureService = require(Server:WaitForChild("CreatureService"))
+local CrownService = require(Server:WaitForChild("CrownService"))
 local DataService = require(Server:WaitForChild("DataService"))
 local EdictService = require(Server:WaitForChild("EdictService"))
 local Fighters = require(Server:WaitForChild("Fighters"))
+local LaunchConfig = require(Server:WaitForChild("LaunchConfig"))
+local LeaderboardService = require(Server:WaitForChild("LeaderboardService"))
 local LedgerService = require(Server:WaitForChild("LedgerService"))
 local PartyService = require(Server:WaitForChild("PartyService"))
 local PathService = require(Server:WaitForChild("PathService"))
@@ -44,6 +52,7 @@ local TrialService = require(Server:WaitForChild("TrialService"))
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rules = Shared:WaitForChild("Rules")
 local Combat = require(Rules:WaitForChild("Combat"))
+local Crown = require(Rules:WaitForChild("Crown"))
 local Geography = require(Rules:WaitForChild("Geography"))
 local Hazards = require(Rules:WaitForChild("Hazards"))
 local Ledger = require(Rules:WaitForChild("Ledger"))
@@ -51,6 +60,7 @@ local Party = require(Rules:WaitForChild("Party"))
 local PathProgress = require(Rules:WaitForChild("PathProgress"))
 local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
+local Rounds = require(Rules:WaitForChild("Rounds"))
 local Creatures = require(Shared:WaitForChild("Catalog"):WaitForChild("Creatures"))
 local Trials = require(Shared:WaitForChild("Catalog"):WaitForChild("Trials"))
 local Relics = require(Shared:WaitForChild("Catalog"):WaitForChild("Relics"))
@@ -101,6 +111,8 @@ local tradeInvites = {} -- player -> last TradeInvite (false = closed, nil = nev
 local tradeViews = {} -- player -> last TradeSync view (false = closed, nil = never seen)
 local partyInvites = {} -- player -> last PartyInvite (false = closed, nil = never seen)
 local partySyncs = {} -- player -> last PartySync (false = none, nil = never seen)
+local ceremonies = {} -- player -> last Ceremony payload
+local renounceOffers = {} -- player -> last RenounceOffer (false = closed, nil = never seen)
 local agentErrors = {}
 
 report.OnServerEvent:Connect(function(player, kind, a, b)
@@ -132,6 +144,10 @@ report.OnServerEvent:Connect(function(player, kind, a, b)
 		partyInvites[player] = if a == nil then false else a
 	elseif kind == "partySync" then
 		partySyncs[player] = if a == nil then false else a
+	elseif kind == "ceremony" then
+		ceremonies[player] = a
+	elseif kind == "renounceOffer" then
+		renounceOffers[player] = if a == nil then false else a
 	elseif kind == "ui" then
 		uiReport[player] = a
 	elseif kind == "error" then
@@ -2854,6 +2870,905 @@ local function runM6(A: Player, B: Player)
 	)
 end
 
+------------------------------------------------------------------------------- M7 the endgame
+-- Held caches, Crowning, the board and the badge (with stand-ins for both), Renounce, the Crown
+-- Warden, the Gilded Bailiff, slow health regeneration and the rounds line. Three functions
+-- (each stays under Luau's limit of 60 upvalues) share the `m7` table.
+local BAILIFF = -2000026
+local STONE_FRONT = Vector3.new(0, 3, 25) -- 6 studs in front of the Tally Stone, in Tallyport
+
+local m7 = {
+	-- B's new-player-shield flag as M7 found it, so run() can put it back if M7 stops half way.
+	shieldEnded = nil,
+	-- The stand-in board: every write, the stored counts, and whether the store "fails".
+	fake = { writes = {}, rows = {}, failing = false },
+	badgeCalls = {},
+	star = "★",
+}
+
+m7.backend = {
+	write = function(userId: number, crowns: number): boolean
+		local fake = m7.fake
+		if fake.failing then
+			return false
+		end
+		table.insert(fake.writes, { userId, crowns })
+		fake.rows[userId] = math.max(fake.rows[userId] or 0, crowns)
+		return true
+	end,
+	readTop = function(count: number)
+		local fake = m7.fake
+		if fake.failing then
+			return nil
+		end
+		local entries = {}
+		for userId, crowns in fake.rows do
+			table.insert(entries, { userId = userId, crowns = crowns })
+		end
+		table.sort(entries, function(x, y)
+			if x.crowns ~= y.crowns then
+				return x.crowns > y.crowns
+			end
+			return x.userId < y.userId
+		end)
+		while #entries > count do
+			table.remove(entries)
+		end
+		return entries
+	end,
+}
+
+-- The board never stores a Studio test player (their id is below 1), so a check on a write
+-- expects one only for a real id.
+function m7.writeable(player: Player): boolean
+	return player.UserId >= 1
+end
+
+-- Does the note's {player} argument name this player?
+function m7.names(note, player: Player): boolean
+	return note ~= nil and note.args ~= nil and note.args.player == player.DisplayName
+end
+
+-- The text of the player's CrownTag over their head ("" when there is none).
+function m7.tagText(player: Player): string
+	local character = player.Character
+	local head = character and character:FindFirstChild("Head")
+	local tag = head and head:FindFirstChild("CrownTag")
+	local label = tag and tag:FindFirstChildOfClass("TextLabel")
+	return if label ~= nil then label.Text else ""
+end
+
+-- How many parts of one name the player's circlet has (-1 without a circlet).
+function m7.circlet(player: Player, partName: string): number
+	local character = player.Character
+	local circlet = character and character:FindFirstChild("GiltCirclet")
+	if circlet == nil then
+		return -1
+	end
+	local count = 0
+	for _, child in circlet:GetChildren() do
+		if child.Name == partName then
+			count += 1
+		end
+	end
+	return count
+end
+
+function m7.ceremonyIs(payload, player: Player, crowns: number): boolean
+	return type(payload) == "table"
+		and payload.userId == player.UserId
+		and payload.name == player.DisplayName
+		and payload.crowns == crowns
+end
+
+-- Every Relic claimed, except `skip`.
+function m7.claimedExcept(skip: string?)
+	local claimed = {}
+	for _, relic in Relics.list do
+		if relic.id ~= skip then
+			claimed[relic.id] = true
+		end
+	end
+	return claimed
+end
+
+function m7.isComplete(player: Player): boolean
+	local ledger = LedgerService.get(player)
+	return ledger ~= nil and Ledger.isComplete(ledger)
+end
+
+-- A row of the Tally Stone's board.
+function m7.stoneRow(index: number): string
+	for _, stone in CollectionService:GetTagged("TallyStone") do
+		local board = stone:FindFirstChild("Board")
+		local row = board and board:FindFirstChild("Row" .. index)
+		if row ~= nil and row:IsA("TextLabel") then
+			return row.Text
+		end
+	end
+	return "?"
+end
+
+function m7.roundsEmpty(record): boolean
+	for _, round in Trials.rounds do
+		local steps = record[round.id]
+		if type(steps) ~= "table" or #steps ~= 0 then
+			return false
+		end
+	end
+	return true
+end
+
+-- Does one of the trial HUD's lines read exactly this?
+function m7.hudHas(ui, text: string): boolean
+	for _, line in ui.trialLines or {} do
+		if line == text then
+			return true
+		end
+	end
+	return false
+end
+
+-- M7.1 to M7.5: the world, held caches, Crowning, one Crown per run, the board and the badge.
+local function runM7World(A: Player, B: Player)
+	local dataA = DataService.get(A)
+	local fake = m7.fake
+
+	--------------------------------------------------------------------------- M7.1 the world
+	do
+		local caches = #CollectionService:GetTagged("Cache")
+		check("M7.1 31 caches are tagged", caches == 31, tostring(caches))
+		local models = 0
+		for _, model in CollectionService:GetTagged("Creature") do
+			if model:IsDescendantOf(workspace) then
+				models += 1
+			end
+		end
+		check("M7.1 26 creatures stand at their dens", models == 26, tostring(models))
+		local wardens = #CollectionService:GetTagged("Warden")
+		check("M7.1 10 Wardens stand", wardens == 10, tostring(wardens))
+		local markers = #CollectionService:GetTagged("TrialMarker")
+		check("M7.1 32 course markers are built", markers == 32, tostring(markers))
+		local stones = CollectionService:GetTagged("TallyStone")
+		local stone = stones[1]
+		local stonePrompt = stone and stone:FindFirstChild("RenouncePrompt")
+		local stoneBoard = stone and stone:FindFirstChild("Board")
+		check(
+			"M7.1 one Tally Stone with a Renounce prompt (hold 2) and a Board",
+			#stones == 1
+				and stonePrompt ~= nil
+				and stonePrompt:IsA("ProximityPrompt")
+				and stonePrompt.HoldDuration == 2
+				and stoneBoard ~= nil
+				and stoneBoard:IsA("SurfaceGui"),
+			`{#stones} stones`
+		)
+		check(
+			"M7.1 the Gilded Bailiff stands at 2400 health",
+			creatureHealth(BAILIFF) == 2400,
+			tostring(creatureHealth(BAILIFF))
+		)
+		local island = workspace:FindFirstChild("Island")
+		local c029 = island and island:FindFirstChild("C029")
+		local c031 = island and island:FindFirstChild("C031")
+		local p029 = c029 and c029:FindFirstChildOfClass("ProximityPrompt")
+		local p031 = c031 and c031:FindFirstChildOfClass("ProximityPrompt")
+		check(
+			"M7.1 the prompts of C029 and C031 hold 3 and 10 seconds",
+			p029 ~= nil and p029.HoldDuration == 3 and p031 ~= nil and p031.HoldDuration == 10,
+			`{if p029 then p029.HoldDuration else "none"}, {if p031
+				then p031.HoldDuration
+				else "none"}`
+		)
+		local ui = inspectUntil(A, function(snapshot)
+			return snapshot.ledgerSlotCount == 50
+		end)
+		check("M7.1 A's book has 50 slots", ui.ledgerSlotCount == 50, tostring(ui.ledgerSlotCount))
+	end
+
+	--------------------------------------------------------------------------- M7.2 held caches
+	do
+		local rock = Vector3.new(0, 3, 1284)
+		put(A, rock, Vector3.new(0, 3, 1290))
+		check(
+			"M7.2 setup: A stands 6 studs from C029 on the Rock",
+			flatDistance(positionOf(A), rock) <= 1.5,
+			at(positionOf(A))
+		)
+		local freeBefore = freeText(A)
+		local m = mark(A)
+		local code = SourceService.tryOpen(A, "C029")
+		check("M7.2 opening C029 with no hold: HOLD_TOO_SHORT", code == "HOLD_TOO_SHORT", code)
+		check(
+			"M7.2 and A's free slots are unchanged",
+			freeText(A) == freeBefore and not hasFree(A, "R044"),
+			`{freeBefore} -> {freeText(A)}`
+		)
+		m = mark(A)
+		send(A, "prompt", "C029")
+		expectNote("M7.2 holding C029's prompt: GOT_CARD", A, m, "GOT_CARD", 6)
+		check("M7.2 A has the Tide-Turner's Hourglass", hasFree(A, "R044"), freeText(A))
+
+		local ledges = World.climbs.C031
+		local top = ledges[#ledges]
+		local standOn = Vector3.new(top.x + 2.5, top.top + 3, top.z)
+		put(A, standOn, Vector3.new(top.x, top.top + 3, top.z))
+		check(
+			"M7.2 setup: A stands on the Throne's top ledge",
+			flatDistance(positionOf(A), standOn) <= 1.5,
+			at(positionOf(A))
+		)
+		m = mark(A)
+		send(A, "prompt", "C031")
+		expectNote("M7.2 holding C031's prompt for 10 seconds: GOT_CARD", A, m, "GOT_CARD", 14)
+		check("M7.2 A has the Hoarder's Crown", hasFree(A, "R050"), freeText(A))
+		check(
+			"M7.2 one copy of R050 is held",
+			SourceService.held("R050") == 1,
+			tostring(SourceService.held("R050"))
+		)
+	end
+
+	--------------------------------------------------------------------------- M7.3 Crowning
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+	LedgerService.set(A, { claimed = m7.claimedExcept("R050"), free = { "R050" } })
+	ceremonies[A], ceremonies[B] = nil, nil
+	local mA, mB = mark(A), mark(B)
+	send(A, "ledger", { kind = "claim", freeIndex = 1, cardId = "R050" })
+	local crowned = expectNote("M7.3 A hears CROWNED_YOU", A, mA, "CROWNED_YOU")
+	check(
+		"M7.3 the title is Crowned",
+		crowned ~= nil and crowned.args ~= nil and crowned.args.title == "Crowned",
+		if crowned ~= nil and crowned.args ~= nil then tostring(crowned.args.title) else "none"
+	)
+	local completeA = expectNote("M7.3 A hears LEDGER_COMPLETE", A, mA, "LEDGER_COMPLETE")
+	local completeB = expectNote("M7.3 B hears LEDGER_COMPLETE", B, mB, "LEDGER_COMPLETE")
+	check("M7.3 both messages name A", m7.names(completeA, A) and m7.names(completeB, A))
+	check(
+		"M7.3 both clients got the ceremony: A, one Crown",
+		waitFor(function()
+			return m7.ceremonyIs(ceremonies[A], A, 1) and m7.ceremonyIs(ceremonies[B], A, 1)
+		end, 3),
+		`{typeof(ceremonies[A])}, {typeof(ceremonies[B])}`
+	)
+	local uiBanner = inspectUntil(B, function(snapshot)
+		return snapshot.ceremonyVisible == true
+	end)
+	check(
+		"M7.3 B's banner shows A's name",
+		uiBanner.ceremonyVisible == true and has(uiBanner.ceremonyText, A.DisplayName),
+		`{tostring(uiBanner.ceremonyVisible)}, "{tostring(uiBanner.ceremonyText)}"`
+	)
+	check(
+		"M7.3 A's record: 1 Crown, 0 stars",
+		dataA.crown.crowns == 1 and dataA.crown.stars == 0,
+		`{dataA.crown.crowns}, {dataA.crown.stars}`
+	)
+	check(
+		"M7.3 A's Crowns and Stars attributes read 1 and 0",
+		A:GetAttribute("Crowns") == 1 and A:GetAttribute("Stars") == 0,
+		`{tostring(A:GetAttribute("Crowns"))}, {tostring(A:GetAttribute("Stars"))}`
+	)
+	check(
+		"M7.3 A's CrownTag reads Crowned",
+		waitFor(function()
+			return m7.tagText(A) == "Crowned"
+		end, 3),
+		`"{m7.tagText(A)}"`
+	)
+	check(
+		"M7.3 A wears a circlet of 6 points and no gem",
+		m7.circlet(A, "CircletPoint") == 6 and m7.circlet(A, "CircletGem") == 0,
+		`{m7.circlet(A, "CircletPoint")} points, {m7.circlet(A, "CircletGem")} gems`
+	)
+	check(
+		"M7.3 a CrownLight stands in Effects",
+		waitFor(function()
+			local effects = workspace:FindFirstChild("Effects")
+			return effects ~= nil and effects:FindFirstChild("CrownLight") ~= nil
+		end, 2)
+	)
+	local crownLine = "Crowned. You may Renounce at the Tally Stone in Tallyport."
+	local uiA = inspectUntil(A, function(snapshot)
+		return snapshot.crownLine == crownLine and snapshot.stonePromptEnabled == true
+	end)
+	check(
+		"M7.3 A's book says how to Renounce and the stone's prompt is on",
+		uiA.crownLine == crownLine and uiA.stonePromptEnabled == true,
+		`"{tostring(uiA.crownLine)}", prompt {tostring(uiA.stonePromptEnabled)}`
+	)
+	local uiB = inspect(B)
+	check(
+		"M7.3 B's stone prompt is off",
+		uiB.stonePromptEnabled == false,
+		tostring(uiB.stonePromptEnabled)
+	)
+	check(
+		"M7.3 A's complete Ledger steps aside: no R050 is held",
+		SourceService.held("R050") == 0,
+		tostring(SourceService.held("R050"))
+	)
+
+	--------------------------------------------------------------------------- M7.4 one Crown per run
+	mA, mB = mark(A), mark(B)
+	fire(A, "ledger", { kind = "unclaim", cardId = "R050" })
+	expectNote("M7.4 A unclaims R050: UNCLAIMED", A, mA, "UNCLAIMED")
+	fire(A, "ledger", { kind = "claim", freeIndex = 1, cardId = "R050" })
+	expectNote("M7.4 A claims it again: CLAIMED", A, mA, "CLAIMED")
+	task.wait(2)
+	check(
+		"M7.4 no second Crown: no new LEDGER_COMPLETE or CROWNED_YOU",
+		noteSince(A, mA, "LEDGER_COMPLETE") == nil
+			and noteSince(A, mA, "CROWNED_YOU") == nil
+			and noteSince(B, mB, "LEDGER_COMPLETE") == nil,
+		`A got {codesSince(A, mA)}, B got {codesSince(B, mB)}`
+	)
+	check(
+		"M7.4 A still has 1 Crown",
+		dataA.crown.crowns == 1 and dataA.crown.stars == 0,
+		`{dataA.crown.crowns}, {dataA.crown.stars}`
+	)
+
+	--------------------------------------------------------------------------- M7.5 board and badge
+	local writeable = m7.writeable(A)
+	local wanted = if writeable then 1 else 0
+	if writeable then
+		waitFor(function()
+			return #fake.writes >= 1 and dataA.crown.boardCrowns == 1
+		end, 6)
+	else
+		task.wait(4)
+	end
+	check(
+		"M7.5 the board is written once for A, one Crown (never for a test player's id)",
+		#fake.writes == wanted
+			and (not writeable or (fake.writes[1][1] == A.UserId and fake.writes[1][2] == 1))
+			and dataA.crown.boardCrowns == wanted,
+		`{#fake.writes} writes, boardCrowns {dataA.crown.boardCrowns}`
+	)
+	LeaderboardService.refreshNow()
+	local view = LeaderboardService.board()
+	local row1 = `1. {A.Name}: Crowned`
+	check(
+		"M7.5 the board reads The Crowned, All time, every server, A first",
+		view.title == "The Crowned"
+			and view.subtitle == "All time, every server"
+			and #view.rows == 1
+			and view.rows[1] == row1,
+		`{view.title} / {view.subtitle} / {table.concat(view.rows, " | ")}`
+	)
+	check("M7.5 the board is online", LeaderboardService.isOnline())
+	check(
+		"M7.5 the Tally Stone's first row matches",
+		m7.stoneRow(1) == view.rows[1],
+		`"{m7.stoneRow(1)}"`
+	)
+	task.wait(3)
+	check("M7.5 still the same writes 3 seconds on", #fake.writes == wanted, tostring(#fake.writes))
+	local badges = m7.badgeCalls
+	check(
+		"M7.5 the badge was awarded once: A, 4242",
+		waitFor(function()
+			return #badges >= 1
+		end, 3)
+			and #badges == 1
+			and badges[1][1] == A.UserId
+			and badges[1][2] == 4242,
+		`{#badges} calls`
+	)
+	check(
+		"M7.5 A's record says the badge was awarded",
+		waitFor(function()
+			return dataA.crown.badgeAwarded == true
+		end, 2)
+	)
+	fake.failing = true
+	LeaderboardService.refreshNow()
+	local failView = LeaderboardService.board()
+	check(
+		"M7.5 with the store failing the stone says this server only",
+		failView.subtitle == "This server only: the all-time records cannot be reached"
+			and failView.rows[1] == row1
+			and not LeaderboardService.isOnline(),
+		`{failView.subtitle} / {table.concat(failView.rows, " | ")}`
+	)
+	fake.failing = false
+	LeaderboardService.refreshNow()
+end
+
+-- M7.6 to M7.11: Renounce refusals, the two-step confirm, Renouncing, a second Crown, no badge
+-- without an id, a Marked Claimant, and the Crown Warden.
+local function runM7Renounce(A: Player, B: Player)
+	local dataA = DataService.get(A)
+	local fake = m7.fake
+	local writeable = m7.writeable(A)
+	local stoneFace = Vector3.new(0, 3, 32)
+
+	--------------------------------------------------------------------------- M7.6 refusals
+	put(A, OUTSIDE, OUTSIDE_2)
+	local code = CrownService.beginRenounce(A)
+	check("M7.6 A outside town: RENOUNCE_NOT_IN_TOWN", code == "RENOUNCE_NOT_IN_TOWN", code)
+	check("M7.6 and no offer opens", CrownService.offer(A) == nil)
+	put(B, STONE_FRONT, stoneFace)
+	code = CrownService.beginRenounce(B)
+	check(
+		"M7.6 B at the stone with no Crown: RENOUNCE_NOT_READY",
+		code == "RENOUNCE_NOT_READY",
+		code
+	)
+	local mA = mark(A)
+	check("M7.6 setup: A starts the Grand Tally", acceptTrial(A, "grand_tally"), codesSince(A, mA))
+	code = CrownService.beginRenounce(A)
+	check("M7.6 A in a trial: EDICT_IN_TRIAL", code == "EDICT_IN_TRIAL", code)
+	mA = mark(A)
+	clockSkip += 400
+	expectNote("M7.6 the trial runs out of time: TRIAL_FAILED_TIME", A, mA, "TRIAL_FAILED_TIME", 4)
+	check(
+		"M7.6 no trial is left running",
+		waitFor(function()
+			return TrialService.run(A) == nil
+		end, 3)
+	)
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+	check("M7.6 setup: A and B open a trade", openTrade(A, B))
+	code = CrownService.beginRenounce(A)
+	check("M7.6 A in a trade: RENOUNCE_TRADING", code == "RENOUNCE_TRADING", code)
+	mA = mark(A)
+	fire(B, "trade", { kind = "cancel" })
+	expectNote("M7.6 B cancels: A gets TRADE_CANCELLED", A, mA, "TRADE_CANCELLED")
+	check(
+		"M7.6 no trade is left",
+		waitFor(function()
+			return TradeService.session(A) == nil
+		end, 3)
+	)
+
+	--------------------------------------------------------------------------- M7.7 the two-step confirm
+	put(A, STONE_FRONT, stoneFace)
+	put(B, B_TOWN, IN_TOWN)
+	renounceOffers[A] = nil
+	send(A, "renouncePrompt")
+	check(
+		"M7.7 holding the stone's prompt opens the offer: 5 lines, 60 seconds",
+		waitFor(function()
+			local offer = renounceOffers[A]
+			return type(offer) == "table"
+		end, 6)
+			and #renounceOffers[A].lines == 5
+			and renounceOffers[A].seconds == 60,
+		typeof(renounceOffers[A])
+	)
+	check("M7.7 the server keeps the offer", CrownService.offer(A) ~= nil)
+	local uiOffer = inspectUntil(A, function(snapshot)
+		return snapshot.renounceVisible == true
+	end)
+	check("M7.7 A's Renounce window is open", uiOffer.renounceVisible == true)
+
+	mA = mark(A)
+	fire(A, "renounce", { kind = "confirm", word = "renounce please" })
+	expectNote("M7.7 a wrong word: RENOUNCE_WORD", A, mA, "RENOUNCE_WORD")
+	mA = mark(A)
+	fire(A, "renounce", { kind = "confirm", word = 5 })
+	expectNote("M7.7 a number for the word: RENOUNCE_WORD", A, mA, "RENOUNCE_WORD")
+	mA = mark(A)
+	fire(A, "renounce", nil)
+	expectNote("M7.7 hostile nil: BAD_REQUEST", A, mA, "BAD_REQUEST")
+	for _, bad in { "x", {}, { kind = "steal" } } :: { any } do
+		mA = mark(A)
+		fire(A, "renounce", bad)
+		expectNote(`M7.7 hostile {typeof(bad)}: BAD_REQUEST`, A, mA, "BAD_REQUEST")
+	end
+	check(
+		"M7.7 after all that A's Ledger is complete and the offer still stands",
+		m7.isComplete(A) and CrownService.offer(A) ~= nil
+	)
+	local mB = mark(B)
+	fire(B, "renounce", { kind = "confirm", word = "RENOUNCE" })
+	expectNote("M7.7 B with no offer: RENOUNCE_NO_OFFER", B, mB, "RENOUNCE_NO_OFFER")
+	mA = mark(A)
+	fire(A, "renounce", { kind = "cancel" })
+	expectNote("M7.7 A cancels: RENOUNCE_CANCELLED", A, mA, "RENOUNCE_CANCELLED")
+	check(
+		"M7.7 the offer is gone on the server and on the screen",
+		CrownService.offer(A) == nil
+			and waitFor(function()
+				return renounceOffers[A] == false
+			end, 3),
+		tostring(renounceOffers[A])
+	)
+	mA = mark(A)
+	fire(A, "renounce", { kind = "confirm", word = "RENOUNCE" })
+	expectNote("M7.7 a confirm after cancelling: RENOUNCE_NO_OFFER", A, mA, "RENOUNCE_NO_OFFER")
+	code = CrownService.beginRenounce(A)
+	check("M7.7 setup: a new offer opens", code == "RENOUNCE_OFFER", code)
+	CrownService.setClock(function()
+		return os.clock() + 61
+	end)
+	mA = mark(A)
+	fire(A, "renounce", { kind = "confirm", word = "RENOUNCE" })
+	expectNote("M7.7 a confirm after 61 seconds: RENOUNCE_EXPIRED", A, mA, "RENOUNCE_EXPIRED")
+	CrownService.setClock(os.clock)
+	check(
+		"M7.7 an expired offer changed nothing",
+		m7.isComplete(A) and CrownService.offer(A) == nil
+	)
+
+	--------------------------------------------------------------------------- M7.8 Renounce
+	LedgerService.set(A, { claimed = m7.claimedExcept(nil), free = { "E001", "R001" } })
+	LedgerService.setVault(A, { R007 = true })
+	setCoin(A, 500)
+	local cooldownAt = os.time() + realSkip + 200
+	dataA.trials = { cooldowns = { tidewalk = cooldownAt }, questStep = 2 }
+	dataA.rounds = { wardens = { "tidewalk" }, beasts = { "brinehound" } }
+	local xpBefore = table.clone(PathService.get(A).xp)
+	local shieldBefore = dataA.shieldEnded
+	renounceOffers[A] = nil
+	send(A, "renouncePrompt")
+	check(
+		"M7.8 setup: the offer opens again",
+		waitFor(function()
+			return type(renounceOffers[A]) == "table"
+		end, 6),
+		typeof(renounceOffers[A])
+	)
+	mA, mB = mark(A), mark(B)
+	fire(A, "renounce", { kind = "confirm", word = "  renounce " })
+	expectNote("M7.8 A Renounces: RENOUNCE_DONE", A, mA, "RENOUNCE_DONE")
+	local renounced = expectNote("M7.8 B hears RENOUNCED", B, mB, "RENOUNCED")
+	check("M7.8 the message names A", m7.names(renounced, A))
+	local ledgerA = LedgerService.get(A)
+	check(
+		"M7.8 A's Ledger is empty",
+		ledgerA ~= nil and Ledger.claimedCount(ledgerA) == 0 and #ledgerA.free == 0
+	)
+	check("M7.8 A's Vault is empty", next(LedgerService.getVault(A) or { x = true }) == nil)
+	check("M7.8 A keeps 500 Coin", coinOf(A) == 500, tostring(coinOf(A)))
+	local xpKept = true
+	local xpNow = PathService.get(A).xp
+	for path, xp in xpBefore do
+		if xpNow[path] ~= xp then
+			xpKept = false
+		end
+	end
+	for path, xp in xpNow do
+		if xpBefore[path] ~= xp then
+			xpKept = false
+		end
+	end
+	check("M7.8 A keeps every Path's XP", xpKept)
+	check(
+		"M7.8 the Unpaid Debt starts again and the Tidewalk cooldown is kept",
+		dataA.trials.questStep == 0 and dataA.trials.cooldowns.tidewalk == cooldownAt,
+		`step {dataA.trials.questStep}, cooldown {tostring(dataA.trials.cooldowns.tidewalk)}`
+	)
+	check("M7.8 both rounds start again", m7.roundsEmpty(dataA.rounds))
+	local boardWanted = if writeable then 1 else 0
+	check(
+		"M7.8 the record: 1 Crown, 1 star, board and badge kept",
+		dataA.crown.crowns == 1
+			and dataA.crown.stars == 1
+			and dataA.crown.boardCrowns == boardWanted
+			and dataA.crown.badgeAwarded == true,
+		`{dataA.crown.crowns}, {dataA.crown.stars}, {dataA.crown.boardCrowns}, {tostring(
+			dataA.crown.badgeAwarded
+		)}`
+	)
+	check("M7.8 A's Stars attribute reads 1", A:GetAttribute("Stars") == 1)
+	local starTitle = "Crowned " .. m7.star .. "1"
+	check(
+		"M7.8 A's CrownTag reads Crowned with a star",
+		waitFor(function()
+			return m7.tagText(A) == starTitle
+		end, 3),
+		`"{m7.tagText(A)}"`
+	)
+	check(
+		"M7.8 the circlet has 1 gem",
+		m7.circlet(A, "CircletGem") == 1,
+		tostring(m7.circlet(A, "CircletGem"))
+	)
+	local uiDone = inspectUntil(A, function(snapshot)
+		return snapshot.renounceVisible == false
+	end)
+	check(
+		"M7.8 the offer is cleared and the window is closed",
+		renounceOffers[A] == false and uiDone.renounceVisible == false,
+		`{tostring(renounceOffers[A])}, {tostring(uiDone.renounceVisible)}`
+	)
+	local questLine = "The Unpaid Debt: 0 / 4, next: Tidewalk"
+	local uiQuest = inspectUntil(A, function(snapshot)
+		return m7.hudHas(snapshot, questLine)
+	end)
+	check(
+		"M7.8 A's trial HUD reads The Unpaid Debt: 0 / 4, next: Tidewalk",
+		m7.hudHas(uiQuest, questLine),
+		table.concat(uiQuest.trialLines or {}, " | ")
+	)
+	check(
+		"M7.8 A's new-player shield flag is unchanged and true",
+		dataA.shieldEnded == shieldBefore and dataA.shieldEnded == true,
+		tostring(dataA.shieldEnded)
+	)
+
+	--------------------------------------------------------------------------- M7.9 a second Crown
+	ceremonies[B] = nil
+	mA, mB = mark(A), mark(B)
+	LedgerService.set(A, { claimed = m7.claimedExcept(nil), free = {} })
+	local second = expectNote("M7.9 A is Crowned again: CROWNED_YOU", A, mA, "CROWNED_YOU")
+	local twice = "Crowned twice " .. m7.star .. "1"
+	check(
+		"M7.9 the title is Crowned twice with a star",
+		second ~= nil and second.args ~= nil and second.args.title == twice,
+		if second ~= nil and second.args ~= nil then tostring(second.args.title) else "none"
+	)
+	expectNote("M7.9 B hears LEDGER_COMPLETE", B, mB, "LEDGER_COMPLETE")
+	check(
+		"M7.9 B's banner counts 2 Crowns",
+		waitFor(function()
+			return m7.ceremonyIs(ceremonies[B], A, 2)
+		end, 3),
+		typeof(ceremonies[B])
+	)
+	check("M7.9 A has 2 Crowns", dataA.crown.crowns == 2, tostring(dataA.crown.crowns))
+	check(
+		"M7.9 A's CrownTag reads Crowned twice with a star",
+		waitFor(function()
+			return m7.tagText(A) == twice
+		end, 3),
+		`"{m7.tagText(A)}"`
+	)
+	if writeable then
+		check(
+			"M7.9 the board gets A's second Crown",
+			waitFor(function()
+				return #fake.writes >= 2
+			end, 6)
+				and fake.writes[2][1] == A.UserId
+				and fake.writes[2][2] == 2,
+			`{#fake.writes} writes`
+		)
+	else
+		task.wait(3)
+		check(
+			"M7.9 the board gets A's second Crown (never for a test player's id)",
+			#fake.writes == 0,
+			`{#fake.writes} writes`
+		)
+	end
+	check("M7.9 the badge is not awarded twice", #m7.badgeCalls == 1, `{#m7.badgeCalls} calls`)
+
+	--------------------------------------------------------------------------- M7.10 no badge without an id, and Marked
+	local lateBadges = {}
+	CrownService.setBadge(0, function(userId, badgeId)
+		table.insert(lateBadges, { userId, badgeId })
+		return true
+	end)
+	mB = mark(B)
+	LedgerService.set(B, { claimed = m7.claimedExcept(nil), free = {} })
+	expectNote("M7.10 B is Crowned: CROWNED_YOU", B, mB, "CROWNED_YOU")
+	task.wait(1.5)
+	check("M7.10 with badge id 0 nothing is awarded", #lateBadges == 0, `{#lateBadges} calls`)
+	ProtectionService.mark(B, os.clock())
+	put(A, IN_TOWN, B_TOWN)
+	put(B, STONE_FRONT, stoneFace)
+	code = CrownService.beginRenounce(B)
+	check("M7.10 a Marked B at the stone: EDICT_MARKED", code == "EDICT_MARKED", code)
+
+	--------------------------------------------------------------------------- M7.11 the Crown Warden
+	local offer = talkTo(A, "grand_tally")
+	check(
+		"M7.11 the Crown Warden offers The Grand Tally and its Crown Relic",
+		offer.title == "The Grand Tally"
+			and offer.relicText == "Relic: The Orb of Every Shore (Crown)",
+		`{tostring(offer.title)}, {tostring(offer.relicText)}`
+	)
+	local uiGrand = inspectUntil(A, function(snapshot)
+		return snapshot.offerVisible == true
+	end)
+	check(
+		"M7.11 the window shows it with Accept on",
+		uiGrand.offerVisible == true and uiGrand.acceptActive == true,
+		`{tostring(uiGrand.offerTitle)}, {tostring(uiGrand.offerRelic)}`
+	)
+	send(A, "closeOffer")
+	setFree(B, { "R049" }, LedgerService.get(B).claimed)
+	local sealedOffer = talkTo(A, "grand_tally")
+	check(
+		"M7.11 with a copy held, the offer reads sealed on this server",
+		has(sealedOffer.relicText, "sealed on this server"),
+		tostring(sealedOffer.relicText)
+	)
+	send(A, "closeOffer")
+end
+
+-- M7.12 to M7.15: the Gilded Bailiff and the Beast Tally, regeneration, the rounds line, and a
+-- Crowned title in the party panel.
+local function runM7Endgame(A: Player, B: Player)
+	local dataA = DataService.get(A)
+
+	--------------------------------------------------------------------------- M7.12 the Gilded Bailiff
+	LedgerService.set(A, Ledger.new())
+	dataA.rounds.beasts = { "brinehound", "shellback", "bogspitter", "brine_colossus" }
+	check("M7.12 setup: the Gilded Bailiff at 15 health", freshCreature(BAILIFF, 15))
+	heal(A)
+	local coinBefore = coinOf(A)
+	local mA, mB = mark(A), mark(B)
+	strikeCreature(A, BAILIFF)
+	local defeated = nil
+	waitFor(function()
+		defeated = noteWith(A, mA, "CREATURE_DEFEATED", "coin", "120")
+		return defeated ~= nil
+	end, 4)
+	check("M7.12 A is told the Bailiff is defeated: 120 Coin", defeated ~= nil, codesSince(A, mA))
+	check(
+		"M7.12 A gets the Gilded Sceptre although B's Ledger holds one claimed",
+		waitFor(function()
+			return hasFree(A, "R048")
+		end, 3),
+		`{freeText(A)}; A got {codesSince(A, mA)}`
+	)
+	check("M7.12 but not the 30% drop on a roll of 0.5", not hasFree(A, "R041"), freeText(A))
+	local roundDone = nil
+	waitFor(function()
+		roundDone = noteWith(A, mA, "ROUND_COMPLETE", "name", "The Beast Tally")
+		return roundDone ~= nil
+	end, 4)
+	check(
+		"M7.12 the Beast Tally is complete: 250 Coin",
+		roundDone ~= nil and roundDone.args.coin == "250",
+		codesSince(A, mA)
+	)
+	check("M7.12 A has the Menagerie Ledger and the round starts again", waitFor(function()
+		return hasFree(A, "R047")
+	end, 3) and #dataA.rounds.beasts == 0, `{freeText(A)}; beasts {#dataA.rounds.beasts}`)
+	check(
+		"M7.12 A was paid 120 and 250 Coin",
+		coinOf(A) == coinBefore + 370,
+		`{coinBefore} -> {coinOf(A)}`
+	)
+	check(
+		"M7.12 B, who did not hit it, hears nothing of it",
+		noteSince(B, mB, "CREATURE_DEFEATED") == nil
+	)
+
+	--------------------------------------------------------------------------- M7.13 regeneration
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+	heal(A)
+	task.wait(0.5)
+	local humanoid = humanoidOf(A)
+	if humanoid ~= nil then
+		humanoid.Health = 50
+	end
+	local startedAt = os.clock()
+	local hurt = health(A)
+	task.wait(5)
+	local early = health(A)
+	check(
+		"M7.13 5 seconds after a loss no health has come back",
+		early <= hurt + 0.01,
+		`{fmt(hurt)} -> {fmt(early)}`
+	)
+	task.wait(math.max(0, startedAt + 14 - os.clock()))
+	local later = health(A)
+	check(
+		"M7.13 14 seconds after it, health is coming back",
+		later >= hurt + 2,
+		`{fmt(hurt)} -> {fmt(later)}`
+	)
+
+	--------------------------------------------------------------------------- M7.14 the rounds line
+	local roundsLine = "Warden's Round 0 / 9, Beast Tally 0 / 5"
+	local uiRounds = inspectUntil(A, function(snapshot)
+		local lines = snapshot.trialLines or {}
+		return lines[#lines] == roundsLine
+	end)
+	local lines = uiRounds.trialLines or {}
+	check(
+		"M7.14 the trial HUD ends with the rounds line",
+		lines[#lines] == roundsLine,
+		table.concat(lines, " | ")
+	)
+
+	--------------------------------------------------------------------------- M7.15 the title in the party panel
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+	partyInvites[B] = nil
+	send(A, "partyRequest")
+	local invited = waitFor(function()
+		return type(partyInvites[B]) == "table"
+	end, 3)
+	task.wait(0.3)
+	send(B, "partyReply", true)
+	check("M7.15 setup: A and B form a party", invited and waitFor(function()
+		return PartyService.party(A) ~= nil and PartyService.party(B) ~= nil
+	end, 3))
+	local twice = "Crowned twice " .. m7.star .. "1"
+	local function titleOfA(snapshot): string?
+		for _, row in snapshot.partyRows or {} do
+			if has(row.name, A.DisplayName) then
+				return row.title
+			end
+		end
+		return nil
+	end
+	local uiParty = inspectUntil(B, function(snapshot)
+		return titleOfA(snapshot) == twice
+	end)
+	check(
+		"M7.15 B's party panel shows A as Crowned twice with a star",
+		titleOfA(uiParty) == twice,
+		tostring(titleOfA(uiParty))
+	)
+	fire(A, "party", { kind = "leave" })
+	waitFor(function()
+		return PartyService.party(A) == nil and PartyService.party(B) == nil
+	end, 3)
+end
+
+-- The endgame: Crowning, the board and badge, Renounce, the Crown Relics, regeneration.
+local function runM7(A: Player, B: Player)
+	waitAlive(A)
+	waitAlive(B)
+	local dataA, dataB = DataService.get(A), DataService.get(B)
+	m7.shieldEnded = dataB.shieldEnded
+	-- Both players are still Marked and inside the 30-second fight window from earlier
+	-- sections, which would refuse trades and Renounce.
+	ProtectionService.endRespawnShield(A)
+	ProtectionService.endRespawnShield(B)
+	ProtectionService.endMark(A)
+	ProtectionService.endMark(B)
+	waitNoFight(A)
+	waitNoFight(B)
+	CreatureService.setActive({})
+	CreatureService.setRng(function()
+		return 0.5
+	end)
+	TrialService.setClocks(function()
+		return os.clock() + clockSkip
+	end, function()
+		return os.time() + realSkip
+	end)
+	CrownService.setClock(os.clock)
+	heal(A)
+	heal(B)
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+	for _, player in { A, B } do
+		local data = DataService.get(player)
+		LedgerService.set(player, Ledger.new())
+		data.crown = Crown.newRecord()
+		data.rounds = Rounds.new()
+		data.trials = { cooldowns = {}, questStep = 0 }
+		CrownService.refresh(player)
+		setCoin(player, 500)
+	end
+	-- The stand-in board starts empty; the real one is never touched.
+	m7.fake.writes, m7.fake.rows, m7.fake.failing = {}, {}, false
+	LeaderboardService.setBackend(m7.backend)
+	LeaderboardService.refreshNow()
+	m7.badgeCalls = {}
+	local badgeCalls = m7.badgeCalls
+	CrownService.setBadge(4242, function(userId, badgeId)
+		table.insert(badgeCalls, { userId, badgeId })
+		return true
+	end)
+	check(
+		"M7 setup: both players start with an empty Ledger, no Crown and 500 Coin",
+		Ledger.claimedCount(LedgerService.get(A)) == 0
+			and dataA.crown.crowns == 0
+			and dataB.crown.crowns == 0
+			and coinOf(A) == 500
+			and coinOf(B) == 500
+	)
+
+	runM7World(A, B)
+	runM7Renounce(A, B)
+	runM7Endgame(A, B)
+end
+
 local function run()
 	log("waiting for 2 players")
 	if not waitFor(function()
@@ -2868,6 +3783,10 @@ local function run()
 	end)
 	local A, B = list[1], list[2]
 	log(`A = {A.Name} ({A.UserId}), B = {B.Name} ({B.UserId})`)
+	-- A stand-in board for the whole run: M1.11 Crowns A, and the real data store must not
+	-- be written. A round may be in flight, so redraw once the swap is made.
+	LeaderboardService.setBackend(m7.backend)
+	LeaderboardService.refreshNow()
 	check(
 		"both players' data loads",
 		waitFor(function()
@@ -4321,6 +5240,37 @@ local function run()
 	task.wait(0.4)
 	waitAlive(A)
 	waitAlive(B)
+
+	--------------------------------------------------------------------------- M7 the endgame
+	-- In its own protected call, like M4 to M6.
+	local m7Ok, m7Err = xpcall(runM7, debug.traceback, A, B)
+	check("M7 section ran to its end", m7Ok, tostring(m7Err))
+	-- Put back what M7 changed, even when it stopped half way: the board and badge stand-ins,
+	-- the clocks, the creature rolls, B's new-player shield, and any trade or party (M2.15
+	-- needs A and B in none).
+	m7.fake.failing = false
+	LeaderboardService.setBackend(nil)
+	LeaderboardService.refreshNow()
+	CrownService.setBadge(LaunchConfig.CROWNED_BADGE_ID, nil)
+	CrownService.setClock(os.clock)
+	TrialService.setClocks(os.clock, os.time)
+	CreatureService.setActive({})
+	CreatureService.setRng(math.random)
+	local dataAfterM7 = DataService.get(B)
+	if dataAfterM7 ~= nil and m7.shieldEnded ~= nil then
+		dataAfterM7.shieldEnded = m7.shieldEnded
+	end
+	ProtectionService.endMark(B)
+	send(A, "trade", { kind = "cancel" })
+	send(B, "trade", { kind = "cancel" })
+	send(B, "party", { kind = "leave" })
+	task.wait(0.4)
+	send(A, "party", { kind = "leave" })
+	task.wait(0.4)
+	waitAlive(A)
+	waitAlive(B)
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
 
 	--------------------------------------------------------------------------- M2.15 combat log (ends B)
 	waitAlive(A)

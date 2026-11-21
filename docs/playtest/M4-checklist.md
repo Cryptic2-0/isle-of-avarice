@@ -1,6 +1,6 @@
 # Play-test checklist for milestone 4
 
-Milestone 4 adds creatures and trials. Beasts live at dens out in the wild regions, fight back, and pay Coin, Path XP and sometimes a Relic to everyone who helped defeat them. Six Wardens, one at each region's gate, offer timed trials. Three of the trials and one great beast make up a quest, The Unpaid Debt. The Ledger had 30 slots at this milestone (50 since milestone 7).
+Milestone 4 adds creatures and trials. Beasts live at dens out in the wild regions, fight back, and pay Coin, Path XP and sometimes a Relic to everyone who helped defeat them. Six Wardens, one at each region's gate, offer timed trials (milestone 7 adds four more Wardens; see `docs/playtest/M7-checklist.md`). Three of the trials and one great beast make up a quest, The Unpaid Debt. The Ledger had 30 slots at this milestone (50 since milestone 7).
 
 Some steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
@@ -11,7 +11,7 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 fai
 - **Gate**: where a region's road leaves the Counting Fields, about 300 studs from Tallyport. A signpost names the region. The Warden stands to the right of the road as you walk out; the region's Copper cache is to the left.
 - **Den**: a dark round patch of ground with a label such as "Brinehound den". Its creatures stay near it.
 - **Coin line**: the gold line "Coin: …" at the top left, above the status lines.
-- **Trial HUD**: the lines at the top right. The last one is always the quest line, for example "The Unpaid Debt: 0 / 4, next: Tidewalk".
+- **Trial HUD**: the lines at the top right. The last one is the rounds line ("Warden's Round 0 / 9, Beast Tally 0 / 5") and the one above it is the quest line, for example "The Unpaid Debt: 0 / 4, next: Tidewalk".
 - Messages appear at the top of the screen. When several arrive together they now show one after another instead of replacing each other.
 
 ## Where things are

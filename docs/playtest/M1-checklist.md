@@ -55,7 +55,7 @@ Pillar colours show how rare a Relic is: copper (brown-orange) is common, silver
     - What to do: first claim or discard some spares, so your free slots are not full. Otherwise opening caches will fail with "Your free slots are full." Then claim Relics 1 to 12. They come from the first 18 caches on the island. The six copper Relics come from the six copper caches in the Counting Fields. The six rarer Relics (three silver, two gold and one platinum) are the prize caches out in the wild regions, each one behind a hazard. The platinum one has a pale white-blue pillar. Step 14 of `docs/playtest/World-checklist.md` lists where each prize cache is and how to get to it. The other six caches, one just past each signpost, hold copper Relics too.
     - What should happen: the top of the book says "Relics: 12 / 50". Since milestone 7 the Ledger has 50 slots: Relics 13 to 50 come from trials, creatures, a quest, the shop, and thirteen more caches (six more in milestone 4 and seven more in milestone 7; see `docs/playtest/M4-checklist.md`). Only when all 50 are claimed does the book say "Relics: 50 / 50 (complete!)" and every player see the message "(your name) has claimed every Relic and is Crowned!". The automated play test checks that message.
 
-12. **Check saving** (only if you did "How to make saving work" in the README)
+12. **Check saving** (only if you did step 2 of "How to publish" in the README)
     - What to do: stop the game, then press Play again.
     - What should happen: your Ledger is as you left it.
 

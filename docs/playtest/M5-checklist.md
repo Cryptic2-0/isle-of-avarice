@@ -17,7 +17,7 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=448 fai
 
 1. **The clerk and the shop window**
    - What to do: start a test. Walk to the clerk in Tallyport and press E on "Shop".
-   - What should happen: a window titled "Edict Hall" opens. The top right shows your Coin, for example "Coin: 0". Below it are the line "Edict pack: 3 Edicts for 60 Coin" and, under it, the odds: "Each card: Summons 25%, Audit 20%, Veil 20%, Passage 15%, Homecoming 20%". The odds can be read. There is a "Relics for sale" list of the Relics the clerk stocks (the seven in `Shop.stock`: six Copper Relics and the Clerk's Brass Receipt) at 40 Coin each, a list "Sell a free-slot card", and a "Close" button. Buy buttons you cannot afford are dimmed. While the window is open, clicking does not Strike.
+   - What should happen: a window titled "Edict Hall" opens. The top right shows your Coin, for example "Coin: 0". Below it are the line "Edict pack: 3 Edicts for 60 Coin" and, under it, the odds: "Each card: Summons 25%, Audit 20%, Veil 20%, Passage 15%, Homecoming 20%". The odds can be read. There is a "Relics for sale" list of the Relics the clerk stocks (the seven Copper Relics in `Shop.stock`: the six of the Counting Fields and the Clerk's Brass Receipt) at 40 Coin each, a list "Sell a free-slot card", and a "Close" button. Buy buttons you cannot afford are dimmed. While the window is open, clicking does not Strike.
 
 2. **Buying a pack**
    - What to do: earn at least 60 Coin (for example by defeating a few Brinehounds), open the shop and press the pack's "Buy" button.
