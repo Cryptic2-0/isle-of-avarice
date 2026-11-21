@@ -391,6 +391,12 @@ local function handleAction(player: Player, raw: any)
 		rounds = data.rounds,
 	})
 	if not LedgerService.set(player, out.ledger) then
+		-- The data went away; drop the offer, and tell the client if it is still there.
+		if player.Parent == Players then
+			closeOffer(player)
+		else
+			offers[player] = nil
+		end
 		LedgerService.notify(player, "DATA_NOT_LOADED")
 		return
 	end

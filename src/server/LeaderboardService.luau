@@ -203,6 +203,9 @@ end
 local function runRound()
 	busy = true
 	local ok, err = pcall(function()
+		-- Draw what this server knows first, so a new Crown shows at once; the store calls
+		-- below can be slow and only refine the board.
+		drawPass()
 		writePass()
 		readPass()
 		drawPass()

@@ -243,7 +243,13 @@ function RenounceUI.show(offer: { lines: { string }, seconds: number }?)
 	frame.Visible = true
 	task.spawn(function()
 		while serial == mine and frame.Visible do
-			timer.Text = "Ends in " .. clock(deadline - os.clock())
+			local left = deadline - os.clock()
+			timer.Text = "Ends in " .. clock(left)
+			if left <= 0 then
+				-- The server dropped the offer at the same moment.
+				frame.Visible = false
+				break
+			end
 			task.wait(0.25)
 		end
 	end)
