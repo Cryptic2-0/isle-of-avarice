@@ -3012,6 +3012,21 @@ local function runM7World(A: Player, B: Player)
 	do
 		local caches = #CollectionService:GetTagged("Cache")
 		check("M7.1 31 caches are tagged", caches == 31, tostring(caches))
+		-- Den creatures defeated earlier in the run may still be on their respawn timers (the
+		-- Brine Colossus, defeated in M4.12, takes 600 s). Bring each of them back with the
+		-- seam first, so the count checks the world, not how long ago a check ran.
+		local waiting = {}
+		for _, slot in World.creatureSlots do
+			local info = CreatureService.info(slot.id)
+			if info == nil or not info.alive then
+				table.insert(waiting, `{slot.id} {slot.kind}`)
+				CreatureService.respawn(slot.id)
+			end
+		end
+		if #waiting > 0 then
+			log(`M7.1 respawned den creatures still on their timers: {table.concat(waiting, ", ")}`)
+			task.wait(0.5)
+		end
 		local models = 0
 		for _, model in CollectionService:GetTagged("Creature") do
 			if model:IsDescendantOf(workspace) then
@@ -3073,6 +3088,9 @@ local function runM7World(A: Player, B: Player)
 		local m = mark(A)
 		local code = SourceService.tryOpen(A, "C029")
 		check("M7.2 opening C029 with no hold: HOLD_TOO_SHORT", code == "HOLD_TOO_SHORT", code)
+		-- The seam also tells A, and A's agent echoes that message back a moment later. Wait
+		-- for the echo, or it lands after the next mark and reads as the prompt's answer.
+		expectNote("M7.2 A is told HOLD_TOO_SHORT", A, m, "HOLD_TOO_SHORT")
 		check(
 			"M7.2 and A's free slots are unchanged",
 			freeText(A) == freeBefore and not hasFree(A, "R044"),
