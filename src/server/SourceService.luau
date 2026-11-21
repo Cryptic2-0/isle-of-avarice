@@ -9,6 +9,7 @@ local World = require(ReplicatedStorage.Shared.Catalog.World)
 local Scarcity = require(ReplicatedStorage.Shared.Rules.Scarcity)
 local Sources = require(ReplicatedStorage.Shared.Rules.Sources)
 local DataService = require(script.Parent.DataService)
+local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
 
 local SourceService = {}
@@ -119,7 +120,8 @@ type Hold = { began: number, ended: number? }
 local state: Sources.SourceState = Sources.new(World.caches)
 local cacheParts: { BasePart } = {}
 -- part -> player -> when they started holding the prompt and when they let go. Cleared on every
--- trigger and when the player leaves.
+-- trigger, when the player leaves, dies, respawns or goes out of reach, and for the whole part
+-- when it opens.
 local holds: { [BasePart]: { [Player]: Hold } } = {}
 
 local function refreshSealed()
@@ -172,6 +174,8 @@ local function open(player: Player, part: BasePart): string
 		return "DATA_NOT_LOADED"
 	end
 	state = newState
+	-- The cache is empty now: nobody's hold on it counts for the next opening.
+	holds[part] = nil
 	local relic = Relics.byId[cache.relicId]
 	LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
 
@@ -189,6 +193,28 @@ function SourceService.tryOpen(player: Player, cacheId: string): string
 		end
 	end
 	return "CACHE_EMPTY"
+end
+
+local function dropHolds(player: Player)
+	for _, byPlayer in holds do
+		byPlayer[player] = nil
+	end
+end
+
+-- Drops a hold once the player is dead, gone or out of reach of the part.
+local function sweepHolds()
+	for part, byPlayer in holds do
+		for player in byPlayer do
+			local _, root = Fighters.body(player.UserId)
+			if
+				player.Parent == nil
+				or root == nil
+				or (root.Position - part.Position).Magnitude > Sources.MAX_DISTANCE
+			then
+				byPlayer[player] = nil
+			end
+		end
+	end
 end
 
 local function connect(instance: Instance)
@@ -233,12 +259,26 @@ function SourceService.start()
 		connect(instance)
 	end
 
+	local function watch(player: Player)
+		player.CharacterRemoving:Connect(function()
+			dropHolds(player)
+		end)
+	end
+	Players.PlayerAdded:Connect(watch)
+	for _, player in Players:GetPlayers() do
+		watch(player)
+	end
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+			sweepHolds()
+		end
+	end)
+
 	LedgerService.onChanged(refreshSealed)
 	DataService.onLoaded(refreshSealed)
 	Players.PlayerRemoving:Connect(function(player)
-		for _, byPlayer in holds do
-			byPlayer[player] = nil
-		end
+		dropHolds(player)
 		-- One frame later, once the leaving player's data is gone (held players stay counted).
 		task.defer(refreshSealed)
 	end)

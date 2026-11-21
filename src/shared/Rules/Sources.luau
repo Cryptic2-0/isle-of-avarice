@@ -16,13 +16,17 @@ Sources.MAX_DISTANCE = 15
 -- Network and frame jitter allowed on a held prompt.
 Sources.HOLD_SLACK = 0.3
 
--- Whether a held cache's prompt was held long enough. hold is nil for an ordinary cache; began and
--- ended are the server's own times for the prompt starting and ending.
+-- Whether a held cache's prompt was held long enough and the hold was still running at `now` (or
+-- ended within the slack). hold is nil for an ordinary cache; began and ended are the server's
+-- own times for the prompt starting and ending. An old, released hold never counts.
 function Sources.holdOk(hold: number?, began: number?, ended: number?, now: number): boolean
 	if hold == nil then
 		return true
 	end
 	if began == nil then
+		return false
+	end
+	if ended ~= nil and not (now - ended <= Sources.HOLD_SLACK) then
 		return false
 	end
 	return (ended or now) - began >= hold - Sources.HOLD_SLACK
