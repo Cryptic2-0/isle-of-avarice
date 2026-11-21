@@ -114,6 +114,7 @@ local partySyncs = {} -- player -> last PartySync (false = none, nil = never see
 local ceremonies = {} -- player -> last Ceremony payload
 local renounceOffers = {} -- player -> last RenounceOffer (false = closed, nil = never seen)
 local agentErrors = {}
+local renderNotes = {} -- each time a client stopped or started drawing frames
 
 report.OnServerEvent:Connect(function(player, kind, a, b)
 	if kind == "ready" then
@@ -153,6 +154,17 @@ report.OnServerEvent:Connect(function(player, kind, a, b)
 	elseif kind == "error" then
 		table.insert(agentErrors, player.Name .. ": " .. tostring(a))
 		log("agent error from " .. player.Name .. ": " .. tostring(a))
+	elseif kind == "promptTrace" then
+		-- What the client saw of a prompt it held (see the agent's holdPrompt).
+		log(`prompt {player.Name} {tostring(a)}`)
+	elseif kind == "render" then
+		-- A client stopped (or started again) drawing frames. In run 1 every prompt hold after
+		-- the display went to sleep did nothing, so say so where the failures will be read.
+		local text = if a == true
+			then `{player.Name} draws frames again ({tostring(b)} a second)`
+			else `{player.Name} has stopped drawing frames ({tostring(b)} simulated a second): display asleep or window hidden? Prompt checks from here on are not trustworthy`
+		table.insert(renderNotes, string.format("%.0f s: %s", os.clock(), text))
+		log("RENDER " .. text)
 	end
 end)
 
@@ -3781,6 +3793,36 @@ local function runM7(A: Player, B: Player)
 	runM7Endgame(A, B)
 end
 
+-- Logs every prompt event that reaches the server (hold began, hold ended, triggered), with the
+-- time, so a failed prompt check shows whether the client sent anything at all. With the
+-- agent's prompt traces this tells "nothing left the client" from "the server heard a trigger
+-- but no hold".
+local function tracePrompts(island: Instance)
+	for _, prompt in island:GetDescendants() do
+		if prompt:IsA("ProximityPrompt") then
+			local where = if prompt.Parent ~= nil and prompt.Parent.Parent ~= nil
+				then `{prompt.Parent.Parent.Name}.{prompt.Parent.Name}`
+				else prompt:GetFullName()
+			local function note(event: string)
+				return function(player: Player)
+					log(
+						string.format(
+							"server prompt %s %s by %s at %.2f s",
+							where,
+							event,
+							player.Name,
+							os.clock()
+						)
+					)
+				end
+			end
+			prompt.PromptButtonHoldBegan:Connect(note("hold began"))
+			prompt.PromptButtonHoldEnded:Connect(note("hold ended"))
+			prompt.Triggered:Connect(note("triggered"))
+		end
+	end
+end
+
 local function run()
 	log("waiting for 2 players")
 	if not waitFor(function()
@@ -3824,6 +3866,9 @@ local function run()
 	--------------------------------------------------------------------------- world
 	local island = workspace:FindFirstChild("Island")
 	check("M1.1 island is built", island ~= nil)
+	if island ~= nil then
+		tracePrompts(island)
+	end
 	local cacheCount = #CollectionService:GetTagged("Cache")
 	check("M1.1 31 caches tagged", cacheCount == 31, tostring(cacheCount))
 	local town = island and island:FindFirstChild("Tallyport")
@@ -5306,6 +5351,9 @@ local function run()
 
 	if #agentErrors > 0 then
 		check("agents reported no errors", false, table.concat(agentErrors, "; "))
+	end
+	if #renderNotes > 0 then
+		log("RENDER during the run: " .. table.concat(renderNotes, " | "))
 	end
 	log(`DONE passed={passed} failed={failed}`)
 	if failed > 0 then
