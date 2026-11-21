@@ -2918,12 +2918,6 @@ m7.backend = {
 	end,
 }
 
--- The board never stores a Studio test player (their id is below 1), so a check on a write
--- expects one only for a real id.
-function m7.writeable(player: Player): boolean
-	return player.UserId >= 1
-end
-
 -- Does the note's {player} argument name this player?
 function m7.names(note, player: Player): boolean
 	return note ~= nil and note.args ~= nil and note.args.player == player.DisplayName
@@ -3211,20 +3205,15 @@ local function runM7World(A: Player, B: Player)
 	)
 
 	--------------------------------------------------------------------------- M7.5 board and badge
-	local writeable = m7.writeable(A)
-	local wanted = if writeable then 1 else 0
-	if writeable then
-		waitFor(function()
-			return #fake.writes >= 1 and dataA.crown.boardCrowns == 1
-		end, 6)
-	else
-		task.wait(4)
-	end
+	waitFor(function()
+		return #fake.writes >= 1 and dataA.crown.boardCrowns == 1
+	end, 6)
 	check(
-		"M7.5 the board is written once for A, one Crown (never for a test player's id)",
-		#fake.writes == wanted
-			and (not writeable or (fake.writes[1][1] == A.UserId and fake.writes[1][2] == 1))
-			and dataA.crown.boardCrowns == wanted,
+		"M7.5 the board is written once for A, one Crown",
+		#fake.writes == 1
+			and fake.writes[1][1] == A.UserId
+			and fake.writes[1][2] == 1
+			and dataA.crown.boardCrowns == 1,
 		`{#fake.writes} writes, boardCrowns {dataA.crown.boardCrowns}`
 	)
 	LeaderboardService.refreshNow()
@@ -3245,7 +3234,7 @@ local function runM7World(A: Player, B: Player)
 		`"{m7.stoneRow(1)}"`
 	)
 	task.wait(3)
-	check("M7.5 still the same writes 3 seconds on", #fake.writes == wanted, tostring(#fake.writes))
+	check("M7.5 still the same writes 3 seconds on", #fake.writes == 1, tostring(#fake.writes))
 	local badges = m7.badgeCalls
 	check(
 		"M7.5 the badge was awarded once: A, 4242",
@@ -3282,7 +3271,6 @@ end
 local function runM7Renounce(A: Player, B: Player)
 	local dataA = DataService.get(A)
 	local fake = m7.fake
-	local writeable = m7.writeable(A)
 	local stoneFace = Vector3.new(0, 3, 32)
 
 	--------------------------------------------------------------------------- M7.6 refusals
@@ -3444,12 +3432,11 @@ local function runM7Renounce(A: Player, B: Player)
 		`step {dataA.trials.questStep}, cooldown {tostring(dataA.trials.cooldowns.tidewalk)}`
 	)
 	check("M7.8 both rounds start again", m7.roundsEmpty(dataA.rounds))
-	local boardWanted = if writeable then 1 else 0
 	check(
 		"M7.8 the record: 1 Crown, 1 star, board and badge kept",
 		dataA.crown.crowns == 1
 			and dataA.crown.stars == 1
-			and dataA.crown.boardCrowns == boardWanted
+			and dataA.crown.boardCrowns == 1
 			and dataA.crown.badgeAwarded == true,
 		`{dataA.crown.crowns}, {dataA.crown.stars}, {dataA.crown.boardCrowns}, {tostring(
 			dataA.crown.badgeAwarded
@@ -3519,24 +3506,9 @@ local function runM7Renounce(A: Player, B: Player)
 		end, 3),
 		`"{m7.tagText(A)}"`
 	)
-	if writeable then
-		check(
-			"M7.9 the board gets A's second Crown",
-			waitFor(function()
-				return #fake.writes >= 2
-			end, 6)
-				and fake.writes[2][1] == A.UserId
-				and fake.writes[2][2] == 2,
-			`{#fake.writes} writes`
-		)
-	else
-		task.wait(3)
-		check(
-			"M7.9 the board gets A's second Crown (never for a test player's id)",
-			#fake.writes == 0,
-			`{#fake.writes} writes`
-		)
-	end
+	check("M7.9 the board gets A's second Crown", waitFor(function()
+		return #fake.writes >= 2
+	end, 6) and fake.writes[2][1] == A.UserId and fake.writes[2][2] == 2, `{#fake.writes} writes`)
 	check("M7.9 the badge is not awarded twice", #m7.badgeCalls == 1, `{#m7.badgeCalls} calls`)
 
 	--------------------------------------------------------------------------- M7.10 no badge without an id, and Marked

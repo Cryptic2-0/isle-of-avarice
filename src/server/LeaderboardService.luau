@@ -57,6 +57,12 @@ local function makeRealBackend(): Backend?
 	local store = result :: any
 	return {
 		write = function(userId: number, crowns: number): boolean
+			-- Only Studio test players have ids below 1, and Leaderboard.fromPage cannot read
+			-- such a key back, so the real store is never asked to keep one. Counts as a
+			-- failed write: it is retried only after RETRY_SECONDS, and it never warns.
+			if userId < 1 then
+				return false
+			end
 			local wrote, err = pcall(store.UpdateAsync, store, tostring(userId), function(old: any)
 				return Leaderboard.keep(old, crowns)
 			end)
@@ -108,10 +114,6 @@ local function writePass()
 		return
 	end
 	for _, player in Players:GetPlayers() do
-		-- Studio test players have ids below 1; the board cannot read such a key back.
-		if player.UserId < 1 then
-			continue
-		end
 		local data = DataService.get(player)
 		if data == nil then
 			continue
