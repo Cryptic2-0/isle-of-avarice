@@ -4,7 +4,7 @@ Milestone 7 is the endgame. The Ledger now has 50 slots. Three Crown Relics sit 
 
 Some steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
-Automated run: not done yet.
+Automated run (2026-11-22, Studio, two players): `[PLAYTEST] DONE passed=706 failed=0`, with no errors from the game's scripts (the only warning is the board's data store, which an unpublished place cannot reach). 120 of those checks are for milestone 7.
 
 The automated run stands in for the data store and the badge, and it hands out Relics with a script. The steps below are the hand checks for how things look, move and feel, and for the phone layout. The part that only a published game can show is at the end, under "On the published game".
 
