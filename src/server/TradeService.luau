@@ -12,6 +12,7 @@ local EdictRules = require(ReplicatedStorage.Shared.Rules.EdictRules)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Sources = require(ReplicatedStorage.Shared.Rules.Sources)
 local Trade = require(ReplicatedStorage.Shared.Rules.Trade)
 local Types = require(ReplicatedStorage.Shared.Types)
 local CombatService = require(script.Parent.CombatService)
@@ -178,6 +179,14 @@ local function settle(ref: Ref)
 		return
 	end
 	local heldA, heldB = dataA.coin, dataB.coin
+	-- Both Coin moves checked before the first write, so the swap cannot half happen.
+	if
+		Sources.coinAfter(heldA, coinA - heldA) == nil
+		or Sources.coinAfter(heldB, coinB - heldB) == nil
+	then
+		cancel(ref)
+		return
+	end
 	-- Out of `trades` first, so the Ledger-changed hook below does nothing.
 	trades[a] = nil
 	trades[b] = nil
@@ -443,6 +452,13 @@ function TradeService.start()
 	LedgerService.makeRemote(Net.TradeAction).OnServerEvent:Connect(handleAction)
 
 	LedgerService.onChanged(onLedgerChanged)
+	-- A Coin change prunes an offer the trader can no longer cover and refreshes the view.
+	SourceService.onCoinChanged(function(player)
+		local data = DataService.get(player)
+		if data ~= nil then
+			onLedgerChanged(player, data.ledger)
+		end
+	end)
 	Players.PlayerRemoving:Connect(onRemoving)
 	RunService.Heartbeat:Connect(onHeartbeat)
 end

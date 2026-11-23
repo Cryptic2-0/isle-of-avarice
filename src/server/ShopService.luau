@@ -12,6 +12,7 @@ local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Shop = require(ReplicatedStorage.Shared.Rules.Shop)
 local ShopCatalog = require(ReplicatedStorage.Shared.Catalog.Shop)
+local Sources = require(ReplicatedStorage.Shared.Rules.Sources)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
@@ -109,11 +110,17 @@ local function handleAction(player: Player, raw: any)
 		LedgerService.notify(player, code, args)
 		return
 	end
+	-- Checked before any write, so a bad Coin move leaves the Ledger alone too.
+	local delta = newCoin - coinBefore
+	if Sources.coinAfter(coinBefore, delta) == nil then
+		LedgerService.notify(player, "BAD_REQUEST")
+		return
+	end
 	if not LedgerService.set(player, newLedger) then
 		LedgerService.notify(player, "DATA_NOT_LOADED")
 		return
 	end
-	SourceService.addCoin(player, newCoin - coinBefore)
+	SourceService.addCoin(player, delta)
 	LedgerService.notify(player, code, args)
 	showShop(player)
 end
