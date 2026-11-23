@@ -131,9 +131,6 @@ TradeUI.mount(playerGui, {
 	end,
 })
 PartyUI.mount(playerGui, {
-	request = function()
-		partyRequest:FireServer()
-	end,
 	reply = function(accept)
 		partyReply:FireServer(accept)
 	end,
@@ -420,7 +417,7 @@ task.spawn(function()
 	while true do
 		refreshHud()
 		renderTrial()
-		PartyUI.refresh(localPlayer)
+		PartyUI.refresh(localPlayer, TrialUI.shownLines())
 		task.wait(HUD_REFRESH_SECONDS)
 	end
 end)

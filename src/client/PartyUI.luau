@@ -7,40 +7,30 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local PartyView = require(Shared:WaitForChild("Rules"):WaitForChild("PartyView"))
 local Crown = require(Shared:WaitForChild("Rules"):WaitForChild("Crown"))
+local HudLayout = require(Shared:WaitForChild("Rules"):WaitForChild("HudLayout"))
+local UiKit = require(script.Parent.UiKit)
 
-local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
-local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local ROW_COLOR = Color3.fromRGB(42, 37, 50)
-local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local ACCEPT_COLOR = Color3.fromRGB(60, 130, 80)
 local BAR_BACK_COLOR = Color3.fromRGB(20, 18, 24)
 local BAR_COLOR = Color3.fromRGB(80, 190, 110)
 local ALLY_COLOR = Color3.fromRGB(110, 220, 140)
 local TITLE_COLOR = Color3.fromRGB(255, 215, 90)
 
-local PANEL_WIDTH = 280
 local PANEL_PAD = 8
 local TITLE_HEIGHT = 26
 local ROW_HEIGHT = 48
 local ROW_GAP = 4
 local LEAVE_WIDTH = 64
--- Kept free below the panel so it never reaches the bottom edge of the screen.
-local PANEL_BOTTOM_MARGIN = 12
--- The trial HUD at the top right is four 28-pixel lines with 4 between (128); stay under it.
-local PANEL_TOP_OFFSET = 146
--- A refused request sends only a message, not a sync; buttons come back after this long.
-local REARM_SECONDS = 1
 
 local PartyUI = {}
 
 type Handlers = {
-	request: () -> (),
 	reply: (accept: boolean) -> (),
 	action: (request: { [string]: any }) -> (),
 }
 
 local handlers: Handlers = {
-	request = function() end,
 	reply = function(_accept: boolean) end,
 	action = function(_request: { [string]: any }) end,
 }
@@ -50,7 +40,6 @@ local panel: Frame? = nil
 local titleLabel: TextLabel? = nil
 local rowsFrame: ScrollingFrame? = nil
 local leaveButton: TextButton? = nil
-local screenGui: ScreenGui? = nil
 -- The drawn rows by member id, so health updates in place.
 local rowFrames: { [number]: Frame } = {}
 -- Bumped on every invite change, so an old invite's timer cannot hide a newer one.
@@ -61,66 +50,9 @@ local selfId = 0
 -- Who is drawn, in what order, with which buttons, as one string: rows are rebuilt only when
 -- it changes; health changes update the rows in place.
 local drawnKey = ""
--- One request per render: set on a click, cleared by the next sync or the re-arm timer.
-local pending = false
-local pendingToken = 0
+-- The trial HUD lines the panel sits under; the HUD loop gives it with every refresh.
+local lastHudLines = 0
 local markers: { [number]: BillboardGui } = {}
-
-local function addCorner(parent: Instance, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
-end
-
-local function limitText(parent: Instance, minSize: number, maxSize: number)
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MinTextSize = minSize
-	constraint.MaxTextSize = maxSize
-	constraint.Parent = parent
-end
-
-local function makeLabel(
-	name: string,
-	text: string,
-	size: UDim2,
-	position: UDim2,
-	maxText: number
-): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.Size = size
-	label.Position = position
-	label.BackgroundTransparency = 1
-	label.TextColor3 = TEXT_LIGHT
-	label.TextScaled = true
-	label.TextWrapped = true
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Font = Enum.Font.GothamMedium
-	label.Text = text
-	limitText(label, 9, maxText)
-	return label
-end
-
-local function makeButton(name: string, text: string, color: Color3): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.BackgroundColor3 = color
-	button.TextColor3 = TEXT_LIGHT
-	button.TextScaled = true
-	button.Font = Enum.Font.GothamBold
-	button.Text = text
-	addCorner(button, 8)
-	limitText(button, 9, 20)
-	return button
-end
-
--- Dimmed and inert unless `enabled`, as in the trade window.
-local function setEnabled(button: TextButton, enabled: boolean)
-	button.Active = enabled
-	button.AutoButtonColor = enabled
-	button.BackgroundTransparency = if enabled then 0 else 0.6
-	button.TextTransparency = if enabled then 0 else 0.5
-end
 
 -- Destroys the children of the given class (the rows, not the list layout).
 local function clearChildren(container: Instance, className: string)
@@ -138,31 +70,25 @@ local function setPanelEnabled(enabled: boolean)
 		for _, row in rows:GetChildren() do
 			for _, child in row:GetChildren() do
 				if child:IsA("TextButton") then
-					setEnabled(child, enabled)
+					UiKit.setEnabled(child, enabled)
 				end
 			end
 		end
 	end
 	if leaveButton ~= nil then
-		setEnabled(leaveButton, enabled)
+		UiKit.setEnabled(leaveButton, enabled)
 	end
 end
 
--- Sends one request, then waits for the next sync (or one second) before another.
+-- One request per render: the panel is inert until the next sync (or one second, a refused
+-- request sends only a message).
+local guard = UiKit.guard(function(inert: boolean)
+	setPanelEnabled(not inert)
+end)
+
 local function send(request: { [string]: any })
-	if pending then
-		return
-	end
-	pending = true
-	pendingToken += 1
-	local token = pendingToken
-	setPanelEnabled(false)
-	handlers.action(request)
-	task.delay(REARM_SECONDS, function()
-		if pendingToken == token and pending then
-			pending = false
-			setPanelEnabled(true)
-		end
+	UiKit.send(guard, function()
+		handlers.action(request)
 	end)
 end
 
@@ -178,33 +104,38 @@ local function buildInvite(gui: ScreenGui)
 	local banner = Instance.new("Frame")
 	banner.Name = "Invite"
 	banner.AnchorPoint = Vector2.new(0.5, 0)
-	-- Below the trade banner (12% to 21%) so both can show.
-	banner.Position = UDim2.fromScale(0.5, 0.22)
+	-- Below the trade banner (18% to 27%) so both can show.
+	banner.Position = UDim2.fromScale(0.5, 0.28)
 	banner.Size = UDim2.fromScale(0.5, 0.09)
-	banner.BackgroundColor3 = PANEL_COLOR
+	banner.BackgroundColor3 = UiKit.PANEL
 	banner.Visible = false
-	addCorner(banner, 10)
+	UiKit.corner(banner, 10)
 	local minimum = Instance.new("UISizeConstraint")
 	minimum.MinSize = Vector2.new(300, 44)
 	minimum.Parent = banner
 
-	local label = makeLabel("Text", "", UDim2.fromScale(0.44, 0.8), UDim2.fromScale(0.03, 0.1), 20)
+	local label = UiKit.label(
+		"Text",
+		"",
+		UDim2.fromScale(0.44, 0.8),
+		UDim2.fromScale(0.03, 0.1),
+		{ max = 20 }
+	)
 	label.Parent = banner
 	inviteLabel = label
 
-	local accept = makeButton("Accept", "Accept", ACCEPT_COLOR)
+	local accept =
+		UiKit.button("Accept", "Accept", UDim2.fromScale(0.24, 0.76), { color = ACCEPT_COLOR })
 	accept.Position = UDim2.fromScale(0.49, 0.12)
-	accept.Size = UDim2.fromScale(0.24, 0.76)
-	accept.Activated:Connect(function()
+	UiKit.onPress(accept, function()
 		hideInvite()
 		handlers.reply(true)
 	end)
 	accept.Parent = banner
 
-	local decline = makeButton("Decline", "Decline", BUTTON_COLOR)
+	local decline = UiKit.button("Decline", "Decline", UDim2.fromScale(0.24, 0.76))
 	decline.Position = UDim2.fromScale(0.74, 0.12)
-	decline.Size = UDim2.fromScale(0.24, 0.76)
-	decline.Activated:Connect(function()
+	UiKit.onPress(decline, function()
 		hideInvite()
 		handlers.reply(false)
 	end)
@@ -214,53 +145,44 @@ local function buildInvite(gui: ScreenGui)
 	inviteBanner = banner
 end
 
+-- Placed by sizePanel (under the trial HUD, above the menu row); the size here is a first guess.
 local function buildPanel(gui: ScreenGui)
 	local frame = Instance.new("Frame")
 	frame.Name = "Panel"
-	-- Under the trial HUD (anchor top right, 16% down, 128 pixels tall).
-	frame.AnchorPoint = Vector2.new(1, 0)
-	frame.Position = UDim2.new(1, -12, 0.16, PANEL_TOP_OFFSET)
-	frame.Size = UDim2.fromOffset(PANEL_WIDTH, 100)
-	frame.BackgroundColor3 = PANEL_COLOR
+	frame.Size = UDim2.fromOffset(280, 100)
+	frame.BackgroundColor3 = UiKit.PANEL
 	frame.BackgroundTransparency = 0.15
 	frame.Visible = false
-	addCorner(frame, 10)
-	local minimum = Instance.new("UISizeConstraint")
-	minimum.MinSize = Vector2.new(PANEL_WIDTH, 0)
-	minimum.Parent = frame
+	UiKit.corner(frame, 10)
 
-	local title = makeLabel(
+	local title = UiKit.label(
 		"Title",
 		"",
 		UDim2.new(1, -(3 * PANEL_PAD + LEAVE_WIDTH), 0, TITLE_HEIGHT),
 		UDim2.fromOffset(PANEL_PAD, PANEL_PAD),
-		20
+		{ max = 20 }
 	)
 	title.Font = Enum.Font.GothamBold
 	title.Parent = frame
 	titleLabel = title
 
 	-- In the title row, so it shows whenever the panel does.
-	local leave = makeButton("Leave", "Leave", BUTTON_COLOR)
+	local leave = UiKit.button("Leave", "Leave", UDim2.fromOffset(LEAVE_WIDTH, TITLE_HEIGHT))
 	leave.AnchorPoint = Vector2.new(1, 0)
 	leave.Position = UDim2.new(1, -PANEL_PAD, 0, PANEL_PAD)
-	leave.Size = UDim2.fromOffset(LEAVE_WIDTH, TITLE_HEIGHT)
-	leave.Activated:Connect(function()
+	UiKit.onPress(leave, function()
 		send({ kind = "leave" })
 	end)
 	leave.Parent = frame
 	leaveButton = leave
 
-	local rows = Instance.new("ScrollingFrame")
-	rows.Name = "Rows"
-	rows.BackgroundTransparency = 1
-	rows.BorderSizePixel = 0
-	rows.Position = UDim2.fromOffset(PANEL_PAD, PANEL_PAD + TITLE_HEIGHT + ROW_GAP)
-	rows.Size = UDim2.new(1, -2 * PANEL_PAD, 0, 0)
-	rows.CanvasSize = UDim2.new()
-	rows.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	local rows = UiKit.scroller(
+		"Rows",
+		UDim2.new(1, -2 * PANEL_PAD, 0, 0),
+		UDim2.fromOffset(PANEL_PAD, PANEL_PAD + TITLE_HEIGHT + ROW_GAP),
+		4
+	)
 	rows.ScrollingDirection = Enum.ScrollingDirection.Y
-	rows.ScrollBarThickness = 4
 	local layout = Instance.new("UIListLayout")
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Padding = UDim.new(0, ROW_GAP)
@@ -289,25 +211,41 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	-- Leaves room for the scroll bar.
 	frame.Size = UDim2.new(1, -6, 0, ROW_HEIGHT)
 	frame.BackgroundColor3 = ROW_COLOR
-	addCorner(frame, 8)
+	UiKit.corner(frame, 8)
 
-	local name = makeLabel("Name", row.name, UDim2.fromOffset(98, 18), UDim2.fromOffset(6, 3), 14)
+	-- Line 1: the name takes the room left of Health; a long one ends in "..." and is never shrunk.
+	local name = UiKit.label(
+		"Name",
+		row.name,
+		UDim2.new(1, -70, 0, 18),
+		UDim2.fromOffset(6, 3),
+		{ max = 14, wrap = false }
+	)
+	name.TextScaled = false
+	name.TextSize = 14
+	name.TextTruncate = Enum.TextTruncate.AtEnd
 	name.Parent = frame
 
-	local health =
-		makeLabel("Health", row.healthText, UDim2.fromOffset(60, 18), UDim2.fromOffset(104, 3), 14)
-	health.TextXAlignment = Enum.TextXAlignment.Right
+	local health = UiKit.label(
+		"Health",
+		row.healthText,
+		UDim2.fromOffset(56, 18),
+		UDim2.new(1, -4, 0, 3),
+		{ max = 14, align = Enum.TextXAlignment.Right }
+	)
+	health.AnchorPoint = Vector2.new(1, 0)
 	health.Parent = frame
 
-	-- Under the name; empty (and so invisible) unless the member is Crowned.
-	local crowned = makeLabel(
+	-- Line 2: under the name; empty (and so invisible) unless the member is Crowned. It stops
+	-- short of the buttons.
+	local buttonsWidth = (if row.canRemove then 50 else 0) + (if row.canLead then 44 else 0)
+	local crowned = UiKit.label(
 		"Title",
 		titleOf(row.userId),
-		UDim2.new(1, -12, 0, 14),
+		UDim2.new(1, -(12 + buttonsWidth), 0, 14),
 		UDim2.fromOffset(6, 22),
-		12
+		{ max = 12, color = TITLE_COLOR }
 	)
-	crowned.TextColor3 = TITLE_COLOR
 	crowned.Parent = frame
 
 	local bar = Instance.new("Frame")
@@ -315,33 +253,31 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	bar.Position = UDim2.fromOffset(6, 38)
 	bar.Size = UDim2.new(1, -12, 0, 6)
 	bar.BackgroundColor3 = BAR_BACK_COLOR
-	addCorner(bar, 3)
+	UiKit.corner(bar, 3)
 	local fill = Instance.new("Frame")
 	fill.Name = "Fill"
 	fill.Size = UDim2.fromScale(row.share, 1)
 	fill.BackgroundColor3 = BAR_COLOR
-	addCorner(fill, 3)
+	UiKit.corner(fill, 3)
 	fill.Parent = bar
 	bar.Parent = frame
 
 	if row.canRemove then
-		local remove = makeButton("Remove", "Remove", BUTTON_COLOR)
+		local remove = UiKit.button("Remove", "Remove", UDim2.fromOffset(46, 16))
 		remove.AnchorPoint = Vector2.new(1, 0)
-		remove.Position = UDim2.new(1, -4, 0, 3)
-		remove.Size = UDim2.fromOffset(46, 18)
-		setEnabled(remove, not pending)
-		remove.Activated:Connect(function()
+		remove.Position = UDim2.new(1, -4, 0, 22)
+		UiKit.setEnabled(remove, not guard.busy)
+		UiKit.onPress(remove, function()
 			send({ kind = "kick", userId = row.userId })
 		end)
 		remove.Parent = frame
 	end
 	if row.canLead then
-		local lead = makeButton("MakeLeader", "Lead", BUTTON_COLOR)
+		local lead = UiKit.button("MakeLeader", "Lead", UDim2.fromOffset(40, 16))
 		lead.AnchorPoint = Vector2.new(1, 0)
-		lead.Position = UDim2.new(1, -54, 0, 3)
-		lead.Size = UDim2.fromOffset(40, 18)
-		setEnabled(lead, not pending)
-		lead.Activated:Connect(function()
+		lead.Position = UDim2.new(1, -(4 + (if row.canRemove then 50 else 0)), 0, 22)
+		UiKit.setEnabled(lead, not guard.busy)
+		UiKit.onPress(lead, function()
 			send({ kind = "promote", userId = row.userId })
 		end)
 		lead.Parent = frame
@@ -373,10 +309,12 @@ local function makeMarker(userId: number, name: string, head: BasePart, characte
 	-- Above the MARKED tag.
 	gui.StudsOffset = Vector3.new(0, 4, 0)
 	gui.Size = UDim2.fromOffset(140, 26)
-	local label = makeLabel("Label", name, UDim2.fromScale(1, 1), UDim2.new(), 20)
-	label.TextColor3 = ALLY_COLOR
-	label.TextXAlignment = Enum.TextXAlignment.Center
-	label.Font = Enum.Font.GothamBold
+	local label = UiKit.label("Label", name, UDim2.fromScale(1, 1), UDim2.new(), {
+		max = 20,
+		color = ALLY_COLOR,
+		align = Enum.TextXAlignment.Center,
+		font = Enum.Font.GothamBold,
+	})
 	label.TextStrokeTransparency = 0.4
 	label.Parent = gui
 	gui.Parent = character
@@ -457,21 +395,14 @@ local function rowsKey(rows: { PartyView.Row }): string
 	return table.concat(parts, ";")
 end
 
--- Sets the panel's height: all the rows, but no lower than the screen allows (the rows then
+-- Places the panel under the trial HUD lines shown and above the menu row (the rows then
 -- scroll, and the title row with Leave stays on screen).
-local function sizePanel(frame: Frame, rowsHolder: ScrollingFrame, count: number)
-	local wanted = count * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
+local function sizePanel(frame: Frame, rowsHolder: ScrollingFrame, count: number, hudLines: number)
 	local fixed = PANEL_PAD + TITLE_HEIGHT + ROW_GAP + PANEL_PAD
-	local gui = screenGui
-	local height = if gui ~= nil then gui.AbsoluteSize.Y else 0
-	local rowsHeight = wanted
-	if height > 0 then
-		local top = 0.16 * height + PANEL_TOP_OFFSET
-		local room = height - top - PANEL_BOTTOM_MARGIN - fixed
-		rowsHeight = math.min(wanted, math.max(room, ROW_HEIGHT))
-	end
-	rowsHolder.Size = UDim2.new(1, -2 * PANEL_PAD, 0, rowsHeight)
-	frame.Size = UDim2.fromOffset(PANEL_WIDTH, fixed + rowsHeight)
+	local wanted = fixed + count * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
+	local rect = HudLayout.partyPanel(UiKit.layout(), hudLines, wanted)
+	UiKit.place(frame, rect)
+	rowsHolder.Size = UDim2.new(1, -2 * PANEL_PAD, 0, math.max(0, rect.height - fixed))
 end
 
 -- Redraws the panel and markers from the current party. Rows are rebuilt only when who is in
@@ -524,7 +455,7 @@ local function redraw()
 			end
 		end
 	end
-	sizePanel(frame, rowsHolder, #rows)
+	sizePanel(frame, rowsHolder, #rows, lastHudLines)
 	frame.Visible = true
 	updateMarkers(sync)
 end
@@ -533,12 +464,8 @@ function PartyUI.mount(playerGui: PlayerGui, given: Handlers)
 	handlers = given
 	selfId = Players.LocalPlayer.UserId
 
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "PartyGui"
-	gui.ResetOnSpawn = false
 	-- With the other windows; below the messages (20).
-	gui.DisplayOrder = 16
-	screenGui = gui
+	local gui = UiKit.screen("PartyGui", 16)
 
 	buildInvite(gui)
 	buildPanel(gui)
@@ -570,8 +497,7 @@ end
 function PartyUI.setParty(sync: PartyView.Sync?)
 	current = sync
 	-- A new sync answers whatever was sent: the buttons come back.
-	pending = false
-	pendingToken += 1
+	UiKit.answered(guard)
 	-- Rows are no longer rebuilt on every sync, so the buttons are re-enabled explicitly.
 	setPanelEnabled(true)
 	if sync == nil then
@@ -590,8 +516,9 @@ function PartyUI.setParty(sync: PartyView.Sync?)
 end
 
 -- Called a few times a second: re-reads ally health, updates the rows in place, keeps markers right.
-function PartyUI.refresh(localPlayer: Player)
+function PartyUI.refresh(localPlayer: Player, hudLines: number)
 	selfId = localPlayer.UserId
+	lastHudLines = hudLines
 	redraw()
 end
 
