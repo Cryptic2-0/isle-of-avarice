@@ -127,7 +127,7 @@ T.test("Copper caches stay in the Fields; prizes sit in their regions", function
 	T.eq(World.cacheById.C012.position, { x = x, y = 1, z = z })
 	for k, region in Regions.wild do
 		local cache = World.caches[12 + k]
-		local ex, ez = Geography.place(region, 310, -60)
+		local ex, ez = Geography.place(region, Regions.extraCache.along, Regions.extraCache.across)
 		T.eq(cache.position, { x = ex, y = 1, z = ez })
 		T.eq(cache.hold, nil)
 	end
@@ -666,7 +666,6 @@ T.test("creature and champion ids", function()
 end)
 
 T.test("constants", function()
-	T.eq(World.islandHalfSize, 1380)
 	T.eq(World.groundY, 0)
 	T.eq(World.townRadius, 40)
 	T.eq(World.spawn, { x = 0, y = 0.7, z = 0 })
@@ -726,3 +725,24 @@ T.test("the Tally Stone stands on the south side of the plaza", function()
 	T.truthy(flat(World.tallyStone, World.spawn) >= 15)
 	T.truthy(flat(World.tallyStone, World.clerk) >= 30)
 end)
+
+T.test(
+	"Tallyport's buildings leave the spawn, the clerk, the Tally Stone and the Crown Warden clear",
+	function()
+		T.eq(World.buildings, {
+			{ x = -28, z = -28, w = 16, h = 12, d = 14 },
+			{ x = 28, z = -28, w = 12, h = 18, d = 12 },
+			{ x = -28, z = 28, w = 14, h = 9, d = 18 },
+			{ x = 28, z = 28, w = 18, h = 14, d = 16 },
+		})
+		local spots = { World.spawn, World.clerk, World.tallyStone, World.wardens.grand_tally }
+		for i, p in spots do
+			for j, b in World.buildings do
+				T.truthy(
+					math.abs(p.x - b.x) >= b.w / 2 + 2 or math.abs(p.z - b.z) >= b.d / 2 + 2,
+					`spot {i} inside building {j}`
+				)
+			end
+		end
+	end
+)

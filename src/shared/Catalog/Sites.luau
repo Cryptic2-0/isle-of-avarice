@@ -74,7 +74,7 @@ end
 -- Off the road in each wild region, a Copper cache holding Relics R001 to R006 in turn.
 local extras: { Types.SiteCache } = {}
 for k, regionId in Regions.wild do
-	local x, z = Geography.place(regionId, 310, -60)
+	local x, z = Geography.place(regionId, Regions.extraCache.along, Regions.extraCache.across)
 	table.insert(extras, { relicId = string.format("R%03d", k), x = x, y = 1, z = z })
 end
 

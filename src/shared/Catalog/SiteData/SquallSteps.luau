@@ -1,10 +1,11 @@
 --!strict
 local Geography = require("../../Rules/Geography")
+local Regions = require("../Regions")
 local Types = require("../../Types")
 local Make = require("./Make")
 
 local REGION: Types.RegionId = "SquallSteps"
-local BEARING = 60
+local BEARING = Regions.byId.SquallSteps.bearing :: number
 local PILLARS = 18
 local PILLAR_SIZE = 14
 local PILLAR_SPACING = 19

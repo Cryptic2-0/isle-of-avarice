@@ -397,12 +397,13 @@ T.test("Squall Steps climb", function()
 		})
 	end
 
-	-- SquallGust1 pushes toward +across: toFrame(60, push.x, push.z) is about (0, 11).
+	-- SquallGust1 pushes toward +across: toFrame at the Squall Steps bearing is about (0, 11).
 	-- SquallGust2 about (0, -11); SquallGust3 about (0, 11); SquallGust4 about (11, 0), markerY 57.2.
 	local expected = { { 0, 11 }, { 0, -11 }, { 0, 11 }, { 11, 0 } }
 	for i, h in SquallSteps.hazards do
 		local push = h.push :: { x: number, z: number }
-		local along, across = Geography.toFrame(60, push.x, push.z)
+		local along, across =
+			Geography.toFrame(Regions.byId.SquallSteps.bearing :: number, push.x, push.z)
 		T.truthy(near(along, expected[i][1]) and near(across, expected[i][2]), h.id .. " push")
 		T.eq(h.markerY, if i == 4 then 57.2 else nil, h.id)
 	end
@@ -564,7 +565,8 @@ T.test("Bastion Reach", function()
 	-- Every rockfall circle centre lies inside the walls: 524 < along < 876 and |across| < 196.
 	for _, h in BastionReach.hazards do
 		T.eq(h.shape.kind, "circle", h.id)
-		local along, across = Geography.toFrame(300, h.shape.x, h.shape.z)
+		local along, across =
+			Geography.toFrame(Regions.byId.BastionReach.bearing :: number, h.shape.x, h.shape.z)
 		T.truthy(
 			524 < along and along < 876 and math.abs(across) < 196,
 			h.id .. " inside the walls"
@@ -720,10 +722,11 @@ T.test("Sites.features is site features, then common, then scenery", function()
 end)
 
 T.test("six extra Copper caches, one in each wild region", function()
+	T.eq(Regions.extraCache, { along = 310, across = -60 })
 	T.eq(#Sites.extras, 6)
 	for k, region in Regions.wild do
 		local extra = Sites.extras[k]
-		local x, z = Geography.place(region, 310, -60)
+		local x, z = Geography.place(region, Regions.extraCache.along, Regions.extraCache.across)
 		T.eq(extra, { relicId = string.format("R%03d", k), x = x, y = 1, z = z })
 		T.eq(Geography.regionAt(extra.x, extra.z), region)
 		T.truthy(Relics.byId[extra.relicId] ~= nil)

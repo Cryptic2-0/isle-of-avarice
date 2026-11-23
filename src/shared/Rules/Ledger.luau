@@ -184,11 +184,24 @@ function Ledger.sanitize(raw: any): Ledger
 	end
 	local rawFree = raw.free
 	if type(rawFree) == "table" then
-		for i = 1, #rawFree do
+		-- Saved data can have gaps, so go by the keys that are row numbers, not by the length.
+		local rows: { number } = {}
+		for key in rawFree do
+			if
+				type(key) == "number"
+				and key >= 1
+				and key < math.huge
+				and key == math.floor(key)
+			then
+				table.insert(rows, key)
+			end
+		end
+		table.sort(rows)
+		for _, row in rows do
 			if #result.free >= Ledger.FREE_SLOTS then
 				break
 			end
-			local id = rawFree[i]
+			local id = rawFree[row]
 			if Cards.info(id) ~= nil then
 				table.insert(result.free, id)
 			end

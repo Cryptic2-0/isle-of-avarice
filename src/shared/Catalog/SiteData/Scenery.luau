@@ -1,6 +1,7 @@
 --!strict
 local Geography = require("../../Rules/Geography")
 local Hazards = require("../../Rules/Hazards")
+local Regions = require("../Regions")
 local Types = require("../../Types")
 local Make = require("./Make")
 
@@ -15,9 +16,6 @@ local CLEARANCE = 12 -- a prop's footprint is checked this far out in each direc
 local ROAD_HALF_WIDTH = 16
 local ROAD_END = 480
 local CACHE_CLEARANCE = 30
--- Where Sites puts the region's extra Copper cache.
-local COPPER_ALONG = 310
-local COPPER_ACROSS = -60
 
 -- One piece of a prop: a block sx across by sz along, or a cylinder of diameter sx = sz, standing
 -- on the piece below it. Heights are multiplied by the prop's scale.
@@ -152,7 +150,8 @@ function Scenery.scatter(site: Types.Site, index: number): { Types.Feature }
 	if prize ~= nil then
 		table.insert(caches, { prize.x, prize.z })
 	end
-	local copperX, copperZ = Geography.place(site.region, COPPER_ALONG, COPPER_ACROSS)
+	local copperX, copperZ =
+		Geography.place(site.region, Regions.extraCache.along, Regions.extraCache.across)
 	table.insert(caches, { copperX, copperZ })
 
 	local features: { Types.Feature } = {}

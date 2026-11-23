@@ -3,10 +3,16 @@ local passed = 0
 local failed = 0
 local failures: { string } = {}
 
-local function describe(value: any): string
+local function describe(value: any, seen: { [any]: boolean }?): string
 	if type(value) ~= "table" then
 		return if type(value) == "string" then string.format("%q", value) else tostring(value)
 	end
+	-- A table that holds itself would never finish printing.
+	local path = seen or {}
+	if path[value] then
+		return "<cycle>"
+	end
+	path[value] = true
 	local keys = {}
 	for key in value do
 		table.insert(keys, key)
@@ -16,12 +22,13 @@ local function describe(value: any): string
 	end)
 	local parts = {}
 	for _, key in keys do
-		table.insert(parts, `[{describe(key)}] = {describe(value[key])}`)
+		table.insert(parts, `[{describe(key, path)}] = {describe(value[key], path)}`)
 	end
+	path[value] = nil
 	return "{ " .. table.concat(parts, ", ") .. " }"
 end
 
-local function deepEqual(a: any, b: any): boolean
+local function deepEqual(a: any, b: any, seen: { [any]: { [any]: boolean } }?): boolean
 	if a == b then
 		return true
 	end
@@ -29,8 +36,19 @@ local function deepEqual(a: any, b: any): boolean
 		-- NaN is the only value not equal to itself; treat NaN as equal to NaN
 		return a ~= a and b ~= b
 	end
+	-- A pair already being compared further up is assumed equal, so cycles end.
+	local pairs_ = seen or {}
+	local mine = pairs_[a]
+	if mine == nil then
+		mine = {}
+		pairs_[a] = mine
+	end
+	if mine[b] then
+		return true
+	end
+	mine[b] = true
 	for key, value in a do
-		if not deepEqual(value, b[key]) then
+		if not deepEqual(value, b[key], pairs_) then
 			return false
 		end
 	end

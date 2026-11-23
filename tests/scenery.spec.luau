@@ -23,7 +23,7 @@ T.test("scatter is deterministic and respects the site", function()
 		local a = Scenery.scatter(site, index)
 		T.eq(Scenery.scatter(site, index), a)
 		T.truthy(#a >= 24, region .. " has scenery")
-		local ex, ez = Geography.place(region, 310, -60)
+		local ex, ez = Geography.place(region, Regions.extraCache.along, Regions.extraCache.across)
 		for _, f in a do
 			T.truthy(Geography.isLand(f.x, f.z) and Geography.regionAt(f.x, f.z) == region)
 			T.truthy(Looks.byName[f.look] ~= nil)

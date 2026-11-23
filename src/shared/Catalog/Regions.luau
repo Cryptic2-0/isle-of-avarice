@@ -91,8 +91,12 @@ local wild: { RegionId } = {
 	"BastionReach",
 }
 
+-- Where Sites puts each wild region's extra Copper cache, in that region's frame.
+local extraCache = { along = 310, across = -60 }
+
 return {
 	list = list,
 	byId = byId,
 	wild = wild,
+	extraCache = extraCache,
 }
