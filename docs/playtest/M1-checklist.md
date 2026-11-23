@@ -64,7 +64,7 @@ Pillar colours show how rare a Relic is: copper (brown-orange) is common, silver
     - What should happen: only one player gets the card. For the other player the cache disappears. The message "This cache is empty. It will refill soon." appears only if the two opens were almost at the same moment.
 
 14. **Fall into a river**
-    - What to do: walk due west out of town, across the Counting Fields. About 300 steps from the centre of town the ground ends at a river, a gap about 100 steps wide. Step off the edge into it.
+    - What to do: walk out of town halfway between the Hush Gardens and Bastion Reach roads, across the Counting Fields. About 300 steps from the centre of town the ground ends at a river, a gap about 100 steps wide. Step off the edge into it.
     - What should happen: you fall and then come back at the spawn point in Tallyport.
 
 If any step fails, copy the red text from the Output window and send it back.

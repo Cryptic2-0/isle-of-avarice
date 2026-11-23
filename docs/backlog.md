@@ -1,91 +1,45 @@
 # Backlog
 
-Small items found in review during M0 + M1 and left for later. None blocks
-the M1 play test.
+Small items found in review and left for later. None blocks a play test.
 
-## Before or during M2
+## Left after M8
 
-- `DataService`: check `schemaVersion` when the saved-data format first
-  changes.
+Each item says why it waits.
 
-## UI polish pass
+### Saved data
 
-- The Ledger button sits where the phone thumbstick is. Move it.
-- The book is cramped on a phone screen.
-- A claimed slot unclaims on a single tap. Consider a confirm step.
-- Remove the default 1-pixel borders.
-- Disable a row's buttons after the first click.
+- `DataService`: check `schemaVersion` when the saved-data format first changes.
+  Waits for: the first change to the format.
 
-## Tests to add
+### Tuning, for the owner's play tests
 
-- `Ledger.unclaim` does not change its input.
-- `Messages.format` with `{player}` and with a missing value.
-- `LedgerActions`: index 1.5, -1 and infinity on the claim path;
-  claiming an already-claimed card.
-- `Sources`: collecting again after the refill time; a cache whose Relic is
-  not in the catalog.
-- `RateLimiter`: time going backwards.
-
-## Tidying
-
-- `WorldBuilder.buildCache` takes an untyped parameter; building positions
-  are written inline instead of in `World.luau`.
-- `Ledger.sanitize` uses `#` on a list that could have gaps.
-- Test harness: no guard against tables that contain themselves.
-
-## World
-
-Open questions from the wide-island design (section 10 of
-`docs/superpowers/specs/2026-11-12-world-regions-design.md`), to settle in
-play tests:
-
-- All hazard numbers, especially blight (5 a second) against the 120-stud
-  last leg to the Ledger-Moth Wing in Hush Gardens.
-- Whether the pillar gaps in Squall Steps (5 studs across, 3 up) feel right
-  on a phone.
+- All hazard numbers, especially blight (5 a second) against the 120-stud last
+  leg to the Ledger-Moth Wing in Hush Gardens. Waits for: how it feels in play.
+- Whether the pillar gaps in Squall Steps (5 studs across, 3 up) feel right on a
+  phone. Waits for: a play test on a real phone.
 - Whether dying to the island should cost something. Today it does not, so a
-  prize run can end in a free trip home.
-
-Known from the final review of the wide island, and left as they are:
-
-- A prize cache's 3 or 4 second hold is set on the prompt, but the server
-  does not check it (`SourceService` checks distance only).
-- The region banner uses the same single message slot as server messages, so
-  crossing a border can replace a message less than 3 seconds old.
-- Roblox's default health regeneration (about 1 a second) is still on. Decide
-  at the play test whether to turn it off or retune the bog and blight.
-- The gust push moves the character's position directly and ignores
-  collisions, so it may jitter against the sides of pillars.
+  prize run can end in a free trip home. Waits for: how it feels in play.
 - Walking back out along the Kiln Lake causeway has a much shorter safe start
-  window than walking in.
-- The "one hit per activation" rule lives in `HazardService`. Move it into
-  `Hazards` as a pure, tested function.
-- The extra-cache spot (310, -60) is written in both `Sites.luau` and
-  `Scenery.luau`.
-- Hush Gardens blight has no ground marker, only the status line and the
-  entering message.
+  window than walking in. Waits for: the causeway timing at a play test.
+- The gust push moves the character's position directly and ignores
+  collisions, so it may jitter against the sides of pillars. Waits for: seeing
+  whether it shows in play.
+- The causeway vent markers are 1 stud wider than the causeway on each side.
+  Waits for: a play test to say whether it is seen.
 
-Small notes from the task reviews of the wide island, none urgent:
+### Tests and tools, no change in play
 
-- Nothing in `check.sh` checks Luau types. `--!strict` is only checked when
-  the place is opened in Studio.
-- The status column fits five lines above the "Drop shield" button. A new
-  kind of line needs the button moved or the column made taller.
-- `living()` is copied in `HazardService` and `CombatService`. The sign label
-  styling in `SiteBuilder` repeats the training-post label's.
-- `World.islandHalfSize` is no longer used outside the tests.
-- Tests to tighten:
-  - `Geography.bearingOf` when the angle rounds to exactly 360.
+- Nothing in `check.sh` checks Luau types. `--!strict` is only checked when the
+  place is opened in Studio. Waits for: a type checker that can be installed.
+- The sign label styling in `SiteBuilder` repeats the training-post label's.
+  Waits for: a third place that needs it.
+- Tests to tighten (test-only):
   - Only the `lava` look's values are pinned.
   - The hedge maze test does not check "one block per run".
   - The scenery tests do not pin the 36 props per region.
   - The Bellows straight-walk test passes at across ±20 and ±60 on rounding
     noise; give every tangent line the same small slack.
   - The marker test hardcodes the 0.2 lift and ground height 0.
-- `SquallSteps.luau` and two tests write region bearings (60, 300) as
-  numbers instead of reading them from `Regions`.
-- The causeway vent markers are 1 stud wider than the causeway on each side.
 - Play-test Driver: if the wait that lines up check W.6 with the vent times
-  out, the check runs unaligned without saying so.
-- M1 checklist step 14 says "due west"; there is no compass in the game.
-  "Halfway between the Hush Gardens and Bastion Reach roads" is easier.
+  out, the check runs unaligned without saying so. Waits for: a flaky run that
+  needs it.

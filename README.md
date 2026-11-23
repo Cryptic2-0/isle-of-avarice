@@ -13,6 +13,7 @@ Your Ledger is a book with 50 numbered slots. Each Relic you claim fills one slo
 - **Milestone 5, Edicts and trading:** five single-use Edict cards (Summons, Audit, Veil, Passage, Homecoming) live in your free slots. The clerk of the Edict Hall in Tallyport sells packs of Edicts and Copper Relics and buys spare cards. Two players standing close can trade cards and Coin, with a short wait before either can confirm. A defeat destroys a third of the Edicts you hold (never Relics).
 - **Milestone 6, parties:** up to four players can form a party (the "Party" button asks the nearest player). Allies cannot hurt each other, heals and shields from Mend abilities reach them, and a player who supports an ally against a creature shares in its reward. A panel shows each member's health and a green marker hangs over each ally.
 - **Milestone 7, the endgame:** the Ledger has 50 Relics. Three Crown Relics sit at the top: the Gilded Sceptre (from the Gilded Bailiff), the Orb of Every Shore (the reward of The Grand Tally) and the Hoarder's Crown (a cache on the Throne, opened by a 10-second hold). A player who claims every Relic is Crowned, with a ceremony on every screen, a title and a gilt circlet. The all-time board of the Crowned stands on the Tally Stone in Tallyport. A Crowned player may Renounce there, give every card back and earn a star. Health comes back slowly, but only after 10 seconds out of danger.
+- **Milestone 8, launch polish:** the game fits a phone. The menu buttons (Ledger, Paths, Trade, Party) sit in a row above the ability bar, away from the thumbstick and the jump button, and the windows are made to fit a small screen. A slot is unclaimed, or a card discarded, with two taps, so a stray tap does nothing. The region name has its own line under the message line, and the blighted ground in the Hush Gardens has a tint.
 
 ## How to play-test
 
@@ -28,6 +29,7 @@ You need Roblox Studio. It is the free program Roblox provides for making and te
 8. Then follow the steps in `docs/playtest/M5-checklist.md` (Edicts, the shop and trading, mostly with two players).
 9. Then follow the steps in `docs/playtest/M6-checklist.md` (parties, with two players).
 10. Then follow the steps in `docs/playtest/M7-checklist.md` (the endgame: the 50-slot Ledger, Crowning, the Tally Stone and Renouncing, mostly with two players).
+11. Then follow the steps in `docs/playtest/M8-checklist.md` (launch polish: the menu row, the phone layout, two taps to unclaim or discard, the region banner and the blight tint, partly with two players).
 
 If a step fails, see the last line of the checklist.
 
@@ -49,7 +51,7 @@ The rest of this page is for people who write code.
 - Install the tools: `rokit install`
 - Run all checks (format, lint, build, tests): `bash scripts/check.sh`
 - Live-sync into Studio: `rojo serve`
-- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2, M3, M4, M5, M6 and M7 checklists and the world checks, and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
+- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2, M3, M4, M5, M6, M7 and M8 checklists and the world checks, and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
 
 The playable file in `dist/IsleOfAvarice.rbxlx` is a copy of `build/IsleOfAvarice.rbxlx`. Copy it again after any code change, once the checks pass.
 

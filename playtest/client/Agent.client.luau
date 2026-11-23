@@ -5,10 +5,12 @@
 -- screens, hit flashes, ability cooldowns, trial offers and the state of the on-screen UI.
 local CollectionService = game:GetService("CollectionService")
 local ContextActionService = game:GetService("ContextActionService")
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local playtest = ReplicatedStorage:WaitForChild("Playtest")
 local cmd = playtest:WaitForChild("Cmd")
@@ -17,6 +19,11 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local Protection = require(
 	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Rules"):WaitForChild("Protection")
 )
+-- The game's own client modules (the same module tables the game uses): the press seam and the
+-- region banner's text.
+local Client = script.Parent.Parent:WaitForChild("Client")
+local UiKit = require(Client:WaitForChild("UiKit"))
+local Toast = require(Client:WaitForChild("Toast"))
 
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
@@ -172,6 +179,51 @@ local function stonePromptOf()
 	local model = town and town:FindFirstChild("TallyStone")
 	local stone = model and model:FindFirstChild("Stone")
 	return stone and stone:FindFirstChild("RenouncePrompt")
+end
+
+-- The object's rectangle in full-screen pixels (y = 0 is above Roblox's top bar), whichever
+-- origin its ScreenGui's AbsolutePosition uses: a gui that keeps the top bar's inset starts below
+-- it, so the inset is added back.
+local function screenRect(object: GuiObject?)
+	if object == nil then
+		return nil
+	end
+	local gui = object:FindFirstAncestorOfClass("ScreenGui")
+	if gui == nil then
+		return nil
+	end
+	local rel = object.AbsolutePosition - gui.AbsolutePosition
+	return {
+		x = rel.X,
+		y = rel.Y + (if gui.IgnoreGuiInset then 0 else GuiService:GetGuiInset().Y),
+		width = object.AbsoluteSize.X,
+		height = object.AbsoluteSize.Y,
+	}
+end
+
+-- The GuiObject at a path like "LedgerGui/Book/Slots/Slot001", each part found with
+-- FindFirstChild from PlayerGui; nil when any part is missing.
+local function findByPath(path: any): Instance?
+	if type(path) ~= "string" then
+		return nil
+	end
+	local current: Instance? = playerGui
+	for part in string.gmatch(path, "[^/]+") do
+		if current == nil then
+			return nil
+		end
+		current = current:FindFirstChild(part)
+	end
+	return current
+end
+
+-- A window's smallest size, from its UISizeConstraint, or false when it has none.
+local function minSizeOf(frame: Instance?)
+	local constraint = frame and frame:FindFirstChildOfClass("UISizeConstraint")
+	if constraint == nil then
+		return false
+	end
+	return { x = constraint.MinSize.X, y = constraint.MinSize.Y }
 end
 
 -- A snapshot of the game's UI as this player sees it.
@@ -426,6 +478,7 @@ local function inspectUi()
 				name = rowName and rowName.Text or "",
 				health = rowHealth and rowHealth.Text or "",
 				title = rowTitle and rowTitle.Text or "",
+				truncate = rowName and rowName.TextTruncate.Name or "",
 				remove = row:FindFirstChild("Remove") ~= nil,
 				lead = row:FindFirstChild("MakeLeader") ~= nil,
 			})
@@ -466,6 +519,98 @@ local function inspectUi()
 	ui.renounceVisible = renounceWindow ~= nil and renounceWindow.Visible
 	local stonePrompt = stonePromptOf()
 	ui.stonePromptEnabled = stonePrompt ~= nil and stonePrompt.Enabled
+
+	-- M8: the UI kit, the menu row and where every control sits.
+	local isleGuis = 0
+	local bordered = {}
+	for _, gui in playerGui:GetChildren() do
+		if gui:IsA("ScreenGui") and gui:GetAttribute("IsleUi") == true then
+			isleGuis += 1
+			for _, descendant in gui:GetDescendants() do
+				if
+					descendant:IsA("GuiObject")
+					and descendant.BorderSizePixel ~= 0
+					and #bordered < 10
+				then
+					table.insert(bordered, descendant:GetFullName())
+				end
+			end
+		end
+	end
+	ui.isleGuis = isleGuis
+	ui.bordered = bordered
+	local oldButtons = 0
+	for _, path in
+		{
+			"LedgerGui/OpenButton",
+			"PathGui/PathsButton",
+			"TradeGui/TradeButton",
+			"PartyGui/PartyButton",
+		}
+	do
+		if findByPath(path) ~= nil then
+			oldButtons += 1
+		end
+	end
+	ui.oldButtons = oldButtons
+	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+		or Vector2.new(0, 0)
+	ui.layoutIn = {
+		width = math.floor(viewport.X),
+		height = math.floor(viewport.Y),
+		insetY = GuiService:GetGuiInset().Y,
+		touch = UserInputService.TouchEnabled,
+	}
+	local menuRects = {}
+	for _, name in { "LedgerButton", "PathsButton", "TradeButton", "PartyButton" } do
+		local button = menuGui and menuGui:FindFirstChild(name)
+		menuRects[name] = if button ~= nil then screenRect(button) else nil
+	end
+	ui.menu = menuRects
+	ui.abilityBar = screenRect(bar)
+	ui.pathsPanelVisible = panel ~= nil and panel.Visible
+	local windowMins = {}
+	for _, path in
+		{
+			"LedgerGui/Book",
+			"ClaimGui/Claim",
+			"ShopGui/Shop",
+			"TradeGui/Trade",
+			"PathGui/Panel",
+			"PathGui/Picker",
+			"PathGui/Confirm",
+			"EdictGui/RelicPicker",
+			"EdictGui/PlayerPicker",
+			"EdictGui/Result",
+			"TrialGui/Offer",
+			"RenounceGui/Renounce",
+			"StatusGui/ConfirmDrop",
+		}
+	do
+		local frame = findByPath(path)
+		windowMins[string.match(path, "[^/]+$")] = minSizeOf(frame)
+	end
+	ui.windowMins = windowMins
+	-- Each free-card row by name (Free1, Free2, ...): its buttons' text and whether they take taps.
+	local freeRows = {}
+	local freeCards = book and book:FindFirstChild("FreeCards")
+	if freeCards ~= nil then
+		for _, row in freeCards:GetChildren() do
+			if row:IsA("Frame") then
+				local rowButtons = {}
+				for _, child in row:GetChildren() do
+					if child:IsA("TextButton") then
+						rowButtons[child.Name] = { text = child.Text, active = child.Active }
+					end
+				end
+				freeRows[row.Name] = rowButtons
+			end
+		end
+	end
+	ui.freeRows = freeRows
+	ui.regionBanner = Toast.regionText()
+	local partyPanelBox = partyGui and partyGui:FindFirstChild("Panel")
+	ui.partyPanel = screenRect(partyPanelBox)
 	return ui
 end
 
@@ -524,6 +669,29 @@ cmd.OnClientEvent:Connect(function(op, arg)
 		local book = ledgerGui and ledgerGui:FindFirstChild("Book")
 		if book ~= nil then
 			book.Visible = arg == true
+		end
+	elseif op == "togglePaths" then
+		local pathGui = playerGui:FindFirstChild("PathGui")
+		local panel = pathGui and pathGui:FindFirstChild("Panel")
+		if panel ~= nil then
+			panel.Visible = arg == true
+		end
+	elseif op == "press" then
+		-- Tap a button the way a finger would: its recorded handler runs only if the button
+		-- is Active and shown. Reports what the button looked like right after the handler ran.
+		local button = findByPath(arg)
+		local ok = false
+		if button ~= nil then
+			ok = UiKit.press(button)
+		end
+		if button ~= nil and button:IsA("GuiButton") then
+			local text = if button:IsA("TextButton") then button.Text else ""
+			report:FireServer(
+				"pressed",
+				{ path = arg, ok = ok, active = button.Active, text = text }
+			)
+		else
+			report:FireServer("pressed", { path = arg, ok = false })
 		end
 	elseif op == "edict" then
 		-- Any table, hostile ones included: the server must check it.
