@@ -5,10 +5,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Crown = require(Shared:WaitForChild("Rules"):WaitForChild("Crown"))
+local UiKit = require(script.Parent.UiKit)
 
 local SHOW_SECONDS = 6
 
-local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local TEXT_GOLD = Color3.fromRGB(255, 215, 90)
 local BACKGROUND = Color3.fromRGB(25, 22, 30)
 
@@ -20,41 +20,9 @@ local line2: TextLabel? = nil
 -- Bumped on every show, so an old banner's timer cannot hide a newer one.
 local token = 0
 
-local function limitText(parent: Instance, minSize: number, maxSize: number)
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MinTextSize = minSize
-	constraint.MaxTextSize = maxSize
-	constraint.Parent = parent
-end
-
-local function makeLine(
-	name: string,
-	size: UDim2,
-	position: UDim2,
-	color: Color3,
-	font: Enum.Font,
-	maxText: number
-): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.Size = size
-	label.Position = position
-	label.BackgroundTransparency = 1
-	label.TextColor3 = color
-	label.TextScaled = true
-	label.TextWrapped = true
-	label.Font = font
-	label.Text = ""
-	limitText(label, 9, maxText)
-	return label
-end
-
 function CeremonyUI.mount(playerGui: PlayerGui)
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "CeremonyGui"
-	gui.ResetOnSpawn = false
 	-- Above the status HUD (15) and messages (20), below the Renounce window (26).
-	gui.DisplayOrder = 25
+	local gui = UiKit.screen("CeremonyGui", 25)
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Banner"
@@ -64,31 +32,26 @@ function CeremonyUI.mount(playerGui: PlayerGui)
 	frame.BackgroundColor3 = BACKGROUND
 	frame.BackgroundTransparency = 0.2
 	frame.Visible = false
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 12)
-	corner.Parent = frame
+	UiKit.corner(frame, 12)
 	local minimum = Instance.new("UISizeConstraint")
 	minimum.MinSize = Vector2.new(280, 70)
 	minimum.Parent = frame
 
-	local first = makeLine(
-		"Line1",
-		UDim2.fromScale(0.94, 0.58),
-		UDim2.fromScale(0.03, 0),
-		TEXT_GOLD,
-		Enum.Font.GothamBold,
-		30
-	)
+	local first = UiKit.label("Line1", "", UDim2.fromScale(0.94, 0.58), UDim2.fromScale(0.03, 0), {
+		color = TEXT_GOLD,
+		font = Enum.Font.GothamBold,
+		max = 30,
+		align = Enum.TextXAlignment.Center,
+	})
 	first.Parent = frame
 	line1 = first
 
-	local second = makeLine(
+	local second = UiKit.label(
 		"Line2",
+		"",
 		UDim2.fromScale(0.94, 0.36),
 		UDim2.fromScale(0.03, 0.62),
-		TEXT_LIGHT,
-		Enum.Font.GothamMedium,
-		20
+		{ max = 20, align = Enum.TextXAlignment.Center }
 	)
 	second.Parent = frame
 	line2 = second
