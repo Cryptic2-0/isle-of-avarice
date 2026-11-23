@@ -6,9 +6,13 @@
 --       `island`. Each marker is named with its hazard id, carries the attribute HazardId and
 --       the tag "Hazard", and touches nothing: it is only there to be seen. A region-wide
 --       hazard has no marker. A tide marker also carries the attribute Rise.
+--       Also adds Folder "Blight": a flat tint (BlightTint parts) over the ground of every
+--       region-wide hazard that has a look. It is not tagged and not in "Hazards".
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Geography = require(ReplicatedStorage.Shared.Rules.Geography)
+local Hazards = require(ReplicatedStorage.Shared.Rules.Hazards)
 local Sites = require(ReplicatedStorage.Shared.Catalog.Sites)
 local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
@@ -20,6 +24,9 @@ local MARKER_THICKNESS = 0.3
 -- Markers float a little above the surface they mark so the ground does not hide them.
 local MARKER_LIFT = 0.2
 local TIDE_RISE = 3
+-- The blight's ground tint: a thin slab just above the ground, under the markers.
+local TINT_THICKNESS = 0.1
+local TINT_LIFT = 0.1
 -- A sign's label floats this far above the top of the part that carries it.
 local LABEL_CLEARANCE = 2
 
@@ -102,6 +109,23 @@ local function buildMarker(parent: Folder, hazard: Types.Hazard)
 	part.Parent = parent
 end
 
+-- One tint slab per piece of the region's ground that the hazard covers.
+local function buildTint(parent: Folder, hazard: Types.Hazard)
+	for _, piece in Hazards.overlay(hazard, Geography.strips()) do
+		local part = Instance.new("Part")
+		part.Name = "BlightTint"
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.CastShadow = false
+		part.Size = Vector3.new(piece.x2 - piece.x1, TINT_THICKNESS, Geography.CELL)
+		part.CFrame = CFrame.new((piece.x1 + piece.x2) / 2, World.groundY + TINT_LIFT, piece.z)
+		LookPainter.paint(part, hazard.look)
+		part.Parent = parent
+	end
+end
+
 function SiteBuilder.build(island: Folder)
 	local features = Instance.new("Folder")
 	features.Name = "Features"
@@ -116,6 +140,15 @@ function SiteBuilder.build(island: Folder)
 		buildMarker(hazards, hazard)
 	end
 	hazards.Parent = island
+
+	local blight = Instance.new("Folder")
+	blight.Name = "Blight"
+	for _, hazard in Sites.hazards do
+		if hazard.shape.kind == "region" and hazard.look ~= "none" then
+			buildTint(blight, hazard)
+		end
+	end
+	blight.Parent = island
 end
 
 return SiteBuilder

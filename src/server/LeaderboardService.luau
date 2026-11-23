@@ -31,7 +31,8 @@ local lastReadAt = -math.huge
 local readSoon = false
 local lastFailAt: { [Player]: number } = {}
 local names: { [string]: string } = {}
-local askedName: { [number]: boolean } = {}
+-- When each unknown name was last looked up, on the os.clock() clock.
+local askedName: { [number]: number } = {}
 local view: Leaderboard.View = Leaderboard.view({}, {}, false)
 local busy = false
 local warned: { [string]: boolean } = {}
@@ -173,10 +174,14 @@ local function readPass()
 	end
 	for _, entry in rows do
 		local id = entry.userId
-		if present[id] or askedName[id] then
+		local now = os.clock()
+		if
+			present[id]
+			or not Leaderboard.shouldAskName(names[tostring(id)] ~= nil, askedName[id], now)
+		then
 			continue
 		end
-		askedName[id] = true
+		askedName[id] = now
 		local ok, name = pcall(Players.GetNameFromUserIdAsync, Players, id)
 		if ok and type(name) == "string" then
 			names[tostring(id)] = name

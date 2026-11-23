@@ -1,7 +1,8 @@
 --!strict
 -- Applies the island's hazards to every player four times a second. The server decides all
 -- of it: damage, healing, slow and drowning. The gust push is the one client-applied effect
--- and is not handled here. Hazard cycles run on workspace:GetServerTimeNow().
+-- and is not handled here. Hazard cycles run on workspace:GetServerTimeNow(). The rule that a
+-- burst lands once per cycle lives in Hazards.landing.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -11,6 +12,7 @@ local Geography = require(ReplicatedStorage.Shared.Rules.Geography)
 local Hazards = require(ReplicatedStorage.Shared.Rules.Hazards)
 local Sites = require(ReplicatedStorage.Shared.Catalog.Sites)
 local CombatService = require(script.Parent.CombatService)
+local Fighters = require(script.Parent.Fighters)
 local StatusService = require(script.Parent.StatusService)
 
 -- A long stall must not turn into one huge damage or healing step.
@@ -23,26 +25,9 @@ local accumulated = 0
 -- The last burst cycle that hit each player, by hazard id, so a burst lands once per cycle.
 local lastBurst: { [Player]: { [string]: number } } = {}
 
--- The Humanoid and HumanoidRootPart of a living character, or nil.
-local function living(player: Player): (Humanoid?, BasePart?)
-	local character = player.Character
-	if character == nil then
-		return nil, nil
-	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid == nil or humanoid.Health <= 0 then
-		return nil, nil
-	end
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if root == nil or not root:IsA("BasePart") then
-		return nil, nil
-	end
-	return humanoid, root
-end
-
 -- One player's share of a tick: drowning, damage, bursts, healing, then slow.
 local function tickPlayer(player: Player, now: number, elapsed: number)
-	local humanoid, root = living(player)
+	local humanoid, root = Fighters.body(player.UserId)
 	if humanoid == nil or root == nil then
 		return
 	end
@@ -58,16 +43,10 @@ local function tickPlayer(player: Player, now: number, elapsed: number)
 	end
 
 	if #sample.bursts > 0 then
-		local seen = lastBurst[player]
-		if seen == nil then
-			seen = {}
-			lastBurst[player] = seen
-		end
-		for _, burst in sample.bursts do
-			if seen[burst.id] ~= burst.cycle then
-				seen[burst.id] = burst.cycle
-				CombatService.environmentDamage(player, burst.damage, true)
-			end
+		local landing, record = Hazards.landing(lastBurst[player], sample.bursts)
+		lastBurst[player] = record
+		for _, burst in landing do
+			CombatService.environmentDamage(player, burst.damage, true)
 		end
 	end
 
