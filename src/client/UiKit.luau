@@ -215,6 +215,11 @@ end
 -- Connects Activated; the handler runs only while button.Active. Also records the handler for press.
 function UiKit.onPress(button: GuiButton, handler: () -> ())
 	pressHandlers[button] = handler
+	-- A handler usually captures its own button, so the weak key alone never lets the entry go
+	-- (Luau has no ephemerons): drop it when the button is destroyed.
+	button.Destroying:Connect(function()
+		pressHandlers[button] = nil
+	end)
 	button.Activated:Connect(function()
 		if button.Active then
 			handler()

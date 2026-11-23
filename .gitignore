@@ -2,3 +2,4 @@ build/
 .superpowers/
 *.rbxl.lock
 *.rbxlx.lock
+.claude/worktrees/
