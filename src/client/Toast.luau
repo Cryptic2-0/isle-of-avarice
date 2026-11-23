@@ -58,6 +58,7 @@ function Toast.mount(playerGui: PlayerGui)
 	region.BackgroundTransparency = 0.35
 	region.TextColor3 = REGION_COLOR
 	region.TextScaled = true
+	region.TextWrapped = true
 	region.Font = Enum.Font.GothamMedium
 	region.Text = ""
 	region.Visible = false

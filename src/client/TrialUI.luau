@@ -28,7 +28,7 @@ local acceptHandler: (trialId: string) -> () = function(_trialId: string) end
 -- The offer on screen: Accept sends its trial id.
 local offered: TrialView.OfferView? = nil
 -- Text of the HUD lines on screen, so an unchanged render does nothing.
-local shownKey = ""
+local shownKey: string? = nil
 -- Each HUD line's height for this screen, and how many lines the last render drew.
 local lineHeight = DEFAULT_LINE_HEIGHT
 local drawnLines = 0
@@ -133,7 +133,7 @@ function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 		lineHeight = screenLayout.hudLineHeight
 		UiKit.place(lines, screenLayout.trialHud)
 		-- Forces the next renderHud to draw the lines again at the new height.
-		shownKey = ""
+		shownKey = nil
 	end)
 
 	gui.Parent = playerGui

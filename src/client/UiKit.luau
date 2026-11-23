@@ -257,7 +257,6 @@ function UiKit.send(guard: Guard, request: () -> ()): boolean
 	guard.busy = true
 	guard.serial += 1
 	local serial = guard.serial
-	guard.setInert(true)
 	-- Scheduled before the request so a request that errors cannot leave the guard stuck.
 	task.delay(UiKit.REARM_SECONDS, function()
 		if guard.busy and guard.serial == serial then
@@ -265,6 +264,7 @@ function UiKit.send(guard: Guard, request: () -> ()): boolean
 			guard.setInert(false)
 		end
 	end)
+	guard.setInert(true)
 	request()
 	return true
 end
