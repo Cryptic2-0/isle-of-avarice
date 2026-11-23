@@ -239,7 +239,9 @@ local function inspectUi()
 
 	-- Calling picker and Paths panel.
 	local pathGui = playerGui:FindFirstChild("PathGui")
-	ui.pathsButton = pathGui ~= nil and pathGui:FindFirstChild("PathsButton") ~= nil
+	-- The menu row owns the Paths button now.
+	local menuGui = playerGui:FindFirstChild("MenuGui")
+	ui.pathsButton = menuGui ~= nil and menuGui:FindFirstChild("PathsButton") ~= nil
 	local picker = pathGui and pathGui:FindFirstChild("Picker")
 	ui.pickerVisible = picker ~= nil and picker.Visible
 	local cards = picker and picker:FindFirstChild("Cards")

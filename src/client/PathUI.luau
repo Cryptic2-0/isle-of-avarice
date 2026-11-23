@@ -483,16 +483,6 @@ function PathUI.mount(playerGui: PlayerGui, given: Handlers)
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 12
 
-	local openButton = makeButton("PathsButton", "Paths", UDim2.fromScale(0.14, 0.07))
-	openButton.AnchorPoint = Vector2.new(0, 1)
-	openButton.Position = UDim2.fromScale(0.02, 0.89)
-	local openLimit = openButton:FindFirstChildOfClass("UITextSizeConstraint")
-	if openLimit ~= nil then
-		openLimit.MinTextSize = 12
-	end
-	openButton.Activated:Connect(PathUI.toggle)
-	openButton.Parent = gui
-
 	buildPicker(gui)
 	buildPanel(gui)
 	buildConfirm(gui)

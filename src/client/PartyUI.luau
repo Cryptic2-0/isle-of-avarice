@@ -540,21 +540,6 @@ function PartyUI.mount(playerGui: PlayerGui, given: Handlers)
 	gui.DisplayOrder = 16
 	screenGui = gui
 
-	-- Above the Trade button: the Ledger button fills 90% to 97% (bottom left), Paths 82% to 89%,
-	-- Trade 74% to 81%, and this one 66% to 73%.
-	local button = makeButton("PartyButton", "Party", BUTTON_COLOR)
-	button.AnchorPoint = Vector2.new(0, 1)
-	button.Position = UDim2.fromScale(0.02, 0.73)
-	button.Size = UDim2.fromScale(0.14, 0.07)
-	local limit = button:FindFirstChildOfClass("UITextSizeConstraint")
-	if limit ~= nil then
-		limit.MinTextSize = 12
-	end
-	button.Activated:Connect(function()
-		handlers.request()
-	end)
-	button.Parent = gui
-
 	buildInvite(gui)
 	buildPanel(gui)
 	gui.Parent = playerGui

@@ -130,6 +130,14 @@ T.test("built place contains the expected scripts", function()
 		"ModuleScript"
 	)
 	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.UiKit.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.MenuBar.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.HazardController.ClassName,
 		"ModuleScript"
 	)

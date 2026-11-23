@@ -384,20 +384,6 @@ function TradeUI.mount(playerGui: PlayerGui, given: Handlers)
 	-- With the other windows; below the messages (20).
 	gui.DisplayOrder = 16
 
-	-- Above the Ledger button (bottom 97%, height 7%) and the Paths button (bottom 89%).
-	local button = makeButton("TradeButton", "Trade", BUTTON_COLOR)
-	button.AnchorPoint = Vector2.new(0, 1)
-	button.Position = UDim2.fromScale(0.02, 0.81)
-	button.Size = UDim2.fromScale(0.14, 0.07)
-	local limit = button:FindFirstChildOfClass("UITextSizeConstraint")
-	if limit ~= nil then
-		limit.MinTextSize = 12
-	end
-	button.Activated:Connect(function()
-		handlers.request()
-	end)
-	button.Parent = gui
-
 	buildInvite(gui)
 	buildWindow(gui)
 	gui.Parent = playerGui

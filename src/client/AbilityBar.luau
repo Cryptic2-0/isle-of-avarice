@@ -6,12 +6,11 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local PathView = require(Shared:WaitForChild("Rules"):WaitForChild("PathView"))
+local UiKit = require(script.Parent.UiKit)
 
 local AbilityBar = {}
 
 local SLOT_COUNT = 4
-local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
-local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local DIM_COLOR = Color3.fromRGB(45, 42, 52)
 local OVERLAY_COLOR = Color3.fromRGB(10, 8, 14)
 
@@ -26,19 +25,6 @@ type Slot = {
 
 local slots: { [number]: Slot } = {}
 local ticking: RBXScriptConnection? = nil
-
-local function addCorner(parent: Instance, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
-end
-
-local function limitText(parent: Instance, minSize: number, maxSize: number)
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MinTextSize = minSize
-	constraint.MaxTextSize = maxSize
-	constraint.Parent = parent
-end
 
 local function tick()
 	local now = os.clock()
@@ -69,19 +55,19 @@ local function buildSlot(parent: Frame, index: number, onCast: (slot: number) ->
 	button.SizeConstraint = Enum.SizeConstraint.RelativeYY
 	button.BackgroundColor3 = DIM_COLOR
 	button.Text = ""
-	addCorner(button, 8)
+	UiKit.corner(button, 8)
 
 	local key = Instance.new("TextLabel")
 	key.Name = "Key"
 	key.BackgroundTransparency = 1
 	key.Position = UDim2.fromScale(0.06, 0.04)
 	key.Size = UDim2.fromScale(0.3, 0.3)
-	key.TextColor3 = TEXT_LIGHT
+	key.TextColor3 = UiKit.TEXT_LIGHT
 	key.TextScaled = true
 	key.TextXAlignment = Enum.TextXAlignment.Left
 	key.Font = Enum.Font.GothamBold
 	key.Text = tostring(index)
-	limitText(key, 8, 18)
+	UiKit.limitText(key, 8, 18)
 	key.Parent = button
 
 	local nameLabel = Instance.new("TextLabel")
@@ -89,13 +75,13 @@ local function buildSlot(parent: Frame, index: number, onCast: (slot: number) ->
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Position = UDim2.fromScale(0.05, 0.32)
 	nameLabel.Size = UDim2.fromScale(0.9, 0.62)
-	nameLabel.TextColor3 = TEXT_LIGHT
+	nameLabel.TextColor3 = UiKit.TEXT_LIGHT
 	nameLabel.TextScaled = true
 	nameLabel.TextWrapped = true
 	nameLabel.Font = Enum.Font.GothamMedium
 	nameLabel.Text = "—"
 	nameLabel.TextTransparency = 0.6
-	limitText(nameLabel, 8, 16)
+	UiKit.limitText(nameLabel, 8, 16)
 	nameLabel.Parent = button
 
 	local overlay = Instance.new("Frame")
@@ -107,7 +93,7 @@ local function buildSlot(parent: Frame, index: number, onCast: (slot: number) ->
 	overlay.BackgroundTransparency = 0.35
 	overlay.BorderSizePixel = 0
 	overlay.Visible = false
-	addCorner(overlay, 8)
+	UiKit.corner(overlay, 8)
 	overlay.Parent = button
 
 	local timeLabel = Instance.new("TextLabel")
@@ -116,15 +102,15 @@ local function buildSlot(parent: Frame, index: number, onCast: (slot: number) ->
 	timeLabel.Position = UDim2.fromScale(0.5, 0.5)
 	timeLabel.Size = UDim2.fromScale(0.6, 0.4)
 	timeLabel.BackgroundTransparency = 1
-	timeLabel.TextColor3 = TEXT_LIGHT
+	timeLabel.TextColor3 = UiKit.TEXT_LIGHT
 	timeLabel.TextScaled = true
 	timeLabel.Font = Enum.Font.GothamBold
 	timeLabel.Text = ""
-	limitText(timeLabel, 10, 24)
+	UiKit.limitText(timeLabel, 10, 24)
 	timeLabel.ZIndex = 3
 	timeLabel.Parent = button
 
-	button.Activated:Connect(function()
+	UiKit.onPress(button, function()
 		onCast(index)
 	end)
 	button.Parent = parent
@@ -139,16 +125,11 @@ local function buildSlot(parent: Frame, index: number, onCast: (slot: number) ->
 end
 
 function AbilityBar.mount(playerGui: PlayerGui, onCast: (slot: number) -> ())
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "AbilityGui"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 11
+	-- Under every window (10 and up): the bar never covers an open one.
+	local gui = UiKit.screen("AbilityGui", 6, true)
 
 	local bar = Instance.new("Frame")
 	bar.Name = "Bar"
-	bar.AnchorPoint = Vector2.new(0.5, 1)
-	bar.Position = UDim2.fromScale(0.5, 0.97)
-	bar.Size = UDim2.fromScale(0.34, 0.1)
 	bar.BackgroundTransparency = 1
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Horizontal
@@ -162,6 +143,10 @@ function AbilityBar.mount(playerGui: PlayerGui, onCast: (slot: number) -> ())
 		slots[index] = buildSlot(bar, index, onCast)
 	end
 	bar.Parent = gui
+	-- The rectangle is four slots and three gaps, so the centred list fills it exactly.
+	UiKit.onLayout(function(screenLayout)
+		UiKit.place(bar, screenLayout.abilityBar)
+	end)
 	gui.Parent = playerGui
 end
 
@@ -171,7 +156,7 @@ function AbilityBar.render(views: { PathView.SlotView })
 		if slot ~= nil then
 			local empty = view.name == ""
 			slot.nameLabel.Text = if empty then "—" else view.name
-			slot.button.BackgroundColor3 = if empty then DIM_COLOR else BUTTON_COLOR
+			slot.button.BackgroundColor3 = if empty then DIM_COLOR else UiKit.BUTTON
 			slot.nameLabel.TextTransparency = if empty then 0.6 else 0
 		end
 	end

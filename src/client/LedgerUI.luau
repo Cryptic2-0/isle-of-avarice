@@ -264,16 +264,6 @@ function LedgerUI.mount(
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 10
 
-	local openButton = makeButton("OpenButton", "Ledger", UDim2.fromScale(0.14, 0.07))
-	openButton.AnchorPoint = Vector2.new(0, 1)
-	openButton.Position = UDim2.fromScale(0.02, 0.97)
-	local openLimit = openButton:FindFirstChildOfClass("UITextSizeConstraint")
-	if openLimit ~= nil then
-		openLimit.MinTextSize = 12
-	end
-	openButton.Activated:Connect(LedgerUI.toggle)
-	openButton.Parent = gui
-
 	local book = Instance.new("Frame")
 	book.Name = "Book"
 	book.AnchorPoint = Vector2.new(0.5, 0.5)
