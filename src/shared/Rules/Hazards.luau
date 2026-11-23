@@ -115,4 +115,58 @@ function Hazards.sample(list: { Types.Hazard }, x: number, z: number, now: numbe
 	return sample
 end
 
+-- The bursts that land now: those whose hazard has not hit in this cycle index. Returns them in
+-- order and the new record; `seen` is not changed.
+function Hazards.landing(
+	seen: { [string]: number }?,
+	bursts: { Burst }
+): ({ Burst }, { [string]: number })
+	local record: { [string]: number } = if seen then table.clone(seen) else {}
+	local landing: { Burst } = {}
+	for _, burst in bursts do
+		if record[burst.id] ~= burst.cycle then
+			table.insert(landing, burst)
+			record[burst.id] = burst.cycle
+		end
+	end
+	return landing, record
+end
+
+-- For a region-wide hazard: the parts of its region's ground strips at or beyond its radius,
+-- judged on each strip's centre line. Any other shape has none.
+function Hazards.overlay(hazard: Types.Hazard, strips: { Geography.Strip }): { Geography.Strip }
+	local pieces: { Geography.Strip } = {}
+	local shape = hazard.shape
+	if shape.kind ~= "region" then
+		return pieces
+	end
+	local radius = shape.radius
+	for _, strip in strips do
+		if strip.region == shape.region then
+			if math.abs(strip.z) >= radius then
+				table.insert(pieces, table.clone(strip))
+			else
+				local c = math.sqrt(radius * radius - strip.z * strip.z)
+				if strip.x1 < -c then
+					table.insert(pieces, {
+						z = strip.z,
+						x1 = strip.x1,
+						x2 = math.min(strip.x2, -c),
+						region = strip.region,
+					})
+				end
+				if strip.x2 > c then
+					table.insert(pieces, {
+						z = strip.z,
+						x1 = math.max(strip.x1, c),
+						x2 = strip.x2,
+						region = strip.region,
+					})
+				end
+			end
+		end
+	end
+	return pieces
+end
+
 return Hazards

@@ -11,6 +11,7 @@ local Leaderboard = {}
 Leaderboard.ROWS = 10
 Leaderboard.REFRESH_SECONDS = 120
 Leaderboard.RETRY_SECONDS = 60
+Leaderboard.NAME_RETRY_SECONDS = 300
 
 local function isWhole(n: any): boolean
 	return type(n) == "number" and n > -math.huge and n < math.huge and n == math.floor(n)
@@ -111,6 +112,14 @@ function Leaderboard.keep(old: any, crowns: number): number
 		return math.max(old, crowns)
 	end
 	return crowns
+end
+
+-- Ask for a player's name once, and again only 300 s after a failed try.
+function Leaderboard.shouldAskName(known: boolean, lastTriedAt: number?, now: number): boolean
+	if known then
+		return false
+	end
+	return lastTriedAt == nil or now - lastTriedAt >= Leaderboard.NAME_RETRY_SECONDS
 end
 
 return Leaderboard

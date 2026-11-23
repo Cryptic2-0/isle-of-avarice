@@ -729,3 +729,8 @@ T.test("six extra Copper caches, one in each wild region", function()
 		T.truthy(Relics.byId[extra.relicId] ~= nil)
 	end
 end)
+
+T.test("the blight has its own ground look", function()
+	T.eq(Sites.hazardById.HushBlight.look, "blight")
+	T.eq(Looks.byName.blight, { r = 92, g = 72, b = 104, material = "Ground", transparency = 0.35 })
+end)

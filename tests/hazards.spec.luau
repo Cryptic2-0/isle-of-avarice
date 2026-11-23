@@ -2,6 +2,7 @@
 local T = require("./harness")
 local Geography = require("../src/shared/Rules/Geography")
 local Hazards = require("../src/shared/Rules/Hazards")
+local Sites = require("../src/shared/Catalog/Sites")
 local Types = require("../src/shared/Types")
 
 -- A hazard with id, region, name and look filled in; any field passed overrides the default.
@@ -136,4 +137,71 @@ T.test("same name from two hazards is listed once", function()
 	local a = hz({ id = "a", name = "Lava", dps = 30, shape = pool.shape })
 	T.eq(Hazards.sample({ pool, a }, px, pz, 0).names, { "Lava" })
 	T.eq(Hazards.sample({ pool, a }, px, pz, 0).dps, 60)
+end)
+
+T.test("landing: a burst hits once per cycle of its hazard", function()
+	local first = { id = "Vent1", damage = 20, cycle = 7 }
+	local landing, seen = Hazards.landing(nil, { first })
+	T.eq(landing, { first })
+	T.eq(seen, { Vent1 = 7 })
+	local again, seen2 = Hazards.landing(seen, { first })
+	T.eq(again, {})
+	T.eq(seen2, { Vent1 = 7 })
+	local nextCycle = { id = "Vent1", damage = 20, cycle = 8 }
+	local later, seen3 = Hazards.landing(seen2, { nextCycle })
+	T.eq(later, { nextCycle })
+	T.eq(seen3, { Vent1 = 8 })
+end)
+
+T.test("landing: hazards are counted apart, and the record given is not changed", function()
+	local seen = { Vent1 = 7 }
+	local landing, record = Hazards.landing(seen, {
+		{ id = "Vent1", damage = 20, cycle = 7 },
+		{ id = "Vent2", damage = 25, cycle = 7 },
+	})
+	T.eq(landing, { { id = "Vent2", damage = 25, cycle = 7 } })
+	T.eq(record, { Vent1 = 7, Vent2 = 7 })
+	T.eq(seen, { Vent1 = 7 })
+	T.eq({ Hazards.landing(seen, {}) }, { {}, { Vent1 = 7 } })
+end)
+
+T.test("overlay: the blight's ground, cut at its radius", function()
+	local blight = Sites.hazardById.HushBlight
+	local strips = Geography.strips()
+	local pieces = Hazards.overlay(blight, strips)
+	T.truthy(#pieces > 0)
+	for i, piece in pieces do
+		T.eq(piece.region, "HushGardens", `piece {i}`)
+		T.truthy(piece.x1 < piece.x2, `piece {i} has length`)
+		local nearestX = if piece.x1 <= 0 and piece.x2 >= 0
+			then 0
+			else math.min(math.abs(piece.x1), math.abs(piece.x2))
+		T.truthy(
+			math.sqrt(nearestX ^ 2 + piece.z ^ 2) >= 330 - 1e-6,
+			`piece {i} starts at the edge`
+		)
+		T.truthy(
+			Hazards.affects(blight, (piece.x1 + piece.x2) / 2, piece.z),
+			`piece {i} middle is blighted`
+		)
+	end
+	-- Every Hush Gardens cell centre at or beyond 330 lies on a piece.
+	for _, strip in strips do
+		if strip.region == "HushGardens" then
+			local x = strip.x1 + Geography.CELL / 2
+			while x < strip.x2 do
+				if math.sqrt(x * x + strip.z * strip.z) >= 330 then
+					local covered = false
+					for _, piece in pieces do
+						if piece.z == strip.z and piece.x1 <= x and x <= piece.x2 then
+							covered = true
+						end
+					end
+					T.truthy(covered, `cell at {x}, {strip.z}`)
+				end
+				x += Geography.CELL
+			end
+		end
+	end
+	T.eq(Hazards.overlay(Sites.hazardById.CinderPool1, strips), {})
 end)

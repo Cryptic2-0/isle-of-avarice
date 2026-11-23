@@ -38,6 +38,7 @@ local byName: { [string]: Look } = {
 	spring = look(90, 200, 255, "Neon", 0.4),
 	gust = look(220, 240, 255, "Neon", 0.85),
 	rockfall = look(255, 90, 60, "Neon", 0.7),
+	blight = look(92, 72, 104, "Ground", 0.35),
 	none = look(0, 0, 0, "SmoothPlastic", 1),
 }
 

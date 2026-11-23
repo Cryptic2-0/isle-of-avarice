@@ -25,7 +25,7 @@ local hazards: { Types.Hazard } = {
 		id = "HushBlight",
 		region = REGION,
 		name = "Blight",
-		look = "none",
+		look = "blight",
 		shape = Geography.regionShape(REGION, 330),
 		dps = 5,
 	},
