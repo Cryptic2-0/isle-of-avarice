@@ -54,6 +54,26 @@ local function fireLoaded(player: Player, data: PlayerData)
 	end
 end
 
+-- Tells the vendored ProfileStore whether the player's profile is held (a local change there):
+-- while held, another server's request to end the session is remembered, not answered, so a
+-- blind claim cannot be cut short by leaving and rejoining elsewhere. Once the last hold goes, a
+-- remembered request ends the session, as ProfileStore would have done.
+local function markHeld(player: Player)
+	local profile = profiles[player]
+	if profile == nil then
+		return
+	end
+	if holds[player] ~= nil then
+		profile.HeldOpen = true
+		return
+	end
+	profile.HeldOpen = nil
+	if profile.EndRequestedWhileHeld == true then
+		profile.EndRequestedWhileHeld = nil
+		profile:EndSession()
+	end
+end
+
 -- True while this server still has the same user's profile open under an earlier Player object:
 -- they left and rejoined here while a hold (a combat-log claim) keeps their old profile open.
 local function openUnderEarlierPlayer(player: Player): boolean
@@ -142,6 +162,7 @@ local function loadProfile(player: Player)
 	end)
 
 	profiles[player] = profile
+	markHeld(player)
 	fireLoaded(player, profile.Data)
 end
 
@@ -149,6 +170,7 @@ local function releaseProfile(player: Player)
 	local profile = profiles[player]
 	profiles[player] = nil
 	if profile ~= nil then
+		profile.HeldOpen = nil
 		leaving[player] = true
 		profile:EndSession()
 	end
@@ -159,10 +181,11 @@ function DataService.beforeRelease(callback: (player: Player) -> ())
 	table.insert(beforeReleaseCallbacks, callback)
 end
 
--- Keeps the player's profile open (for up to MAX_HOLD_SECONDS after they leave).
--- Returns a function that lets go; it works once only.
+-- Keeps the player's profile open (for up to MAX_HOLD_SECONDS after they leave), also against
+-- another server asking for it. Returns a function that lets go; it works once only.
 function DataService.hold(player: Player): () -> ()
 	holds[player] = (holds[player] or 0) + 1
+	markHeld(player)
 	local released = false
 	return function()
 		if released then
@@ -173,6 +196,7 @@ function DataService.hold(player: Player): () -> ()
 		if count ~= nil then
 			holds[player] = if count > 1 then count - 1 else nil
 		end
+		markHeld(player)
 	end
 end
 

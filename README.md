@@ -64,4 +64,4 @@ The playable file in `dist/IsleOfAvarice.rbxlx` is a copy of `build/IsleOfAvaric
 
 ## Credits
 
-Saving uses ProfileStore by loleris (Apache-2.0 licence). It is included under `src/server/Vendor/`.
+Saving uses ProfileStore by loleris (Apache-2.0 licence). It is included under `src/server/Vendor/`. That copy is modified: a profile the game holds open for a blind claim is not ended when another server asks for it until the hold ends (each change is marked "Isle of Avarice local change").
