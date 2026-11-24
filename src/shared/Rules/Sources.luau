@@ -114,4 +114,19 @@ function Sources.tryCollect(
 	return newState, result, "GOT_CARD", availableAt
 end
 
+-- coin + delta when delta is finite and the result is finite and >= 0; otherwise nil.
+function Sources.coinAfter(coin: number, delta: number): number?
+	local after = coin + delta
+	if
+		delta > -math.huge
+		and delta < math.huge
+		and after > -math.huge
+		and after < math.huge
+		and after >= 0
+	then
+		return after
+	end
+	return nil
+end
+
 return Sources

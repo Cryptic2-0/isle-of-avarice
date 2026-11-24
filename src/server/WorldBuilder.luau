@@ -96,14 +96,7 @@ local function buildTallyport(island: Folder)
 	disc.Transparency = 0.8
 	disc.Parent = town
 
-	-- Four buildings of different sizes at the plaza corners (width, height, depth).
-	local buildings = {
-		{ x = -28, z = -28, w = 16, h = 12, d = 14 },
-		{ x = 28, z = -28, w = 12, h = 18, d = 12 },
-		{ x = -28, z = 28, w = 14, h = 9, d = 18 },
-		{ x = 28, z = 28, w = 18, h = 14, d = 16 },
-	}
-	for i, b in buildings do
+	for i, b in World.buildings do
 		makePart(
 			town,
 			"Building" .. i,

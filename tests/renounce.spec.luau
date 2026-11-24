@@ -161,3 +161,13 @@ T.test("offer lines", function()
 		'You earn a star and will show as "Crowned twice ★2".'
 	)
 end)
+
+T.test("the word: 32 characters is the limit", function()
+	local at32 = "RENOUNCE" .. string.rep(" ", 24)
+	T.eq(#at32, 32)
+	T.eq(Renounce.parse({ kind = "confirm", word = at32 }), { kind = "confirm", word = at32 })
+	T.truthy(Renounce.wordMatches(at32))
+	local at33 = at32 .. " "
+	T.eq(Renounce.parse({ kind = "confirm", word = at33 }), { kind = "confirm", word = "" })
+	T.falsy(Renounce.wordMatches(at33))
+end)

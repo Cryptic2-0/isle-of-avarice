@@ -4,13 +4,13 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local HudLayout = require(Shared:WaitForChild("Rules"):WaitForChild("HudLayout"))
 local StatusView = require(Shared:WaitForChild("Rules"):WaitForChild("StatusView"))
+local UiKit = require(script.Parent.UiKit)
 
 local StatusHUD = {}
 
-local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local BACKGROUND = Color3.fromRGB(25, 22, 30)
-local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local KIND_COLORS: { [string]: Color3 } = {
 	region = Color3.fromRGB(245, 235, 210),
 	hazard = Color3.fromRGB(255, 170, 60),
@@ -22,6 +22,9 @@ local KIND_COLORS: { [string]: Color3 } = {
 
 local COIN_COLOR = Color3.fromRGB(255, 215, 90)
 local COIN_HEIGHT = 28
+-- Under the Coin line: the Drop shield button sits here, and the lines move below it while it shows.
+local DROP_Y = 44
+local LINES_BELOW_DROP_Y = DROP_Y + 36
 
 local column: Frame? = nil
 local coinLabel: TextLabel? = nil
@@ -29,68 +32,32 @@ local dropButton: TextButton? = nil
 local confirm: Frame? = nil
 -- Text of the lines on screen, so an unchanged render does nothing.
 local shownKey = ""
-
-local function addCorner(parent: Instance, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
-end
-
-local function limitText(parent: Instance, minSize: number, maxSize: number)
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MinTextSize = minSize
-	constraint.MaxTextSize = maxSize
-	constraint.Parent = parent
-end
-
-local function makeButton(name: string, text: string, size: UDim2): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.Size = size
-	button.BackgroundColor3 = BUTTON_COLOR
-	button.TextColor3 = TEXT_LIGHT
-	button.TextScaled = true
-	button.Font = Enum.Font.GothamBold
-	button.Text = text
-	addCorner(button, 8)
-	limitText(button, 10, 20)
-	return button
-end
+-- Whether the Drop shield button was showing at the last render.
+local dropShown = false
 
 local function buildConfirm(gui: ScreenGui, onDropShield: () -> ()): Frame
-	local frame = Instance.new("Frame")
-	frame.Name = "ConfirmDrop"
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	frame.Size = UDim2.fromScale(0.4, 0.22)
-	frame.BackgroundColor3 = BACKGROUND
-	frame.Visible = false
-	addCorner(frame, 12)
+	local frame = UiKit.window("ConfirmDrop", UDim2.fromScale(0.4, 0.22), "dialog")
 
-	local question = Instance.new("TextLabel")
-	question.Name = "Question"
-	question.BackgroundTransparency = 1
-	question.Position = UDim2.fromScale(0.05, 0.08)
-	question.Size = UDim2.fromScale(0.9, 0.5)
-	question.TextColor3 = TEXT_LIGHT
-	question.TextScaled = true
-	question.TextWrapped = true
-	question.Font = Enum.Font.GothamMedium
-	question.Text = "Other players will be able to attack you. Drop it?"
-	limitText(question, 10, 24)
-	question.Parent = frame
+	UiKit.label(
+		"Question",
+		"Other players will be able to attack you. Drop it?",
+		UDim2.fromScale(0.9, 0.5),
+		UDim2.fromScale(0.05, 0.08),
+		{ min = 10, max = 24, align = Enum.TextXAlignment.Center }
+	).Parent =
+		frame
 
-	local yes = makeButton("Yes", "Yes", UDim2.fromScale(0.35, 0.25))
+	local yes = UiKit.button("Yes", "Yes", UDim2.fromScale(0.35, 0.25), { min = 10, max = 20 })
 	yes.Position = UDim2.fromScale(0.1, 0.65)
-	yes.Activated:Connect(function()
+	UiKit.onPress(yes, function()
 		frame.Visible = false
 		onDropShield()
 	end)
 	yes.Parent = frame
 
-	local no = makeButton("No", "No", UDim2.fromScale(0.35, 0.25))
+	local no = UiKit.button("No", "No", UDim2.fromScale(0.35, 0.25), { min = 10, max = 20 })
 	no.Position = UDim2.fromScale(0.55, 0.65)
-	no.Activated:Connect(function()
+	UiKit.onPress(no, function()
 		frame.Visible = false
 	end)
 	no.Parent = frame
@@ -100,10 +67,10 @@ local function buildConfirm(gui: ScreenGui, onDropShield: () -> ()): Frame
 end
 
 function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "StatusGui"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 15
+	-- The lines sit under every window (the lowest is the Ledger, 10); the dialog is a window of
+	-- its own, above them.
+	local gui = UiKit.screen("StatusGui", 8)
+	local dialogGui = UiKit.screen("DropShieldGui", 15)
 
 	local coin = Instance.new("TextLabel")
 	coin.Name = "Coin"
@@ -116,21 +83,21 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	coin.TextXAlignment = Enum.TextXAlignment.Left
 	coin.Font = Enum.Font.GothamBold
 	coin.Text = "Coin: 0"
-	addCorner(coin, 6)
+	UiKit.corner(coin, 6)
 	local coinPadding = Instance.new("UIPadding")
 	coinPadding.PaddingLeft = UDim.new(0, 8)
 	coinPadding.PaddingTop = UDim.new(0, 4)
 	coinPadding.PaddingBottom = UDim.new(0, 4)
 	coinPadding.Parent = coin
-	limitText(coin, 10, 20)
+	UiKit.limitText(coin, 10, 20)
 	coin.Parent = gui
 	coinLabel = coin
 
 	local list = Instance.new("Frame")
 	list.Name = "Lines"
 	list.BackgroundTransparency = 1
-	list.Position = UDim2.new(0, 12, 0, 12 + COIN_HEIGHT + 4)
-	list.Size = UDim2.new(0, 230, 0, 192)
+	list.Position = UDim2.fromOffset(12, DROP_Y)
+	list.Size = UDim2.fromOffset(230, 192)
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, 4)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -138,18 +105,23 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	list.Parent = gui
 	column = list
 
-	local drop = makeButton("DropShield", "Drop shield", UDim2.new(0, 150, 0, 32))
-	drop.Position = UDim2.new(0, 12, 0, 208 + COIN_HEIGHT + 4)
+	-- (12, 44) under the top bar, the same rectangle as HudLayout.dropShield.
+	local drop = UiKit.button("DropShield", "Drop shield", UDim2.fromOffset(150, 32), {
+		min = 10,
+		max = 20,
+	})
+	drop.Position = UDim2.fromOffset(12, DROP_Y)
 	drop.Visible = false
 	drop.Parent = gui
 	dropButton = drop
 
-	local dialog = buildConfirm(gui, onDropShield)
+	local dialog = buildConfirm(dialogGui, onDropShield)
 	confirm = dialog
-	drop.Activated:Connect(function()
+	UiKit.onPress(drop, function()
 		dialog.Visible = true
 	end)
 
+	dialogGui.Parent = playerGui
 	gui.Parent = playerGui
 end
 
@@ -175,6 +147,14 @@ function StatusHUD.render(lines: { StatusView.Line }, showDropShield: boolean)
 	if list == nil then
 		return
 	end
+	-- The lines make room under the button while it shows.
+	if showDropShield ~= dropShown then
+		dropShown = showDropShield
+		list.Position = UDim2.fromOffset(12, if showDropShield then LINES_BELOW_DROP_Y else DROP_Y)
+	end
+	-- On a touch screen the column stops above the thumbstick: the most urgent lines stay.
+	local room = HudLayout.statusLines(UiKit.layout(), UiKit.inset(), showDropShield)
+	lines = StatusView.fit(lines, room)
 	local parts: { string } = {}
 	for _, line in lines do
 		table.insert(parts, line.kind .. ":" .. line.text)
@@ -185,11 +165,7 @@ function StatusHUD.render(lines: { StatusView.Line }, showDropShield: boolean)
 	end
 	shownKey = key
 
-	for _, child in list:GetChildren() do
-		if not child:IsA("UIComponent") then
-			child:Destroy()
-		end
-	end
+	UiKit.clearRows(list)
 	for index, line in lines do
 		local label = Instance.new("TextLabel")
 		label.Name = "Line" .. index
@@ -197,18 +173,18 @@ function StatusHUD.render(lines: { StatusView.Line }, showDropShield: boolean)
 		label.Size = UDim2.new(1, 0, 0, 28)
 		label.BackgroundColor3 = BACKGROUND
 		label.BackgroundTransparency = 0.3
-		label.TextColor3 = KIND_COLORS[line.kind] or TEXT_LIGHT
+		label.TextColor3 = KIND_COLORS[line.kind] or UiKit.TEXT_LIGHT
 		label.TextScaled = true
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.Font = Enum.Font.GothamBold
 		label.Text = line.text
-		addCorner(label, 6)
+		UiKit.corner(label, 6)
 		local padding = Instance.new("UIPadding")
 		padding.PaddingLeft = UDim.new(0, 8)
 		padding.PaddingTop = UDim.new(0, 4)
 		padding.PaddingBottom = UDim.new(0, 4)
 		padding.Parent = label
-		limitText(label, 10, 20)
+		UiKit.limitText(label, 10, 20)
 		label.Parent = list
 	end
 end

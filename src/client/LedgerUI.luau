@@ -4,19 +4,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Tiers = require(Shared:WaitForChild("Catalog"):WaitForChild("Tiers"))
+local Confirm = require(Shared:WaitForChild("Rules"):WaitForChild("Confirm"))
 local Crown = require(Shared:WaitForChild("Rules"):WaitForChild("Crown"))
 local LedgerView = require(Shared:WaitForChild("Rules"):WaitForChild("LedgerView"))
 local Types = require(Shared:WaitForChild("Types"))
+local UiKit = require(script.Parent.UiKit)
 
 type View = LedgerView.View
 
 local LedgerUI = {}
 
-local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local TEXT_DIM = Color3.fromRGB(130, 130, 135)
-local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local LOCKED_COLOR = Color3.fromRGB(55, 55, 60)
-local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local VAULT_GOLD = Color3.fromRGB(255, 200, 40)
 -- An Edict has no tier, so it gets the colour of old paper.
 local PARCHMENT = Color3.fromRGB(214, 196, 150)
@@ -38,99 +37,84 @@ local actionHandler: (request: { [string]: any }) -> () = function(_request: { [
 local vaultHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 local useHandler: (card: LedgerView.FreeView) -> () = function(_card: LedgerView.FreeView) end
 
+-- The control waiting for its second tap (an unclaim or a discard), and what the current
+-- render drew, so an armed control can be redrawn without rebuilding the rows.
+local armed: Confirm.Armed? = nil
+local slotEntries: { { button: TextButton, slot: LedgerView.SlotView } } = {}
+local discardEntries: { { button: TextButton, key: string } } = {}
+
 local function tierColor(tier: Types.Tier): Color3
 	local color = Tiers.info[tier].color
 	return Color3.fromRGB(color.r, color.g, color.b)
 end
 
-local function addCorner(parent: Instance, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
-end
-
-local function addPadding(parent: Instance, pixels: number)
-	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, pixels)
-	padding.PaddingBottom = UDim.new(0, pixels)
-	padding.PaddingLeft = UDim.new(0, pixels)
-	padding.PaddingRight = UDim.new(0, pixels)
-	padding.Parent = parent
-end
-
-local function limitText(parent: Instance, minSize: number, maxSize: number)
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MinTextSize = minSize
-	constraint.MaxTextSize = maxSize
-	constraint.Parent = parent
-end
-
-local function makeLabel(name: string, size: UDim2, position: UDim2, maxText: number): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.Size = size
-	label.Position = position
-	label.BackgroundTransparency = 1
-	label.TextColor3 = TEXT_LIGHT
-	label.TextScaled = true
-	label.Font = Enum.Font.GothamMedium
-	label.Text = ""
-	limitText(label, 10, maxText)
-	return label
-end
-
-local function makeButton(name: string, text: string, size: UDim2): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.Size = size
-	button.BackgroundColor3 = BUTTON_COLOR
-	button.TextColor3 = TEXT_LIGHT
-	button.TextScaled = true
-	button.Font = Enum.Font.GothamBold
-	button.Text = text
-	button.AutoButtonColor = true
-	addCorner(button, 8)
-	limitText(button, 10, 22)
-	return button
-end
-
--- Destroys every child except layout objects.
-local function clearRows(container: Instance)
-	for _, child in container:GetChildren() do
-		if not child:IsA("UIComponent") then
-			child:Destroy()
-		end
-	end
-end
-
-local function makeSlot(slot: LedgerView.SlotView, order: number): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = "Slot" .. slot.label
-	button.LayoutOrder = order
-	button.AutoButtonColor = slot.claimed
-	button.Font = Enum.Font.GothamMedium
-	button.TextScaled = true
-	button.TextWrapped = true
-	if slot.claimed then
-		button.BackgroundColor3 = tierColor(slot.tier)
-		button.TextColor3 = Color3.fromRGB(20, 18, 24)
-	else
-		button.BackgroundColor3 = LOCKED_COLOR
-		button.TextColor3 = TEXT_DIM
-	end
+local function slotText(slot: LedgerView.SlotView): string
 	local text = slot.label .. "\n" .. slot.name
 	if slot.spares > 0 then
 		text ..= "\nx" .. slot.spares
 	end
-	button.Text = text
-	addCorner(button, 8)
-	addPadding(button, 4)
-	limitText(button, 9, 20)
-	if slot.claimed then
-		button.Activated:Connect(function()
-			actionHandler({ kind = "unclaim", cardId = slot.cardId })
-		end)
+	return text
+end
+
+-- Redraws every control that can be armed from `armed` and the clock.
+local function drawArmed()
+	local now = os.clock()
+	for _, entry in slotEntries do
+		local slot = entry.slot
+		local button = entry.button
+		if Confirm.isArmed(armed, "unclaim:" .. slot.cardId, now) then
+			button.Text = slot.label .. "\nTap again\nto unclaim"
+			button.BackgroundColor3 = UiKit.ARMED
+			button.TextColor3 = UiKit.TEXT_LIGHT
+		else
+			button.Text = slotText(slot)
+			button.BackgroundColor3 = tierColor(slot.tier)
+			button.TextColor3 = UiKit.TEXT_DARK
+		end
 	end
+	for _, entry in discardEntries do
+		if Confirm.isArmed(armed, entry.key, now) then
+			entry.button.Text = "Sure?"
+			entry.button.BackgroundColor3 = UiKit.ARMED
+		else
+			entry.button.Text = "Discard"
+			entry.button.BackgroundColor3 = UiKit.BUTTON
+		end
+	end
+end
+
+-- A tap on any other control (or closing the book) starts the two-tap count over.
+local function disarm()
+	armed = nil
+	drawArmed()
+end
+
+-- A tap on a risky control: arms it, or (second tap in time) reports that it should go ahead.
+local function pressRisky(key: string): boolean
+	local nextArmed, go = Confirm.press(armed, key, os.clock())
+	armed = nextArmed
+	drawArmed()
+	if not go then
+		-- Puts the control back once its window has passed.
+		task.delay(Confirm.WINDOW_SECONDS + 0.1, drawArmed)
+	end
+	return go
+end
+
+local function makeSlot(slot: LedgerView.SlotView, order: number): TextButton
+	local button = UiKit.button("Slot" .. slot.label, "", nil, { min = 9, max = 20, wrap = true })
+	button.LayoutOrder = order
+	button.AutoButtonColor = slot.claimed
+	button.Font = Enum.Font.GothamMedium
+	if slot.claimed then
+		button.BackgroundColor3 = tierColor(slot.tier)
+		button.TextColor3 = UiKit.TEXT_DARK
+	else
+		button.BackgroundColor3 = LOCKED_COLOR
+		button.TextColor3 = TEXT_DIM
+	end
+	button.Text = slotText(slot)
+	UiKit.padding(button, 4)
 	if slot.vaulted then
 		local stroke = Instance.new("UIStroke")
 		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -138,24 +122,51 @@ local function makeSlot(slot: LedgerView.SlotView, order: number): TextButton
 		stroke.Thickness = 3
 		stroke.Parent = button
 	end
+
+	-- A claimed slot has its own guard: the slot and its Vault button share it.
+	local vaultButton: TextButton? = nil
+	local slotGuard = UiKit.guard(function(inert: boolean)
+		UiKit.setEnabled(button, not inert)
+		if vaultButton ~= nil then
+			UiKit.setEnabled(vaultButton, not inert)
+		end
+	end)
+	if slot.claimed then
+		table.insert(slotEntries, { button = button, slot = slot })
+		UiKit.onPress(button, function()
+			if pressRisky("unclaim:" .. slot.cardId) then
+				UiKit.send(slotGuard, function()
+					actionHandler({ kind = "unclaim", cardId = slot.cardId })
+				end)
+			end
+		end)
+	end
 	if slot.vaulted or slot.canVault then
 		-- A button on top of the slot takes the click, so the slot's unclaim does not fire.
-		local vaultButton = makeButton(
+		local vault = UiKit.button(
 			"Vault",
 			if slot.vaulted then "Vaulted" else "Vault",
-			UDim2.new(0.55, 0, 0, 18)
+			UDim2.new(0.55, 0, 0, 18),
+			{ min = 10, max = 22 }
 		)
-		vaultButton.AnchorPoint = Vector2.new(1, 1)
-		vaultButton.Position = UDim2.fromScale(1, 1)
-		vaultButton.ZIndex = button.ZIndex + 1
+		vault.AnchorPoint = Vector2.new(1, 1)
+		vault.Position = UDim2.fromScale(1, 1)
+		vault.ZIndex = button.ZIndex + 1
 		if slot.vaulted then
-			vaultButton.BackgroundColor3 = VAULT_GOLD
-			vaultButton.TextColor3 = Color3.fromRGB(20, 18, 24)
+			vault.BackgroundColor3 = VAULT_GOLD
+			vault.TextColor3 = UiKit.TEXT_DARK
 		end
-		vaultButton.Activated:Connect(function()
-			vaultHandler({ kind = if slot.vaulted then "remove" else "add", cardId = slot.cardId })
+		UiKit.onPress(vault, function()
+			disarm()
+			UiKit.send(slotGuard, function()
+				vaultHandler({
+					kind = if slot.vaulted then "remove" else "add",
+					cardId = slot.cardId,
+				})
+			end)
 		end)
-		vaultButton.Parent = button
+		vault.Parent = button
+		vaultButton = vault
 	end
 	return button
 end
@@ -167,72 +178,71 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	row.Size = UDim2.new(1, 0, 0, 52)
 	local tier = card.tier
 	row.BackgroundColor3 = if tier ~= nil then tierColor(tier) else PARCHMENT
-	addCorner(row, 8)
+	UiKit.corner(row, 8)
 
-	local name = makeLabel("Name", UDim2.fromScale(0.5, 1), UDim2.fromScale(0, 0), 22)
-	name.TextColor3 = Color3.fromRGB(20, 18, 24)
-	name.TextXAlignment = Enum.TextXAlignment.Left
-	name.Text = card.name
-	addPadding(name, 6)
+	local name = UiKit.label(
+		"Name",
+		card.name,
+		UDim2.fromScale(0.5, 1),
+		UDim2.fromScale(0, 0),
+		{ min = 10, max = 22, wrap = false, color = UiKit.TEXT_DARK }
+	)
+	UiKit.padding(name, 6)
 	name.Parent = row
 
 	-- One request per row: a second click before the Ledger sync would pass the server's
-	-- "card on that row" check with the identical card next to it. The row is rebuilt on sync.
-	local sent = false
+	-- "card on that row" check with the identical card next to it. The row is rebuilt on sync,
+	-- and comes back by itself after a second if the server refused.
 	local buttons: { TextButton } = {}
-	local function setInert(inert: boolean)
-		sent = inert
+	local rowGuard = UiKit.guard(function(inert: boolean)
 		for _, button in buttons do
-			button.Active = not inert
-			button.AutoButtonColor = not inert
-			button.BackgroundTransparency = if inert then 0.6 else 0
-			button.TextTransparency = if inert then 0.5 else 0
+			UiKit.setEnabled(button, not inert)
 		end
-	end
-	-- `rearmAfter`: for a button that only opens a picker, which may be cancelled with no
-	-- sync to rebuild the row.
-	local function once(send: () -> (), rearmAfter: number?): () -> ()
-		return function()
-			if sent then
-				return
-			end
-			setInert(true)
-			send()
-			if rearmAfter ~= nil then
-				task.delay(rearmAfter, function()
-					setInert(false)
-				end)
-			end
-		end
-	end
+	end)
 
-	local discard = makeButton("Discard", "Discard", UDim2.new(0.22, 0, 1, -8))
+	local discard =
+		UiKit.button("Discard", "Discard", UDim2.new(0.22, 0, 1, -8), { min = 10, max = 22 })
 	discard.AnchorPoint = Vector2.new(1, 0.5)
 	discard.Position = UDim2.new(0.99, 0, 0.5, 0)
 	table.insert(buttons, discard)
-	discard.Activated:Connect(once(function()
-		actionHandler({ kind = "discard", freeIndex = card.index, cardId = card.cardId })
-	end))
+	local discardKey = "discard:" .. card.index .. ":" .. card.cardId
+	table.insert(discardEntries, { button = discard, key = discardKey })
+	UiKit.onPress(discard, function()
+		if pressRisky(discardKey) then
+			UiKit.send(rowGuard, function()
+				actionHandler({ kind = "discard", freeIndex = card.index, cardId = card.cardId })
+			end)
+		end
+	end)
 	discard.Parent = row
 
 	if card.canClaim then
-		local claim = makeButton("Claim", "Claim", UDim2.new(0.22, 0, 1, -8))
+		local claim =
+			UiKit.button("Claim", "Claim", UDim2.new(0.22, 0, 1, -8), { min = 10, max = 22 })
 		claim.AnchorPoint = Vector2.new(1, 0.5)
 		claim.Position = UDim2.new(0.75, 0, 0.5, 0)
 		table.insert(buttons, claim)
-		claim.Activated:Connect(once(function()
-			actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
-		end))
+		UiKit.onPress(claim, function()
+			disarm()
+			UiKit.send(rowGuard, function()
+				actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
+			end)
+		end)
 		claim.Parent = row
 	elseif card.canUse then
 		-- An Edict is used, not claimed; the button sits where Claim would.
-		local use = makeButton("Use", "Use", UDim2.new(0.22, 0, 1, -8))
+		local use = UiKit.button("Use", "Use", UDim2.new(0.22, 0, 1, -8), { min = 10, max = 22 })
 		use.AnchorPoint = Vector2.new(1, 0.5)
 		use.Position = UDim2.new(0.75, 0, 0.5, 0)
 		table.insert(buttons, use)
-		use.Activated:Connect(once(function()
-			useHandler(card)
-		end, 1))
+		UiKit.onPress(use, function()
+			disarm()
+			-- It only opens a picker, which may be cancelled with no sync to rebuild the row;
+			-- the guard's one-second re-arm covers that.
+			UiKit.send(rowGuard, function()
+				useHandler(card)
+			end)
+		end)
 		use.Parent = row
 	end
 	return row
@@ -259,76 +269,72 @@ function LedgerUI.mount(
 	actionHandler = onAction
 	vaultHandler = onVault
 
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "LedgerGui"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 10
+	local gui = UiKit.screen("LedgerGui", 10)
 
-	local openButton = makeButton("OpenButton", "Ledger", UDim2.fromScale(0.14, 0.07))
-	openButton.AnchorPoint = Vector2.new(0, 1)
-	openButton.Position = UDim2.fromScale(0.02, 0.97)
-	local openLimit = openButton:FindFirstChildOfClass("UITextSizeConstraint")
-	if openLimit ~= nil then
-		openLimit.MinTextSize = 12
-	end
-	openButton.Activated:Connect(LedgerUI.toggle)
-	openButton.Parent = gui
+	local book = UiKit.window("Book", UDim2.fromScale(0.7, 0.7), "big")
 
-	local book = Instance.new("Frame")
-	book.Name = "Book"
-	book.AnchorPoint = Vector2.new(0.5, 0.5)
-	book.Position = UDim2.fromScale(0.5, 0.5)
-	book.Size = UDim2.fromScale(0.7, 0.7)
-	book.BackgroundColor3 = PANEL_COLOR
-	book.Visible = false
-	addCorner(book, 14)
-
-	local title = makeLabel("Title", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.02, 0.02), 30)
-	title.Font = Enum.Font.GothamBold
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Text = "The Hoarder's Ledger"
+	local title = UiKit.label(
+		"Title",
+		"The Hoarder's Ledger",
+		UDim2.fromScale(0.6, 0.08),
+		UDim2.fromScale(0.02, 0.02),
+		{ min = 10, max = 30, wrap = false, font = Enum.Font.GothamBold }
+	)
 	title.Parent = book
 
-	local closeButton = makeButton("Close", "X", UDim2.fromScale(0.08, 0.08))
+	local closeButton = UiKit.button(
+		"Close",
+		"X",
+		UDim2.fromScale(0.08, 0.08),
+		{ min = 10, max = 22, minSize = Vector2.new(40, 32) }
+	)
 	closeButton.AnchorPoint = Vector2.new(1, 0)
 	closeButton.Position = UDim2.fromScale(0.98, 0.02)
-	closeButton.Activated:Connect(LedgerUI.toggle)
+	UiKit.onPress(closeButton, LedgerUI.toggle)
 	closeButton.Parent = book
 
-	local progress =
-		makeLabel("Progress", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.02, 0.11), 20)
-	progress.TextXAlignment = Enum.TextXAlignment.Left
+	local progress = UiKit.label(
+		"Progress",
+		"",
+		UDim2.fromScale(0.3, 0.05),
+		UDim2.fromScale(0.02, 0.11),
+		{ min = 10, max = 20, wrap = false }
+	)
 	progress.Parent = book
 	progressLabel = progress
 
-	local free = makeLabel("FreeCount", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.35, 0.11), 20)
-	free.TextXAlignment = Enum.TextXAlignment.Left
+	local free = UiKit.label(
+		"FreeCount",
+		"",
+		UDim2.fromScale(0.3, 0.05),
+		UDim2.fromScale(0.35, 0.11),
+		{ min = 10, max = 20, wrap = false }
+	)
 	free.Parent = book
 	freeLabel = free
 
-	local vault =
-		makeLabel("VaultCount", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.68, 0.11), 20)
-	vault.TextXAlignment = Enum.TextXAlignment.Left
+	local vault = UiKit.label(
+		"VaultCount",
+		"",
+		UDim2.fromScale(0.3, 0.05),
+		UDim2.fromScale(0.68, 0.11),
+		{ min = 10, max = 20, wrap = false }
+	)
 	vault.Parent = book
 	vaultLabel = vault
 
-	local crownLine =
-		makeLabel("CrownLine", UDim2.fromScale(0.96, 0.04), UDim2.fromScale(0.02, 0.165), 18)
-	crownLine.TextColor3 = CROWN_GOLD
-	crownLine.TextXAlignment = Enum.TextXAlignment.Left
+	local crownLine = UiKit.label(
+		"CrownLine",
+		"",
+		UDim2.fromScale(0.96, 0.04),
+		UDim2.fromScale(0.02, 0.165),
+		{ min = 10, max = 18, wrap = false, color = CROWN_GOLD }
+	)
 	crownLine.Parent = book
 	crownLabel = crownLine
 	drawCrown()
 
-	local grid = Instance.new("ScrollingFrame")
-	grid.Name = "Slots"
-	grid.Position = UDim2.fromScale(0.02, 0.21)
-	grid.Size = UDim2.fromScale(0.46, 0.76)
-	grid.BackgroundTransparency = 1
-	grid.BorderSizePixel = 0
-	grid.ScrollBarThickness = 6
-	grid.CanvasSize = UDim2.new()
-	grid.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	local grid = UiKit.scroller("Slots", UDim2.fromScale(0.46, 0.76), UDim2.fromScale(0.02, 0.21))
 	local gridLayout = Instance.new("UIGridLayout")
 	gridLayout.CellSize = UDim2.new(0.31, 0, 0, 78)
 	gridLayout.CellPadding = UDim2.new(0.03, 0, 0, 8)
@@ -337,15 +343,8 @@ function LedgerUI.mount(
 	grid.Parent = book
 	slotGrid = grid
 
-	local list = Instance.new("ScrollingFrame")
-	list.Name = "FreeCards"
-	list.Position = UDim2.fromScale(0.52, 0.21)
-	list.Size = UDim2.fromScale(0.46, 0.76)
-	list.BackgroundTransparency = 1
-	list.BorderSizePixel = 0
-	list.ScrollBarThickness = 6
-	list.CanvasSize = UDim2.new()
-	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	local list =
+		UiKit.scroller("FreeCards", UDim2.fromScale(0.46, 0.76), UDim2.fromScale(0.52, 0.21))
 	local listLayout = Instance.new("UIListLayout")
 	listLayout.Padding = UDim.new(0, 6)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -387,14 +386,18 @@ function LedgerUI.render(view: View)
 	lastComplete = view.complete
 	drawCrown()
 
-	clearRows(grid)
+	slotEntries = {}
+	discardEntries = {}
+	UiKit.clearRows(grid)
 	for index, slot in view.slots do
 		makeSlot(slot, index).Parent = grid
 	end
-	clearRows(list)
+	UiKit.clearRows(list)
 	for _, card in view.free do
 		makeFreeRow(card).Parent = list
 	end
+	-- An armed control stays armed across a sync while its key still exists.
+	drawArmed()
 end
 
 -- The player's Crowns and Stars attributes (nil while not set yet).
@@ -412,6 +415,7 @@ end
 function LedgerUI.toggle()
 	local book = panel
 	if book ~= nil then
+		disarm()
 		book.Visible = not book.Visible
 	end
 end

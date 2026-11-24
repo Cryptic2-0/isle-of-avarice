@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 9, 2026-11-21: M7 endgame in section 3.15; revision 8: M6 in 3.14; revision 7: M5 in 3.13; revision 6: M4 in 3.9–3.12)
+**Date:** 2026-11-10 (revision 10, 2026-11-24: M8 launch polish in section 3.16; revision 9: M7 endgame in 3.15; revision 8: M6 in 3.14; revision 7: M5 in 3.13; revision 6: M4 in 3.9–3.12)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -765,6 +765,143 @@ Not in M7: a fastest-run board, a board window away from Tallyport, more
 cosmetics or a way to hide the circlet, titles in chat, global (cross-server)
 scarcity, sounds, the UI polish pass of the backlog, paid items.
 
+### 3.16 Launch polish (M8 starting values)
+
+Rulings made while planning M8. M8 adds no content: it makes the game
+comfortable on a phone, stops a tap from doing something the player did not
+mean, and clears the backlog items and review notes that a player could meet.
+The phone target is a landscape screen of 640 by 360 pixels, under Roblox's top
+bar (36 or 58 pixels). All numbers are starting values for play tests.
+
+**Where the HUD goes.** One pure rule, `HudLayout`, places every always-on
+control from the screen's size, the top bar's height and whether it is a touch
+screen. A screen whose shorter side is under 500 pixels is a phone.
+
+| Area | Rule |
+|---|---|
+| Thumbstick zone (touch only) | the left 40% of the screen, bottom 45% |
+| Jump zone (touch only) | phone: the bottom-right 100 by 95 pixels; larger: 180 by 220 |
+| Free band | touch: from the thumbstick zone + 12 to the jump zone − 12; otherwise the whole width less 12 each side |
+| Ability bar | four square slots, 6 apart, 12 above the bottom, centred in the free band; a slot is a tenth of the screen height, at least 44 and at most 96 pixels |
+| Menu row | Ledger, Paths, Trade, Party, one row 6 above the ability bar, centred in the free band; each button a quarter of the band, at most 120 wide; 32 tall on a phone, 36 otherwise |
+| Drop shield | under the Coin line, top left (12, 44 under the top bar), 150 by 32; on a touch screen the status lines under it stop 6 above the thumbstick (the least urgent are dropped, the region first) |
+| Trial HUD | top right, 12 from the edge, room for four lines; phone: 220 wide, lines 22 tall, 8 under the top bar; otherwise 300 wide, lines 28 tall, 16% down |
+| Party panel | top right under the lines the trial HUD shows, 6 below them; 220 wide on a phone, 280 otherwise; it stops 6 above anything below it in its column (the menu row, the ability bar, the jump zone), keeps at least its title row (46 pixels) and scrolls its rows; its rows are 40 tall on a touch screen (so one fits beside four trial lines on a phone), 48 otherwise |
+
+On a 640 by 360 phone with a 58-pixel top bar this puts the ability bar at
+(301, 304), 194 by 44; the menu row at y 266, four buttons 60 by 32 from x 269;
+the trial HUD at (408, 66), 220 by 100. On a screen without touch the ability
+bar and menu row are centred, as before. The four menu buttons leave the bottom
+left (where they sat on the thumbstick) and live in their own row; B and P
+still open the Ledger and the Paths panel. The HUD sits under the windows: the
+menu row and the ability bar never cover an open window. In screen order (DisplayOrder) the
+menu row is 5, the ability bar 6, the trial HUD lines 7, the Coin and status lines 8 and the
+party panel 9, all under the lowest window (the Ledger, 10). The trial offer (14), the "Drop
+shield" dialog (15) and the party invite banner (16) are windows and keep their own screens above.
+
+**Windows on a phone.** Every window keeps its size as a share of the screen,
+with a smallest size that fits a 640 by 360 phone under a 58-pixel top bar:
+
+| Kind | Smallest size | Windows |
+|---|---|---|
+| Big | 600 by 280 | the Ledger book, the claim screen, the Edict Hall, the trade window, the Paths panel, the Calling picker, the Summons picker |
+| Small | 300 by 240 | the trial offer, the Renounce window, the Passage picker, the Edict result |
+| Dialog | 300 by 140 | the "Drop shield?" and "Change your Calling?" questions |
+
+A window's Close button is at least 40 by 32. The Calling picker's cards are
+220 pixels tall, so a whole card fits a phone.
+
+**Taps.**
+
+- **A second tap to confirm.** Unclaiming a claimed slot, and discarding a
+  free-slot card, take two taps on the same control within 3 seconds. The
+  first tap marks the control in red ("Tap again to unclaim", "Sure?") and
+  sends nothing; a tap on another control, or a wait of more than 3 seconds,
+  starts over. The server is not involved: it still checks every request.
+- **One request at a time.** After a tap sends a request, the row it was on
+  (a Ledger slot or free-slot row, a claim cell, the Paths loadout) or the whole
+  window (the Edict Hall, the trade window, the party panel, the Renounce
+  window) goes inert and dimmed until the server's next view of it arrives, or
+  for 1 second when the server answers with a message only (a refusal). Every
+  button ignores a tap while it is inert.
+- **No borders.** Nothing the client draws has Roblox's default 1-pixel border.
+- **One kit.** The shared pieces every screen repeated (corners, text limits,
+  labels, buttons, the inert look, list clearing, scrolling lists, windows,
+  the one-request guard) live in one client module, `UiKit`.
+
+**The region banner.** Entering a region shows its name and hint ("Thornwood:
+A hedge maze...") for 3 seconds in its own line just under the message line,
+so it never replaces or delays a message from the server. A newer region
+replaces an older one at once. The trade and party invite banners move down to
+make room (18% and 28% from the top).
+
+**The blight on the ground.** The Hush Gardens blight gets a ground tint: a
+dull purple-grey, see-through sheet (colour 92, 72, 104, Ground material, 35%
+see-through) laid on every ground strip of the Hush Gardens beyond 330 studs
+from the island centre, judged on each strip's centre line. It touches nothing
+and blocks nothing; the status line and the entering message stay the exact
+truth (the tint's edge can be up to half a ground cell off).
+
+**Fixes folded in** from the review notes of M4 to M7, each one a player could
+meet:
+
+- The all-time board asks again for a name it could not read, 300 seconds
+  after the failed try, instead of showing "Claimant N" until the server
+  restarts.
+- The Edict Hall and trades check that the Coin move is valid before they
+  write anything, so a card can never move without its Coin.
+- An open trade is sent again when either trader's Coin changes, so "of N"
+  stays true.
+- The trade window's confirm countdown runs only while a trade is open.
+- A refused Ledger request no longer leaves its row dimmed until the next
+  change (the 1-second rule above).
+- Health regeneration waits for a new character's Humanoid before watching it
+  (a character whose Humanoid arrived late healed through hazards), and a
+  failed health write for one player no longer stops the others.
+- The party panel fits a phone (above), and a long name in a party row ends
+  in "..." instead of running under the buttons: the name and health share the
+  first line, the title and the Lead and Remove buttons the second.
+- The Summons picker, the Renounce window's lines and the Ledger's Crown line
+  fit a phone (the window sizes above).
+
+**Tidying.** HazardService's "a burst hits once per cycle" rule becomes a pure,
+tested `Hazards.landing`; the extra-cache spot (310, −60) is written once
+(`Regions.extraCache`); Squall Steps and the tests read region bearings from
+`Regions`; one `living` helper (`Fighters.body`) replaces the copies;
+Tallyport's buildings move into `World.buildings`; the unused
+`World.islandHalfSize` goes; `Ledger.sanitize` keeps saved free cards after a
+gap; the test harness survives tables that contain themselves; and the tests
+the backlog listed are written.
+
+**What the automated play test checks.** Every game screen has no borders; the
+menu row and ability bar sit where `HudLayout` says for the test window; the
+old bottom-left buttons are gone; every window has its smallest size; the menu
+buttons open and close the Ledger and the Paths panel; one tap on a claimed
+slot or on Discard does nothing and two do; a refused Claim's row comes back
+after a second; the region banner and a server message show together; the
+blight tint lies inside the blight and touches nothing; a Coin change reaches
+an open trade; a new character does not regenerate in its first 10 seconds
+after a hit; the party panel keeps clear of the menu row and shows whole names.
+A phone screen cannot be emulated by the test: the owner checks it by hand
+(Studio's device emulator, then a real phone).
+
+**Review notes left as they are**, because no player can meet them today:
+code only the play test uses; wording and readability notes; checks that
+cannot fail because nothing yields between them (EdictService's discard after
+an effect, AbilityService's caster check); values that are always the same in
+play (MaxHealth is always 100; stars are pulled into range on load); the
+duplicated rate-limit helper in three services; a defeat writing a Ledger that
+a claim has locked (intended); Passage landing on its target when every spot
+round them is blocked (rare, and the target sees it). Tuning stays with the
+owner's play tests: the hazard numbers, whether dying to the island should
+cost something, the 0.3-second hold slack on a slow phone, the gust push near
+pillars and the causeway's walk-out window.
+
+Not in M8: sounds (no verified asset ids), paid items, global (cross-server)
+scarcity, guilds, Luau type checking in `check.sh` (none of the installed
+tools — Rojo, Lune, StyLua, Selene — checks Luau types), a UI size setting,
+portrait phones, gamepad layout, translations.
+
 ## 4. The Six Paths
 
 ### 4.1 The hexagon
@@ -972,6 +1109,7 @@ plan.
 | M5 | Edicts and trading | Track holders, hide, teleport, and swap cards safely |
 | M6 | Parties | Group up; allies cannot hurt each other and support abilities reach them |
 | M7 | Endgame and launch | Be Crowned, see the leaderboard; 50 Relics |
+| M8 | Launch polish | Play comfortably on a phone; no slot unclaimed or card discarded by one stray tap; the backlog and review notes a player could meet are fixed |
 
 The first build plan covers **M0 and M1**.
 

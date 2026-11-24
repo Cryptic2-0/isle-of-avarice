@@ -1,7 +1,7 @@
 --!nonstrict
 -- Automated two-player play test. Only in the play-test build (playtest.project.json),
 -- never in dist. Start a local server with 2 players; this script walks through the M1,
--- M2, M3, M4, M5, M6 and M7 checklists and the world checks (W.1 to W.7, for the nine-region island),
+-- M2, M3, M4, M5, M6, M7 and M8 checklists and the world checks (W.1 to W.7, for the nine-region island),
 -- driving each player through their Agent, and prints one line per check:
 -- "[PLAYTEST] PASS ..." or "[PLAYTEST] FAIL ...", then a DONE summary.
 --
@@ -18,7 +18,11 @@
 -- after M2.1. A can claim B only once an hour and M2 makes that claim (and B's on A), so
 -- M2.8, M2.13 and M2.14 also check the Calling's defeat XP (M3.10). Then the rest of M3,
 -- then M4 (creatures, trials and the quest), then M5 (Edicts, the shop and trading), then M6 (parties), then M7 (held caches, Crowning, the board, Renounce, the
--- Crown Relics, health regeneration), and M2.15, which ends B's session, last of all.
+-- Crown Relics, health regeneration), then M8 (launch polish: the UI kit, the menu row, where the
+-- controls sit, two taps to unclaim or discard, the region banner, the blight tint, a Coin change
+-- reaching an open trade, a new character's health watch, the party panel), and M2.15, which ends
+-- B's session, last of all. M8 taps the game's own buttons through the agent's press seam (it runs
+-- the handler the button recorded, as a tap would, only while the button is Active and shown).
 -- Creatures are put to sleep for the whole run (CreatureService.setActive) and M4 wakes one
 -- at a time; it sets their health directly, fixes the drop rolls and skips trial time. The Tally
 -- Stone's board and the badge are stand-ins from the start of the run to the end of M7 (M1.11
@@ -55,6 +59,7 @@ local Combat = require(Rules:WaitForChild("Combat"))
 local Crown = require(Rules:WaitForChild("Crown"))
 local Geography = require(Rules:WaitForChild("Geography"))
 local Hazards = require(Rules:WaitForChild("Hazards"))
+local HudLayout = require(Rules:WaitForChild("HudLayout"))
 local Ledger = require(Rules:WaitForChild("Ledger"))
 local Party = require(Rules:WaitForChild("Party"))
 local PathProgress = require(Rules:WaitForChild("PathProgress"))
@@ -62,6 +67,9 @@ local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local Rounds = require(Rules:WaitForChild("Rounds"))
 local Creatures = require(Shared:WaitForChild("Catalog"):WaitForChild("Creatures"))
+local Looks = require(Shared:WaitForChild("Catalog"):WaitForChild("Looks"))
+local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages"))
+local Regions = require(Shared:WaitForChild("Catalog"):WaitForChild("Regions"))
 local Trials = require(Shared:WaitForChild("Catalog"):WaitForChild("Trials"))
 local Relics = require(Shared:WaitForChild("Catalog"):WaitForChild("Relics"))
 local Sites = require(Shared:WaitForChild("Catalog"):WaitForChild("Sites"))
@@ -113,6 +121,7 @@ local partyInvites = {} -- player -> last PartyInvite (false = closed, nil = nev
 local partySyncs = {} -- player -> last PartySync (false = none, nil = never seen)
 local ceremonies = {} -- player -> last Ceremony payload
 local renounceOffers = {} -- player -> last RenounceOffer (false = closed, nil = never seen)
+local presses = {} -- player -> what a pressed button looked like right after the press (M8)
 local agentErrors = {}
 local renderNotes = {} -- each time a client stopped or started drawing frames
 
@@ -151,6 +160,8 @@ report.OnServerEvent:Connect(function(player, kind, a, b)
 		renounceOffers[player] = if a == nil then false else a
 	elseif kind == "ui" then
 		uiReport[player] = a
+	elseif kind == "pressed" then
+		presses[player] = a
 	elseif kind == "error" then
 		table.insert(agentErrors, player.Name .. ": " .. tostring(a))
 		log("agent error from " .. player.Name .. ": " .. tostring(a))
@@ -227,6 +238,18 @@ end
 
 local function send(player: Player, op: string, arg: any?)
 	cmd:FireClient(player, op, arg)
+end
+
+-- Taps a button on the player's screen (a path like "MenuGui/LedgerButton") through the agent's
+-- press seam. Returns { path, ok, active, text }: ok is whether the button's handler ran, active
+-- and text are read right after it. {} when the agent did not answer within 3 seconds.
+local function press(player: Player, path: string)
+	presses[player] = nil
+	send(player, "press", path)
+	waitFor(function()
+		return presses[player] ~= nil
+	end, 3)
+	return presses[player] or {}
 end
 
 local function rootOf(player: Player): BasePart?
@@ -3793,6 +3816,572 @@ local function runM7(A: Player, B: Player)
 	runM7Endgame(A, B)
 end
 
+------------------------------------------------------------------------------- M8 launch polish
+-- The UI kit, the menu row, where each control sits, two taps to unclaim or discard, the region
+-- banner, the blight tint, a Coin change reaching an open trade, a new character's health watch
+-- and the party panel. Taps go through the agent's press seam. Four parts (each stays under
+-- Luau's limit of upvalues) share the `m8` table.
+local m8 = {
+	-- What runM8 changed that m8.restore puts back: A's Ledger, Vault and Coin as M8 found them.
+	saved = {},
+	-- Each window's kind, by the window's name.
+	kinds = {
+		Book = "big",
+		Claim = "big",
+		Shop = "big",
+		Trade = "big",
+		Panel = "big",
+		Picker = "big",
+		RelicPicker = "big",
+		PlayerPicker = "small",
+		Result = "small",
+		Offer = "small",
+		Renounce = "small",
+		Confirm = "dialog",
+		ConfirmDrop = "dialog",
+	},
+	windows = {
+		"Book",
+		"Claim",
+		"Shop",
+		"Trade",
+		"Panel",
+		"Picker",
+		"Confirm",
+		"RelicPicker",
+		"PlayerPicker",
+		"Result",
+		"Offer",
+		"Renounce",
+		"ConfirmDrop",
+	},
+	menuNames = { "LedgerButton", "PathsButton", "TradeButton", "PartyButton" },
+}
+
+-- True when the rectangle is there and every one of its four values is within 1 pixel of `want`.
+function m8.near(got, want): boolean
+	return type(got) == "table"
+		and math.abs(got.x - want.x) <= 1
+		and math.abs(got.y - want.y) <= 1
+		and math.abs(got.width - want.width) <= 1
+		and math.abs(got.height - want.height) <= 1
+end
+
+function m8.rectText(rect): string
+	if type(rect) ~= "table" then
+		return "missing"
+	end
+	return string.format("(%.0f, %.0f, %.0f x %.0f)", rect.x, rect.y, rect.width, rect.height)
+end
+
+-- How many of the objects fail the test.
+function m8.countBad(list: { Instance }, passes: (Instance) -> boolean): number
+	local bad = 0
+	for _, item in list do
+		if not passes(item) then
+			bad += 1
+		end
+	end
+	return bad
+end
+
+-- M8.1 to M8.3: the kit, the layout and the menu row.
+function m8.kit(A: Player, B: Player)
+	--------------------------------------------------------------------------- M8.1 the kit
+	local ui = inspect(A)
+	check("M8.1 17 screens are made with the kit", ui.isleGuis == 17, tostring(ui.isleGuis))
+	local bordered = ui.bordered or {}
+	check("M8.1 no control has a border", #bordered == 0, table.concat(bordered, ", "))
+	check("M8.1 the four old open buttons are gone", ui.oldButtons == 0, tostring(ui.oldButtons))
+	local menu = ui.menu or {}
+	local present = 0
+	for _, name in m8.menuNames do
+		if menu[name] ~= nil then
+			present += 1
+		end
+	end
+	check("M8.1 the menu row has its four buttons", present == 4, `{present} of 4`)
+
+	--------------------------------------------------------------------------- M8.2 the layout
+	local l = ui.layoutIn or { width = 0, height = 0, insetY = 0, touch = false }
+	local want = HudLayout.compute(l.width, l.height, l.insetY, l.touch)
+	for index, name in m8.menuNames do
+		check(
+			`M8.2 {name} sits where HudLayout puts it`,
+			m8.near(menu[name], want.menu[index]),
+			`{m8.rectText(menu[name])}, want {m8.rectText(want.menu[index])} on {l.width} x {l.height}, inset {l.insetY}`
+		)
+	end
+	check(
+		"M8.2 the ability bar sits where HudLayout puts it",
+		m8.near(ui.abilityBar, want.abilityBar),
+		`{m8.rectText(ui.abilityBar)}, want {m8.rectText(want.abilityBar)}`
+	)
+	local mins = ui.windowMins or {}
+	for _, name in m8.windows do
+		local kind = m8.kinds[name]
+		local least = HudLayout.WINDOW_MIN[kind]
+		local got = mins[name]
+		check(
+			`M8.2 the {name} window never gets smaller than the {kind} size`,
+			type(got) == "table" and got.x == least.width and got.y == least.height,
+			if type(got) == "table" then `{got.x} x {got.y}` else tostring(got)
+		)
+	end
+
+	--------------------------------------------------------------------------- M8.3 the menu row works
+	send(A, "toggleLedger", false)
+	send(A, "togglePaths", false)
+	task.wait(0.3)
+	local r = press(A, "MenuGui/LedgerButton")
+	check("M8.3 the Ledger button takes a tap", r.ok == true, tostring(r.ok))
+	ui = inspectUntil(A, function(snapshot)
+		return snapshot.bookVisible == true
+	end)
+	check("M8.3 the Ledger book opens", ui.bookVisible == true)
+	press(A, "MenuGui/LedgerButton")
+	ui = inspectUntil(A, function(snapshot)
+		return snapshot.bookVisible == false
+	end)
+	check("M8.3 the same button closes it", ui.bookVisible == false)
+
+	r = press(A, "MenuGui/PathsButton")
+	check("M8.3 the Paths button takes a tap", r.ok == true, tostring(r.ok))
+	ui = inspectUntil(A, function(snapshot)
+		return snapshot.pathsPanelVisible == true
+	end)
+	check("M8.3 the Paths panel opens", ui.pathsPanelVisible == true)
+	press(A, "MenuGui/PathsButton")
+	ui = inspectUntil(A, function(snapshot)
+		return snapshot.pathsPanelVisible == false
+	end)
+	check("M8.3 the same button closes it", ui.pathsPanelVisible == false)
+
+	tradeInvites[B] = nil
+	local fromA = mark(A)
+	r = press(A, "MenuGui/TradeButton")
+	check("M8.3 the Trade button takes a tap", r.ok == true, tostring(r.ok))
+	check(
+		"M8.3 B is invited to trade",
+		waitFor(function()
+			return type(tradeInvites[B]) == "table"
+		end, 3),
+		tostring(tradeInvites[B])
+	)
+	send(B, "tradeReply", false)
+	expectNote("M8.3 B declines: A hears TRADE_DECLINED", A, fromA, "TRADE_DECLINED")
+	waitFor(function()
+		return tradeInvites[B] == false
+	end, 3)
+
+	partyInvites[B] = nil
+	r = press(A, "MenuGui/PartyButton")
+	check("M8.3 the Party button takes a tap", r.ok == true, tostring(r.ok))
+	check(
+		"M8.3 B is invited to a party",
+		waitFor(function()
+			return type(partyInvites[B]) == "table"
+		end, 3),
+		tostring(partyInvites[B])
+	)
+	task.wait(0.3)
+	send(B, "partyReply", false)
+	waitFor(function()
+		return partyInvites[B] == false
+	end, 3)
+	task.wait(0.3)
+
+	--------------------------------------------------------------------------- M8.12 the HUD draws under the windows
+	local orders = ui.guiOrders or {}
+	local hudNames = { "AbilityGui", "MenuGui", "TrialGui", "StatusGui", "PartyGui" }
+	local windowNames = {
+		"LedgerGui",
+		"PathGui",
+		"ClaimGui",
+		"ShopGui",
+		"TradeGui",
+		"EdictGui",
+		"TrialOfferGui",
+		"DropShieldGui",
+		"PartyInviteGui",
+		"RenounceGui",
+	}
+	local highestHud, lowestWindow = -1, math.huge
+	local missing = {}
+	for _, name in hudNames do
+		if orders[name] == nil then
+			table.insert(missing, name)
+		else
+			highestHud = math.max(highestHud, orders[name])
+		end
+	end
+	for _, name in windowNames do
+		if orders[name] == nil then
+			table.insert(missing, name)
+		else
+			lowestWindow = math.min(lowestWindow, orders[name])
+		end
+	end
+	check(
+		"M8.12 the HUD draws under the windows",
+		#missing == 0 and highestHud < lowestWindow,
+		`HUD up to {highestHud}, windows from {lowestWindow}, missing: {table.concat(missing, ", ")}`
+	)
+end
+
+-- M8.4 to M8.6: two taps to unclaim or discard, and a refused request's row coming back.
+function m8.ledger(A: Player)
+	--------------------------------------------------------------------------- M8.4 two taps to unclaim
+	setFree(A, {}, { R001 = true, R002 = true })
+	send(A, "toggleLedger", true)
+	local wantProgress = `Relics: 2 / {Relics.count}`
+	local ui = inspectUntil(A, function(snapshot)
+		return snapshot.progress == wantProgress
+	end)
+	check(
+		"M8.4 setup: the book shows two Relics claimed",
+		ui.progress == wantProgress,
+		tostring(ui.progress)
+	)
+	local m = mark(A)
+	local r = press(A, "LedgerGui/Book/Slots/Slot001")
+	check(
+		"M8.4 the first tap on a slot asks for another",
+		r.ok == true and has(r.text, "Tap again"),
+		`ok {tostring(r.ok)}, "{tostring(r.text)}"`
+	)
+	r = press(A, "LedgerGui/Book/Slots/Slot001")
+	check("M8.4 the second tap goes through", r.ok == true, tostring(r.ok))
+	local note = expectNote("M8.4 the second tap unclaims: UNCLAIMED", A, m, "UNCLAIMED")
+	check(
+		"M8.4 the message names the Relic",
+		note ~= nil and note.args ~= nil and note.args.name == Relics.byId.R001.name,
+		if note ~= nil and note.args ~= nil then tostring(note.args.name) else "no message"
+	)
+	check("M8.4 the Relic is in A's free slots", hasFree(A, "R001"), freeText(A))
+
+	-- The sync of the unclaim has to reach the book before the next slot is tapped.
+	inspectUntil(A, function(snapshot)
+		return (snapshot.freeRows or {}).Free1 ~= nil
+	end)
+	m = mark(A)
+	r = press(A, "LedgerGui/Book/Slots/Slot002")
+	check(
+		"M8.4 a tap on another slot arms that one",
+		r.ok == true and has(r.text, "Tap again"),
+		`ok {tostring(r.ok)}, "{tostring(r.text)}"`
+	)
+	task.wait(3.5)
+	ui = inspect(A)
+	local slotText = (ui.ledgerSlots or {}).Slot002
+	check(
+		"M8.4 after 3 seconds the slot is back to normal",
+		slotText ~= nil and not has(slotText, "Tap again"),
+		tostring(slotText)
+	)
+	check("M8.4 and nothing was unclaimed", noteSince(A, m, "UNCLAIMED") == nil, codesSince(A, m))
+	press(A, "LedgerGui/Book/Slots/Slot002")
+	expectNoNote("M8.4 a tap after the wait only arms the slot again", A, m, "UNCLAIMED")
+	press(A, "LedgerGui/Book/Slots/Slot002")
+	expectNote("M8.4 the next tap unclaims: UNCLAIMED", A, m, "UNCLAIMED")
+
+	--------------------------------------------------------------------------- M8.5 two taps to discard
+	setFree(A, { "R003" })
+	inspectUntil(A, function(snapshot)
+		local rows = snapshot.freeRows or {}
+		return rows.Free1 ~= nil and rows.Free2 == nil
+	end)
+	m = mark(A)
+	r = press(A, "LedgerGui/Book/FreeCards/Free1/Discard")
+	check(
+		"M8.5 the first tap on Discard reads Sure?",
+		r.ok == true and r.text == "Sure?",
+		`ok {tostring(r.ok)}, "{tostring(r.text)}"`
+	)
+	expectNoNote("M8.5 one tap discards nothing", A, m, "DISCARDED")
+	press(A, "LedgerGui/Book/FreeCards/Free1/Discard")
+	expectNote("M8.5 the second tap discards: DISCARDED", A, m, "DISCARDED")
+	check("M8.5 A's free slots are empty", #freeOf(A) == 0, freeText(A))
+
+	--------------------------------------------------------------------------- M8.6 a refused request's row comes back
+	-- The discarded row has to be gone from the book before the next card arrives.
+	inspectUntil(A, function(snapshot)
+		return (snapshot.freeRows or {}).Free1 == nil
+	end)
+	setFree(A, { "R004" })
+	ui = inspectUntil(A, function(snapshot)
+		local row = (snapshot.freeRows or {}).Free1
+		return row ~= nil and row.Claim ~= nil
+	end)
+	check(
+		"M8.6 setup: the new card has a Claim button",
+		((ui.freeRows or {}).Free1 or {}).Claim ~= nil
+	)
+	LedgerService.lock(A)
+	m = mark(A)
+	r = press(A, "LedgerGui/Book/FreeCards/Free1/Claim")
+	check(
+		"M8.6 a tap on Claim sends the request and dims the row",
+		r.ok == true and r.active == false,
+		`ok {tostring(r.ok)}, active {tostring(r.active)}`
+	)
+	expectNote("M8.6 the locked Ledger refuses: LEDGER_LOCKED", A, m, "LEDGER_LOCKED")
+	task.wait(1.5)
+	ui = inspect(A)
+	local claim = ((ui.freeRows or {}).Free1 or {}).Claim
+	check(
+		"M8.6 with no sync, the row comes back by itself",
+		claim ~= nil and claim.active == true,
+		if claim ~= nil then tostring(claim.active) else "no Claim button"
+	)
+	LedgerService.unlock(A)
+	m = mark(A)
+	press(A, "LedgerGui/Book/FreeCards/Free1/Claim")
+	expectNote("M8.6 and the next tap claims: CLAIMED", A, m, "CLAIMED")
+	send(A, "toggleLedger", false)
+end
+
+-- M8.7 to M8.9: the region banner, the blight tint, and a Coin change reaching an open trade.
+function m8.world(A: Player, B: Player)
+	--------------------------------------------------------------------------- M8.7 the region banner
+	put(A, IN_TOWN, B_TOWN)
+	task.wait(1)
+	-- An earlier message may still be on screen or waiting behind another.
+	waitFor(function()
+		return inspect(A).toast == ""
+	end, 8)
+	LedgerService.notify(A, "EDICT_NOT_NOW")
+	local x, z = Geography.place("Thornwood", 290, 0)
+	place(A, Vector3.new(x, 3, z), Vector3.zero)
+	local hint = Regions.byId.Thornwood.hint
+	local ui = inspectUntil(A, function(snapshot)
+		return snapshot.regionBanner ~= nil and snapshot.regionBanner ~= ""
+	end)
+	check(
+		"M8.7 entering Thornwood shows its banner",
+		ui.regionBanner == "Thornwood: " .. hint,
+		tostring(ui.regionBanner)
+	)
+	check(
+		"M8.7 and the message is still on screen beside it",
+		ui.toast == Messages.format("EDICT_NOT_NOW"),
+		tostring(ui.toast)
+	)
+	put(A, TRADE_A, TRADE_B)
+
+	--------------------------------------------------------------------------- M8.8 the blight tint
+	local island = workspace:FindFirstChild("Island")
+	local blight = island and island:FindFirstChild("Blight")
+	local hush = Sites.hazardById.HushBlight
+	local wanted = #Hazards.overlay(hush, Geography.strips())
+	local slabs = if blight ~= nil then blight:GetChildren() else {}
+	check(
+		"M8.8 Island.Blight has one tint slab for each covered strip piece",
+		blight ~= nil and wanted > 0 and #slabs == wanted,
+		`{#slabs} slabs, want {wanted}`
+	)
+	local look = Looks.byName.blight
+	check("M8.8 every slab is a Part named BlightTint", m8.countBad(slabs, function(slab)
+		return slab:IsA("Part") and slab.Name == "BlightTint"
+	end) == 0)
+	check("M8.8 every slab is anchored and touches nothing", m8.countBad(slabs, function(slab)
+		return slab:IsA("BasePart")
+			and slab.Anchored
+			and not slab.CanCollide
+			and not slab.CanQuery
+			and not slab.CanTouch
+	end) == 0)
+	check("M8.8 every slab has the blight look", m8.countBad(slabs, function(slab)
+		return slab:IsA("BasePart")
+			and math.round(slab.Color.R * 255) == look.r
+			and math.round(slab.Color.G * 255) == look.g
+			and math.round(slab.Color.B * 255) == look.b
+			and slab.Material.Name == look.material
+			and math.abs(slab.Transparency - look.transparency) <= 0.001
+	end) == 0, `{look.r}, {look.g}, {look.b} {look.material} {look.transparency}`)
+	check("M8.8 no slab is tagged Hazard", m8.countBad(slabs, function(slab)
+		return not CollectionService:HasTag(slab, "Hazard")
+	end) == 0)
+	check("M8.8 every slab lies in the blight", m8.countBad(slabs, function(slab)
+		return slab:IsA("BasePart") and Hazards.affects(hush, slab.Position.X, slab.Position.Z)
+	end) == 0)
+
+	--------------------------------------------------------------------------- M8.9 a Coin change reaches an open trade
+	setCoin(A, 100)
+	check("M8.9 setup: A and B open a trade", openTrade(A, B))
+	local viewA = tradeViews[A]
+	check(
+		"M8.9 the trade shows the 100 Coin A holds",
+		type(viewA) == "table" and viewA.coinHeld == 100,
+		if type(viewA) == "table" then tostring(viewA.coinHeld) else "no view"
+	)
+	SourceService.addCoin(A, 25)
+	local grew = waitFor(function()
+		local view = tradeViews[A]
+		return type(view) == "table" and view.coinHeld == 125
+	end, 3)
+	local grownView = tradeViews[A]
+	check(
+		"M8.9 25 Coin more reach A's open trade within 3 seconds",
+		grew,
+		if type(grownView) == "table" then tostring(grownView.coinHeld) else "no view"
+	)
+	check("M8.9 and the trade is still open", TradeService.session(A) ~= nil)
+	local m = mark(A)
+	send(A, "trade", { kind = "cancel" })
+	expectNote("M8.9 A cancels: TRADE_CANCELLED", A, m, "TRADE_CANCELLED")
+end
+
+-- M8.10 and M8.11: a new character's health watch, and the party panel's place.
+function m8.life(A: Player, B: Player)
+	--------------------------------------------------------------------------- M8.10 a new character is watched
+	A:LoadCharacter()
+	check("M8.10 setup: A's new character spawns", waitAlive(A))
+	ProtectionService.endRespawnShield(A)
+	put(A, IN_TOWN, B_TOWN)
+	heal(A)
+	local humanoid = humanoidOf(A)
+	if humanoid ~= nil then
+		humanoid.Health = 50
+	end
+	-- Regeneration starts 10 seconds after the loss, at 1 a second.
+	task.wait(5)
+	check(
+		"M8.10 5 seconds after a loss no health has come back",
+		health(A) <= 50.01,
+		fmt(health(A))
+	)
+	task.wait(9)
+	check("M8.10 14 seconds after it, health is coming back", health(A) >= 52, fmt(health(A)))
+
+	--------------------------------------------------------------------------- M8.11 the party panel
+	heal(A)
+	put(A, IN_TOWN, B_TOWN)
+	put(B, TRADE_B, TRADE_A)
+	partyInvites[B] = nil
+	send(A, "partyRequest")
+	local invited = waitFor(function()
+		return type(partyInvites[B]) == "table"
+	end, 3)
+	task.wait(0.3)
+	send(B, "partyReply", true)
+	check("M8.11 setup: A and B form a party", invited and waitFor(function()
+		return PartyService.party(A) ~= nil and PartyService.party(B) ~= nil
+	end, 3))
+	local ui = inspectUntil(B, function(snapshot)
+		return snapshot.partyVisible == true and #(snapshot.partyRows or {}) == 2
+	end)
+	local l = ui.layoutIn or { width = 0, height = 0, insetY = 0, touch = false }
+	local want = HudLayout.compute(l.width, l.height, l.insetY, l.touch)
+	local panel = ui.partyPanel
+	check("M8.11 B's party panel is on screen", type(panel) == "table", m8.rectText(panel))
+	if type(panel) == "table" then
+		local hit = "none"
+		for index, rect in want.menu do
+			if HudLayout.overlaps(panel, rect) then
+				hit = m8.menuNames[index]
+			end
+		end
+		check(
+			"M8.11 the panel covers no menu button",
+			hit == "none",
+			`{m8.rectText(panel)} covers {hit}`
+		)
+		check(
+			"M8.11 the panel does not cover the ability bar",
+			not HudLayout.overlaps(panel, want.abilityBar),
+			`{m8.rectText(panel)} and {m8.rectText(want.abilityBar)}`
+		)
+		check(
+			"M8.11 its right edge is 12 pixels in from the screen's",
+			math.abs(panel.x + panel.width - (l.width - 12)) <= 1,
+			`{fmt(panel.x + panel.width)}, want {l.width - 12}`
+		)
+		check(
+			"M8.11 its width is the layout's party width",
+			math.abs(panel.width - want.partyWidth) <= 1,
+			`{fmt(panel.width)}, want {want.partyWidth}`
+		)
+	end
+	local rowOfA = nil
+	local names = {}
+	for _, row in ui.partyRows or {} do
+		table.insert(names, row.name)
+		if row.name == `{A.DisplayName} (leader)` then
+			rowOfA = row
+		end
+	end
+	check("M8.11 A's row reads A (leader)", rowOfA ~= nil, table.concat(names, " | "))
+	check(
+		"M8.11 a long name ends in dots instead of shrinking",
+		rowOfA ~= nil and rowOfA.truncate == "AtEnd",
+		if rowOfA ~= nil then tostring(rowOfA.truncate) else "no row"
+	)
+	send(A, "party", { kind = "leave" })
+	task.wait(0.5)
+end
+
+-- Sets the section up, then runs its parts in order.
+local function runM8(A: Player, B: Player)
+	waitAlive(A)
+	waitAlive(B)
+	-- What m8.restore puts back.
+	m8.saved = {
+		ledger = LedgerService.get(A),
+		vault = LedgerService.getVault(A),
+		coin = coinOf(A),
+	}
+	-- Both players may still be Marked, shielded or in the 30-second fight window from earlier
+	-- sections, which would refuse trades and parties.
+	ProtectionService.endRespawnShield(A)
+	ProtectionService.endRespawnShield(B)
+	ProtectionService.endMark(A)
+	ProtectionService.endMark(B)
+	waitNoFight(A)
+	waitNoFight(B)
+	CreatureService.setActive({})
+	heal(A)
+	heal(B)
+	put(A, TRADE_A, TRADE_B)
+	put(B, TRADE_B, TRADE_A)
+
+	m8.kit(A, B)
+	m8.ledger(A)
+	m8.world(A, B)
+	m8.life(A, B)
+end
+
+-- Puts back what M8 changed, even when it stopped half way: the Ledger lock, the open windows,
+-- any trade or party, A's Ledger, Vault and Coin, and both players alive in town.
+function m8.restore(A: Player, B: Player)
+	LedgerService.unlock(A)
+	send(A, "toggleLedger", false)
+	send(A, "togglePaths", false)
+	send(A, "trade", { kind = "cancel" })
+	send(B, "trade", { kind = "cancel" })
+	send(B, "party", { kind = "leave" })
+	task.wait(0.4)
+	send(A, "party", { kind = "leave" })
+	task.wait(0.4)
+	waitAlive(A)
+	waitAlive(B)
+	local saved = m8.saved
+	if saved.ledger ~= nil then
+		LedgerService.set(A, saved.ledger)
+	end
+	if saved.vault ~= nil then
+		LedgerService.setVault(A, saved.vault)
+	end
+	if saved.coin ~= nil then
+		setCoin(A, saved.coin)
+	end
+	m8.saved = {}
+	heal(A)
+	heal(B)
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+end
+
 -- Logs every prompt event that reaches the server (hold began, hold ended, triggered), with the
 -- time, so a failed prompt check shows whether the client sent anything at all. With the
 -- agent's prompt traces this tells "nothing left the client" from "the server heard a trigger
@@ -5333,6 +5922,12 @@ local function run()
 	waitAlive(B)
 	put(A, IN_TOWN, B_TOWN)
 	put(B, B_TOWN, IN_TOWN)
+
+	--------------------------------------------------------------------------- M8 launch polish
+	-- In its own protected call, like M4 to M7.
+	local m8Ok, m8Err = xpcall(runM8, debug.traceback, A, B)
+	check("M8 section ran to its end", m8Ok, tostring(m8Err))
+	m8.restore(A, B)
 
 	--------------------------------------------------------------------------- M2.15 combat log (ends B)
 	waitAlive(A)

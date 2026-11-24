@@ -16,6 +16,8 @@ local lastHurtAt: { [Player]: number } = {}
 local healthWatch: { [Player]: RBXScriptConnection } = {}
 local accumulated = 0
 
+-- Waits for the character's Humanoid, so a character that arrives without one yet is still
+-- watched. Runs in its own thread: the wait yields.
 local function watch(player: Player, character: Model)
 	local previous = healthWatch[player]
 	if previous ~= nil then
@@ -24,10 +26,12 @@ local function watch(player: Player, character: Model)
 	end
 	-- A new character starts unhurt.
 	lastHurtAt[player] = nil
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid == nil then
+	local found = character:WaitForChild("Humanoid", 10)
+	-- A newer character may have arrived while waiting; its own watch handles it.
+	if found == nil or not found:IsA("Humanoid") or player.Character ~= character then
 		return
 	end
+	local humanoid: Humanoid = found
 	local last = humanoid.Health
 	healthWatch[player] = humanoid.HealthChanged:Connect(function(health: number)
 		if health < last then
@@ -35,6 +39,24 @@ local function watch(player: Player, character: Model)
 		end
 		last = health
 	end)
+end
+
+-- One player's regeneration for this tick.
+local function step(player: Player, now: number, elapsed: number)
+	local character = player.Character
+	local humanoid = if character ~= nil then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid ~= nil and humanoid.Health > 0 then
+		local new = Regen.step(
+			humanoid.Health,
+			humanoid.MaxHealth,
+			lastHurtAt[player] or -math.huge,
+			now,
+			elapsed
+		)
+		if new ~= humanoid.Health then
+			humanoid.Health = new
+		end
+	end
 end
 
 local function onHeartbeat(deltaTime: number)
@@ -45,33 +67,30 @@ local function onHeartbeat(deltaTime: number)
 	local elapsed = accumulated
 	accumulated = 0
 	local now = os.clock()
+	local failures = 0
+	local firstError = ""
 	for _, player in Players:GetPlayers() do
-		local character = player.Character
-		local humanoid = if character ~= nil
-			then character:FindFirstChildOfClass("Humanoid")
-			else nil
-		if humanoid ~= nil and humanoid.Health > 0 then
-			local new = Regen.step(
-				humanoid.Health,
-				humanoid.MaxHealth,
-				lastHurtAt[player] or -math.huge,
-				now,
-				elapsed
-			)
-			if new ~= humanoid.Health then
-				humanoid.Health = new
+		local ok, err = pcall(step, player, now, elapsed)
+		if not ok then
+			failures += 1
+			if failures == 1 then
+				firstError = tostring(err)
 			end
 		end
+	end
+	-- One warning per tick, however many players failed.
+	if failures > 0 then
+		warn(`[IsleOfAvarice] RegenService failed for {failures} player(s): {firstError}`)
 	end
 end
 
 function RegenService.start()
 	local function track(player: Player)
 		player.CharacterAdded:Connect(function(character)
-			watch(player, character)
+			task.spawn(watch, player, character)
 		end)
 		if player.Character ~= nil then
-			watch(player, player.Character)
+			task.spawn(watch, player, player.Character)
 		end
 	end
 	for _, player in Players:GetPlayers() do

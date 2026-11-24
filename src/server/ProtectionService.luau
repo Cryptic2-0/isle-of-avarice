@@ -6,6 +6,7 @@ local Net = require(ReplicatedStorage.Shared.Net)
 local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local Types = require(ReplicatedStorage.Shared.Types)
 local DataService = require(script.Parent.DataService)
+local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
 
 type Ledger = Types.Ledger
@@ -47,20 +48,9 @@ local function hasNewShield(player: Player): boolean
 	return data ~= nil and not data.shieldEnded
 end
 
--- The HumanoidRootPart of a living character, or nil.
+-- The HumanoidRootPart of a living character, or nil (also for a player not yet a fighter).
 local function livingRoot(player: Player): BasePart?
-	local character = player.Character
-	if character == nil then
-		return nil
-	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid == nil or humanoid.Health <= 0 then
-		return nil
-	end
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if root == nil or not root:IsA("BasePart") then
-		return nil
-	end
+	local _, root = Fighters.body(player.UserId)
 	return root
 end
 

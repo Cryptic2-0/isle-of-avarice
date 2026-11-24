@@ -102,3 +102,13 @@ T.test("keep: a write never lowers the stored count", function()
 		Leaderboard.keep(2.5, 2),
 	}, { 2, 5, 2, 2, 2, 2, 2 })
 end)
+
+T.test("shouldAskName: once, then again only 300 s after a failed try", function()
+	T.eq(Leaderboard.NAME_RETRY_SECONDS, 300)
+	T.falsy(Leaderboard.shouldAskName(true, nil, 0), "known")
+	T.truthy(Leaderboard.shouldAskName(false, nil, 0), "never tried")
+	T.falsy(Leaderboard.shouldAskName(false, 100, 399), "too soon")
+	T.truthy(Leaderboard.shouldAskName(false, 100, 400), "300 s later")
+	T.falsy(Leaderboard.shouldAskName(true, 100, 1000), "known after a failure")
+	T.falsy(Leaderboard.shouldAskName(false, 100, 0 / 0), "a broken clock waits")
+end)

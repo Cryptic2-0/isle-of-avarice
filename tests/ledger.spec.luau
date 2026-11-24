@@ -194,3 +194,33 @@ T.test("holdsFree and remove treat the free slots as a multiset", function()
 	T.eq(Ledger.room(ledger), 16)
 	T.eq(Ledger.room({ claimed = {}, free = table.create(25, "R001") }), 0)
 end)
+
+T.test("unclaim does not mutate its input", function()
+	local input: LedgerT = { claimed = { R002 = true }, free = { "R001" } }
+	Ledger.unclaim(input, "R002")
+	T.eq(input, { claimed = { R002 = true }, free = { "R001" } })
+end)
+
+T.test("sanitize keeps free cards after a gap, in key order", function()
+	local raw: any = {
+		claimed = {},
+		free = {
+			[1] = "R001",
+			[3] = "R002",
+			[5] = "E001",
+			[2.5] = "R003",
+			[0] = "R004",
+			[-1] = "R006",
+			x = "R005",
+		},
+	}
+	T.eq(Ledger.sanitize(raw), { claimed = {}, free = { "R001", "R002", "E001" } })
+end)
+
+T.test("sanitize after gaps still cuts free to 20", function()
+	local free: { [number]: string } = {}
+	for i = 1, 30 do
+		free[i * 2] = "R001"
+	end
+	T.eq(#Ledger.sanitize({ claimed = {}, free = free }).free, Ledger.FREE_SLOTS)
+end)

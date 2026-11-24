@@ -6,7 +6,13 @@ local Types = require("../Types")
 
 type Cache = Types.Cache
 
-local islandHalfSize = 1380
+-- Tallyport's four buildings at the plaza corners: centre x, z; width (x), height, depth (z).
+local buildings: { { x: number, z: number, w: number, h: number, d: number } } = {
+	{ x = -28, z = -28, w = 16, h = 12, d = 14 },
+	{ x = 28, z = -28, w = 12, h = 18, d = 12 },
+	{ x = -28, z = 28, w = 14, h = 9, d = 18 },
+	{ x = 28, z = 28, w = 18, h = 14, d = 16 },
+}
 local groundY = 0
 local spawn: Types.Vec3 = { x = 0, y = 0.7, z = 0 }
 local townRadius = Geography.TOWN_RADIUS
@@ -289,7 +295,7 @@ return {
 	trainingPosts = trainingPosts,
 	POST_ID_BASE = POST_ID_BASE,
 	postIndex = postIndex,
-	islandHalfSize = islandHalfSize,
+	buildings = buildings,
 	groundY = groundY,
 	spawn = spawn,
 	townRadius = townRadius,

@@ -15,6 +15,12 @@ local LedgerService = require(script.Parent.LedgerService)
 local SourceService = {}
 
 local coinSync: RemoteEvent
+local coinCallbacks: { (player: Player, coin: number) -> () } = {}
+
+-- Runs after every successful addCoin, in its own thread so it can never delay or break the write.
+function SourceService.onCoinChanged(callback: (player: Player, coin: number) -> ())
+	table.insert(coinCallbacks, callback)
+end
 
 -- Copies of the Relic held on this server, claimed and spare alike.
 function SourceService.held(relicId: string): number
@@ -61,20 +67,21 @@ end
 -- Adds Coin (or takes it, with a negative delta) and tells the client. False, with nothing
 -- changed, for a delta that is not a finite number, unloaded data, or a result below 0.
 function SourceService.addCoin(player: Player, delta: number): boolean
-	if not (delta > -math.huge and delta < math.huge) then
-		return false
-	end
 	local data = DataService.get(player)
 	if data == nil then
 		return false
 	end
-	local coin = data.coin + delta
-	if not (coin >= 0 and coin < math.huge) then
+	-- No yield from this check to the write.
+	local coin = Sources.coinAfter(data.coin, delta)
+	if coin == nil then
 		return false
 	end
 	data.coin = coin
 	if player.Parent == Players then
 		coinSync:FireClient(player, coin)
+	end
+	for _, callback in coinCallbacks do
+		task.spawn(callback, player, coin)
 	end
 	return true
 end

@@ -196,3 +196,47 @@ T.test("tryCollect refuses a short hold after the distance check", function()
 		"old callers"
 	)
 end)
+
+T.test("coinAfter: the Coin after a move, or nil when the move must be refused", function()
+	T.eq(Sources.coinAfter(10, 5), 15)
+	T.eq(Sources.coinAfter(10, -10), 0)
+	T.eq(Sources.coinAfter(10, -11), nil)
+	T.eq(Sources.coinAfter(10, 0 / 0), nil)
+	T.eq(Sources.coinAfter(10, math.huge), nil)
+	T.eq(Sources.coinAfter(10, -math.huge), nil)
+	T.eq(Sources.coinAfter(0 / 0, 5), nil)
+	T.eq(Sources.coinAfter(math.huge, -1), nil)
+end)
+
+T.test("a cache can be collected again once its refill time has passed", function()
+	local s0 = Sources.new({ cache })
+	local s1 = Sources.tryCollect(s0, Ledger.new(), cache, 100, 10, false, false)
+	local _, _, early = Sources.tryCollect(s1, Ledger.new(), cache, 219.9, 10, false, false)
+	T.eq(early, "CACHE_EMPTY")
+	local s2, l2, code, availableAt =
+		Sources.tryCollect(s1, Ledger.new(), cache, 220, 10, false, false)
+	T.eq(code, "GOT_CARD")
+	T.eq(l2, { claimed = {}, free = { "R007" } })
+	T.eq(availableAt, 340)
+	T.falsy(Sources.isAvailable(s2, "C007", 339))
+end)
+
+T.test("a cache whose Relic is not in the catalog gives nothing and is not used up", function()
+	local unknown: Types.Cache =
+		{ id = "C099", relicId = "R999", position = { x = 0, y = 0, z = 0 } }
+	local s0 = Sources.new({ unknown })
+	local s1, l1, code, availableAt =
+		Sources.tryCollect(s0, Ledger.new(), unknown, 100, 10, false, false)
+	T.eq({ l1, code, availableAt }, { nil, "CACHE_EMPTY", nil })
+	T.eq(s1, s0)
+end)
+
+T.test("a short hold is refused before an empty or a sealed cache", function()
+	local s0 = Sources.new({ cache })
+	local used = Sources.tryCollect(s0, Ledger.new(), cache, 100, 10, false, false)
+	local _, _, onEmpty =
+		Sources.tryCollect(used, Ledger.new(), cache, 101, 10, false, false, false)
+	T.eq(onEmpty, "HOLD_TOO_SHORT")
+	local _, _, onSealed = Sources.tryCollect(s0, Ledger.new(), cache, 100, 10, true, false, false)
+	T.eq(onSealed, "HOLD_TOO_SHORT")
+end)

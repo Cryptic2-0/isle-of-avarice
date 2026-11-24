@@ -6,18 +6,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local TrialView = require(Shared:WaitForChild("Rules"):WaitForChild("TrialView"))
 local Types = require(Shared:WaitForChild("Types"))
+local UiKit = require(script.Parent.UiKit)
 
-local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local TEXT_DIM = Color3.fromRGB(170, 165, 160)
 local TEXT_SEALED = Color3.fromRGB(235, 90, 90)
 local TEXT_NOTE = Color3.fromRGB(255, 190, 70)
-local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local BACKGROUND = Color3.fromRGB(25, 22, 30)
-local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local ACCEPT_COLOR = Color3.fromRGB(60, 130, 80)
 local BEACON_COLOR = Color3.fromRGB(120, 230, 255)
 local BEACON_HEIGHT = 40
-local HUD_LINE_HEIGHT = 28
+local DEFAULT_LINE_HEIGHT = 28
 
 local TrialUI = {}
 
@@ -30,50 +28,10 @@ local acceptHandler: (trialId: string) -> () = function(_trialId: string) end
 -- The offer on screen: Accept sends its trial id.
 local offered: TrialView.OfferView? = nil
 -- Text of the HUD lines on screen, so an unchanged render does nothing.
-local shownKey = ""
-
-local function addCorner(parent: Instance, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
-end
-
-local function limitText(parent: Instance, minSize: number, maxSize: number)
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MinTextSize = minSize
-	constraint.MaxTextSize = maxSize
-	constraint.Parent = parent
-end
-
-local function makeLabel(name: string, order: number, height: number, maxText: number): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.LayoutOrder = order
-	label.Size = UDim2.fromScale(1, height)
-	label.BackgroundTransparency = 1
-	label.TextColor3 = TEXT_LIGHT
-	label.TextScaled = true
-	label.TextWrapped = true
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Font = Enum.Font.GothamMedium
-	label.Text = ""
-	limitText(label, 9, maxText)
-	return label
-end
-
-local function makeButton(name: string, text: string, color: Color3): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.Size = UDim2.fromScale(0.44, 1)
-	button.BackgroundColor3 = color
-	button.TextColor3 = TEXT_LIGHT
-	button.TextScaled = true
-	button.Font = Enum.Font.GothamBold
-	button.Text = text
-	addCorner(button, 8)
-	limitText(button, 10, 22)
-	return button
-end
+local shownKey: string? = nil
+-- Each HUD line's height for this screen, and how many lines the last render drew.
+local lineHeight = DEFAULT_LINE_HEIGHT
+local drawnLines = 0
 
 local function close()
 	local frame = window
@@ -86,23 +44,12 @@ end
 function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 	acceptHandler = onAccept
 
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "TrialGui"
-	gui.ResetOnSpawn = false
-	-- Below the status HUD (15) and messages (20), above the Ledger book (10).
-	gui.DisplayOrder = 14
+	-- The offer is a window: above the Ledger book (10) and the other windows, below messages (20).
+	local offerGui = UiKit.screen("TrialOfferGui", 14)
+	-- The HUD lines sit under every window (the lowest is the Ledger, 10).
+	local gui = UiKit.screen("TrialGui", 7)
 
-	local frame = Instance.new("Frame")
-	frame.Name = "Offer"
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	frame.Size = UDim2.fromScale(0.46, 0.56)
-	frame.BackgroundColor3 = PANEL_COLOR
-	frame.Visible = false
-	addCorner(frame, 14)
-	local minimum = Instance.new("UISizeConstraint")
-	minimum.MinSize = Vector2.new(280, 230)
-	minimum.Parent = frame
+	local frame = UiKit.window("Offer", UDim2.fromScale(0.46, 0.56), "small")
 
 	local body = Instance.new("Frame")
 	body.Name = "Body"
@@ -126,7 +73,9 @@ function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 		{ "Note", 0.14, 20 },
 	}
 	for order, row in rows do
-		local label = makeLabel(row[1], order, row[2], row[3])
+		local label =
+			UiKit.label(row[1], "", UDim2.fromScale(1, row[2]), UDim2.new(), { max = row[3] })
+		label.LayoutOrder = order
 		label.Parent = body
 		labels[row[1]] = label
 	end
@@ -142,9 +91,14 @@ function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 	buttons.Size = UDim2.fromScale(0.9, 0.14)
 	buttons.Parent = frame
 
-	local accept = makeButton("Accept", "Accept", ACCEPT_COLOR)
+	local accept = UiKit.button(
+		"Accept",
+		"Accept",
+		UDim2.fromScale(0.44, 1),
+		{ color = ACCEPT_COLOR, min = 10, max = 22 }
+	)
 	accept.Position = UDim2.fromScale(0, 0)
-	accept.Activated:Connect(function()
+	UiKit.onPress(accept, function()
 		local view = offered
 		if view ~= nil and view.canStart then
 			close()
@@ -154,28 +108,37 @@ function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 	accept.Parent = buttons
 	acceptButton = accept
 
-	local dismiss = makeButton("Close", "Close", BUTTON_COLOR)
+	local dismiss = UiKit.button(
+		"Close",
+		"Close",
+		UDim2.fromScale(0.44, 1),
+		{ min = 10, max = 22, minSize = Vector2.new(40, 32) }
+	)
 	dismiss.AnchorPoint = Vector2.new(1, 0)
 	dismiss.Position = UDim2.fromScale(1, 0)
-	dismiss.Activated:Connect(close)
+	UiKit.onPress(dismiss, close)
 	dismiss.Parent = buttons
 
-	frame.Parent = gui
+	frame.Parent = offerGui
 	window = frame
 
 	local lines = Instance.new("Frame")
 	lines.Name = "Hud"
 	lines.BackgroundTransparency = 1
-	lines.AnchorPoint = Vector2.new(1, 0)
-	lines.Position = UDim2.new(1, -12, 0.16, 0)
-	lines.Size = UDim2.new(0, 300, 0, 4 * (HUD_LINE_HEIGHT + 4))
 	local hudLayout = Instance.new("UIListLayout")
 	hudLayout.Padding = UDim.new(0, 4)
 	hudLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	hudLayout.Parent = lines
 	lines.Parent = gui
 	hud = lines
+	UiKit.onLayout(function(screenLayout)
+		lineHeight = screenLayout.hudLineHeight
+		UiKit.place(lines, screenLayout.trialHud)
+		-- Forces the next renderHud to draw the lines again at the new height.
+		shownKey = nil
+	end)
 
+	offerGui.Parent = playerGui
 	gui.Parent = playerGui
 end
 
@@ -191,17 +154,19 @@ function TrialUI.showOffer(view: TrialView.OfferView)
 	labels.Time.Text = view.timeText
 	labels.Reward.Text = view.rewardText
 	labels.Relic.Text = view.relicText
-	labels.Relic.TextColor3 = if view.sealed then TEXT_SEALED else TEXT_LIGHT
+	labels.Relic.TextColor3 = if view.sealed then TEXT_SEALED else UiKit.TEXT_LIGHT
 	labels.Note.Text = view.note
 	local accept = acceptButton
 	if accept ~= nil then
 		-- Dimmed and inert unless the trial can start.
-		accept.Active = view.canStart
-		accept.AutoButtonColor = view.canStart
-		accept.BackgroundTransparency = if view.canStart then 0 else 0.6
-		accept.TextTransparency = if view.canStart then 0 else 0.5
+		UiKit.setEnabled(accept, view.canStart)
 	end
 	frame.Visible = true
+end
+
+-- How many HUD lines the last renderHud drew (play-test seam).
+function TrialUI.shownLines(): number
+	return drawnLines
 end
 
 function TrialUI.renderHud(lines: { string })
@@ -214,31 +179,28 @@ function TrialUI.renderHud(lines: { string })
 		return
 	end
 	shownKey = key
-	for _, child in list:GetChildren() do
-		if not child:IsA("UIComponent") then
-			child:Destroy()
-		end
-	end
+	drawnLines = #lines
+	UiKit.clearRows(list)
 	for index, text in lines do
 		local label = Instance.new("TextLabel")
 		label.Name = "Line" .. index
 		label.LayoutOrder = index
-		label.Size = UDim2.new(1, 0, 0, HUD_LINE_HEIGHT)
+		label.Size = UDim2.new(1, 0, 0, lineHeight)
 		label.BackgroundColor3 = BACKGROUND
 		label.BackgroundTransparency = 0.3
-		label.TextColor3 = TEXT_LIGHT
+		label.TextColor3 = UiKit.TEXT_LIGHT
 		label.TextScaled = true
 		label.TextXAlignment = Enum.TextXAlignment.Right
 		label.Font = Enum.Font.GothamBold
 		label.Text = text
-		addCorner(label, 6)
+		UiKit.corner(label, 6)
 		local padding = Instance.new("UIPadding")
 		padding.PaddingLeft = UDim.new(0, 8)
 		padding.PaddingRight = UDim.new(0, 8)
 		padding.PaddingTop = UDim.new(0, 4)
 		padding.PaddingBottom = UDim.new(0, 4)
 		padding.Parent = label
-		limitText(label, 9, 18)
+		UiKit.limitText(label, 9, 18)
 		label.Parent = list
 	end
 end

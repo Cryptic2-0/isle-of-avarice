@@ -104,3 +104,20 @@ T.test("a double discard cannot remove the next card", function()
 	T.eq({ LedgerActions.apply(after, request) }, { nil, "BAD_INDEX" })
 	T.eq(after, { claimed = {}, free = { "R002" } })
 end)
+
+T.test(
+	"claim: odd row numbers are BAD_INDEX; an already-claimed card is ALREADY_CLAIMED",
+	function()
+		for _, bad in { 1.5, -1, math.huge, -math.huge } do
+			T.eq({
+				LedgerActions.apply(base(), { kind = "claim", freeIndex = bad, cardId = "R001" }),
+			}, { nil, "BAD_INDEX" }, tostring(bad))
+		end
+		T.eq({
+			LedgerActions.apply(
+				{ claimed = { R001 = true }, free = { "R001" } },
+				{ kind = "claim", freeIndex = 1, cardId = "R001" }
+			),
+		}, { nil, "ALREADY_CLAIMED" })
+	end
+)

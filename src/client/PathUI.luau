@@ -8,6 +8,7 @@ local Paths = require(Shared:WaitForChild("Catalog"):WaitForChild("Paths"))
 local PathProgress = require(Shared:WaitForChild("Rules"):WaitForChild("PathProgress"))
 local PathView = require(Shared:WaitForChild("Rules"):WaitForChild("PathView"))
 local Types = require(Shared:WaitForChild("Types"))
+local UiKit = require(script.Parent.UiKit)
 
 type View = PathView.View
 type RowView = PathView.RowView
@@ -20,12 +21,9 @@ export type Handlers = {
 
 local PathUI = {}
 
-local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local TEXT_DIM = Color3.fromRGB(130, 130, 135)
-local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local CARD_COLOR = Color3.fromRGB(46, 40, 56)
 local LOCKED_COLOR = Color3.fromRGB(55, 55, 60)
-local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local DARK_TEXT = Color3.fromRGB(20, 18, 24)
 local ROW_HEIGHT = 196
 local FALLBACK_COLOR = Color3.fromRGB(120, 120, 130)
@@ -54,69 +52,18 @@ local function pathColor(path: string): Color3
 	return Color3.fromRGB(info.color.r, info.color.g, info.color.b)
 end
 
-local function addCorner(parent: Instance, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
-end
-
-local function limitText(parent: Instance, minSize: number, maxSize: number)
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MinTextSize = minSize
-	constraint.MaxTextSize = maxSize
-	constraint.Parent = parent
-end
-
-local function makeLabel(name: string, size: UDim2, position: UDim2, maxText: number): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.Size = size
-	label.Position = position
-	label.BackgroundTransparency = 1
-	label.TextColor3 = TEXT_LIGHT
-	label.TextScaled = true
-	label.TextWrapped = true
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Font = Enum.Font.GothamMedium
-	label.Text = ""
-	limitText(label, 9, maxText)
-	return label
-end
-
-local function makeButton(name: string, text: string, size: UDim2): TextButton
-	local button = Instance.new("TextButton")
-	button.Name = name
-	button.Size = size
-	button.BackgroundColor3 = BUTTON_COLOR
-	button.TextColor3 = TEXT_LIGHT
-	button.TextScaled = true
-	button.Font = Enum.Font.GothamBold
-	button.Text = text
-	button.AutoButtonColor = true
-	addCorner(button, 8)
-	limitText(button, 10, 20)
-	return button
-end
-
-local function makeScroller(name: string, size: UDim2, position: UDim2): ScrollingFrame
-	local scroller = Instance.new("ScrollingFrame")
-	scroller.Name = name
-	scroller.Size = size
-	scroller.Position = position
-	scroller.BackgroundTransparency = 1
-	scroller.BorderSizePixel = 0
-	scroller.ScrollBarThickness = 6
-	scroller.CanvasSize = UDim2.new()
-	scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	return scroller
-end
-
-local function clearRows(container: Instance)
-	for _, child in container:GetChildren() do
-		if not child:IsA("UIComponent") then
-			child:Destroy()
-		end
+-- Every Equip and Clear button: one request at a time, until the server's next view.
+local loadoutButtons: { TextButton } = {}
+local loadoutGuard = UiKit.guard(function(inert: boolean)
+	for _, button in loadoutButtons do
+		UiKit.setEnabled(button, not inert)
 	end
+end)
+
+local function sendLoadout(request: { [string]: any })
+	UiKit.send(loadoutGuard, function()
+		handlers.loadout(request)
+	end)
 end
 
 -- The first empty loadout slot, or 4 when all are full (the server decides what happens then).
@@ -199,39 +146,46 @@ local function makeAbility(row: RowView, index: number): Frame
 	frame.Position = UDim2.new(0.01 + (index - 1) * 0.33, 0, 0, 62)
 	frame.Size = UDim2.new(0.32, 0, 0, 126)
 	frame.BackgroundColor3 = if ability.unlocked then CARD_COLOR else LOCKED_COLOR
-	addCorner(frame, 8)
+	UiKit.corner(frame, 8)
 
-	local name = makeLabel("Name", UDim2.new(0.94, 0, 0, 22), UDim2.new(0.03, 0, 0, 4), 18)
+	local name =
+		UiKit.label("Name", "", UDim2.new(0.94, 0, 0, 22), UDim2.new(0.03, 0, 0, 4), { max = 18 })
 	name.Font = Enum.Font.GothamBold
-	name.TextColor3 = if ability.unlocked then TEXT_LIGHT else TEXT_DIM
+	name.TextColor3 = if ability.unlocked then UiKit.TEXT_LIGHT else TEXT_DIM
 	name.Text = ability.name
 	name.Parent = frame
 
-	local description =
-		makeLabel("Description", UDim2.new(0.94, 0, 0, 60), UDim2.new(0.03, 0, 0, 28), 15)
+	local description = UiKit.label(
+		"Description",
+		"",
+		UDim2.new(0.94, 0, 0, 60),
+		UDim2.new(0.03, 0, 0, 28),
+		{ max = 15 }
+	)
 	description.TextYAlignment = Enum.TextYAlignment.Top
-	description.TextColor3 = if ability.unlocked then TEXT_LIGHT else TEXT_DIM
+	description.TextColor3 = if ability.unlocked then UiKit.TEXT_LIGHT else TEXT_DIM
 	description.Text = ability.description
 	description.Parent = frame
 
 	local bottomSize = UDim2.new(0.94, 0, 0, 28)
 	local bottomPosition = UDim2.new(0.03, 0, 1, -32)
 	if not ability.unlocked then
-		local locked = makeLabel("Locked", bottomSize, bottomPosition, 16)
+		local locked = UiKit.label("Locked", "", bottomSize, bottomPosition, { max = 16 })
 		locked.TextColor3 = TEXT_DIM
 		locked.Text = "Level " .. ability.unlockLevel
 		locked.Parent = frame
 	elseif ability.equippedSlot > 0 then
-		local equipped = makeLabel("Equipped", bottomSize, bottomPosition, 16)
+		local equipped = UiKit.label("Equipped", "", bottomSize, bottomPosition, { max = 16 })
 		equipped.Text = "Equipped (slot " .. ability.equippedSlot .. ")"
 		equipped.Parent = frame
 	else
-		local equip = makeButton("Equip" .. ability.id, "Equip", bottomSize)
+		local equip = UiKit.button("Equip" .. ability.id, "Equip", bottomSize, { min = 10 })
 		equip.Position = bottomPosition
-		equip.Activated:Connect(function()
-			handlers.loadout({ slot = equipSlot(), abilityId = ability.id })
+		UiKit.onPress(equip, function()
+			sendLoadout({ slot = equipSlot(), abilityId = ability.id })
 		end)
 		equip.Parent = frame
+		table.insert(loadoutButtons, equip)
 	end
 	return frame
 end
@@ -241,21 +195,28 @@ local function makeRow(row: RowView, order: number, needsCalling: boolean): Fram
 	frame.Name = "Row" .. row.path
 	frame.LayoutOrder = order
 	frame.Size = UDim2.new(1, -8, 0, ROW_HEIGHT)
-	frame.BackgroundColor3 = PANEL_COLOR
-	addCorner(frame, 10)
+	frame.BackgroundColor3 = UiKit.PANEL
+	UiKit.corner(frame, 10)
 	local stroke = Instance.new("UIStroke")
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Color = pathColor(row.path)
 	stroke.Thickness = if row.isCalling then 3 else 1
 	stroke.Parent = frame
 
-	local header = makeLabel("Header", UDim2.new(0.6, 0, 0, 28), UDim2.new(0.02, 0, 0, 6), 22)
+	local header =
+		UiKit.label("Header", "", UDim2.new(0.6, 0, 0, 28), UDim2.new(0.02, 0, 0, 6), { max = 22 })
 	header.Font = Enum.Font.GothamBold
 	header.TextColor3 = pathColor(row.path)
 	header.Text = row.name .. "  Lv " .. row.level .. (if row.isCalling then "  (Calling)" else "")
 	header.Parent = frame
 
-	local detail = makeLabel("Detail", UDim2.new(0.96, 0, 0, 22), UDim2.new(0.02, 0, 0, 36), 16)
+	local detail = UiKit.label(
+		"Detail",
+		"",
+		UDim2.new(0.96, 0, 0, 22),
+		UDim2.new(0.02, 0, 0, 36),
+		{ max = 16 }
+	)
 	detail.Text = row.style .. "  |  XP " .. row.xpText .. "  |  Rate " .. row.rateText
 	detail.Parent = frame
 
@@ -264,18 +225,19 @@ local function makeRow(row: RowView, order: number, needsCalling: boolean): Fram
 	end
 
 	if needsCalling then
-		local choose = makeButton("Choose", "Choose", UDim2.new(0.3, 0, 0, 28))
+		local choose = UiKit.button("Choose", "Choose", UDim2.new(0.3, 0, 0, 28), { min = 10 })
 		choose.AnchorPoint = Vector2.new(1, 0)
 		choose.Position = UDim2.new(0.98, 0, 0, 6)
-		choose.Activated:Connect(function()
+		UiKit.onPress(choose, function()
 			askPick(row)
 		end)
 		choose.Parent = frame
 	elseif row.changeText ~= "" then
-		local make = makeButton(
+		local make = UiKit.button(
 			"MakeCalling",
 			"Make Calling (" .. row.changeText .. ")",
-			UDim2.new(0.36, 0, 0, 28)
+			UDim2.new(0.36, 0, 0, 28),
+			{ min = 10 }
 		)
 		make.AnchorPoint = Vector2.new(1, 0)
 		make.Position = UDim2.new(0.98, 0, 0, 6)
@@ -285,10 +247,8 @@ local function makeRow(row: RowView, order: number, needsCalling: boolean): Fram
 			make.BackgroundColor3 = LOCKED_COLOR
 			make.TextColor3 = TEXT_DIM
 		end
-		make.Activated:Connect(function()
-			if row.canChange then
-				askChange(row)
-			end
+		UiKit.onPress(make, function()
+			askChange(row)
 		end)
 		make.Parent = frame
 	end
@@ -300,15 +260,17 @@ local function makeCard(row: RowView, order: number): Frame
 	card.Name = "Card" .. row.path
 	card.LayoutOrder = order
 	card.BackgroundColor3 = pathColor(row.path)
-	addCorner(card, 10)
+	UiKit.corner(card, 10)
 
-	local name = makeLabel("Name", UDim2.new(0.92, 0, 0, 26), UDim2.new(0.04, 0, 0, 6), 22)
+	local name =
+		UiKit.label("Name", "", UDim2.new(0.92, 0, 0, 26), UDim2.new(0.04, 0, 0, 6), { max = 22 })
 	name.Font = Enum.Font.GothamBold
 	name.TextColor3 = DARK_TEXT
 	name.Text = row.name
 	name.Parent = card
 
-	local style = makeLabel("Style", UDim2.new(0.92, 0, 0, 20), UDim2.new(0.04, 0, 0, 32), 16)
+	local style =
+		UiKit.label("Style", "", UDim2.new(0.92, 0, 0, 20), UDim2.new(0.04, 0, 0, 32), { max = 16 })
 	style.TextColor3 = DARK_TEXT
 	style.Text = row.style
 	style.Parent = card
@@ -317,24 +279,35 @@ local function makeCard(row: RowView, order: number): Frame
 	for _, ability in row.abilities do
 		table.insert(lines, ability.name .. ": " .. ability.description)
 	end
-	local abilities =
-		makeLabel("Abilities", UDim2.new(0.92, 0, 1, -128), UDim2.new(0.04, 0, 0, 56), 15)
+	local abilities = UiKit.label(
+		"Abilities",
+		"",
+		UDim2.new(0.92, 0, 1, -128),
+		UDim2.new(0.04, 0, 0, 56),
+		{ max = 15 }
+	)
 	abilities.TextYAlignment = Enum.TextYAlignment.Top
 	abilities.TextColor3 = DARK_TEXT
 	abilities.Text = table.concat(lines, "\n")
 	abilities.Parent = card
 
-	local learns = makeLabel("Learns", UDim2.new(0.92, 0, 0, 30), UDim2.new(0.04, 0, 1, -68), 13)
+	local learns = UiKit.label(
+		"Learns",
+		"",
+		UDim2.new(0.92, 0, 0, 30),
+		UDim2.new(0.04, 0, 1, -68),
+		{ max = 13 }
+	)
 	learns.AnchorPoint = Vector2.new(0, 0)
 	learns.TextYAlignment = Enum.TextYAlignment.Top
 	learns.TextColor3 = DARK_TEXT
 	learns.Text = learnsText(row.path)
 	learns.Parent = card
 
-	local choose = makeButton("Choose", "Choose", UDim2.new(0.92, 0, 0, 30))
+	local choose = UiKit.button("Choose", "Choose", UDim2.new(0.92, 0, 0, 30), { min = 10 })
 	choose.AnchorPoint = Vector2.new(0.5, 1)
 	choose.Position = UDim2.new(0.5, 0, 1, -6)
-	choose.Activated:Connect(function()
+	UiKit.onPress(choose, function()
 		askPick(row)
 	end)
 	choose.Parent = card
@@ -342,27 +315,25 @@ local function makeCard(row: RowView, order: number): Frame
 end
 
 local function buildConfirm(gui: ScreenGui)
-	local frame = Instance.new("Frame")
-	frame.Name = "Confirm"
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	frame.Size = UDim2.fromScale(0.5, 0.26)
-	frame.BackgroundColor3 = PANEL_COLOR
-	frame.Visible = false
+	local frame = UiKit.window("Confirm", UDim2.fromScale(0.5, 0.26), "dialog")
 	frame.ZIndex = 50
-	addCorner(frame, 12)
 
-	local question =
-		makeLabel("Question", UDim2.fromScale(0.9, 0.5), UDim2.fromScale(0.05, 0.08), 24)
+	local question = UiKit.label(
+		"Question",
+		"",
+		UDim2.fromScale(0.9, 0.5),
+		UDim2.fromScale(0.05, 0.08),
+		{ max = 24 }
+	)
 	question.TextXAlignment = Enum.TextXAlignment.Center
 	question.ZIndex = 51
 	question.Parent = frame
 	confirmQuestion = question
 
-	local yes = makeButton("Yes", "Yes", UDim2.fromScale(0.35, 0.25))
+	local yes = UiKit.button("Yes", "Yes", UDim2.fromScale(0.35, 0.25), { min = 10 })
 	yes.Position = UDim2.fromScale(0.1, 0.65)
 	yes.ZIndex = 51
-	yes.Activated:Connect(function()
+	UiKit.onPress(yes, function()
 		frame.Visible = false
 		local pick = pendingPick
 		local path = pendingChange
@@ -376,10 +347,10 @@ local function buildConfirm(gui: ScreenGui)
 	end)
 	yes.Parent = frame
 
-	local no = makeButton("No", "No", UDim2.fromScale(0.35, 0.25))
+	local no = UiKit.button("No", "No", UDim2.fromScale(0.35, 0.25), { min = 10 })
 	no.Position = UDim2.fromScale(0.55, 0.65)
 	no.ZIndex = 51
-	no.Activated:Connect(function()
+	UiKit.onPress(no, function()
 		frame.Visible = false
 		pendingChange = ""
 		pendingPick = ""
@@ -391,33 +362,37 @@ local function buildConfirm(gui: ScreenGui)
 end
 
 local function buildPicker(gui: ScreenGui)
-	local frame = Instance.new("Frame")
-	frame.Name = "Picker"
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	frame.Size = UDim2.fromScale(0.9, 0.85)
-	frame.BackgroundColor3 = PANEL_COLOR
-	frame.Visible = false
+	local frame = UiKit.window("Picker", UDim2.fromScale(0.9, 0.85), "big")
 	frame.ZIndex = 5
-	addCorner(frame, 14)
 
-	local title = makeLabel("Title", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.02, 0.02), 30)
+	local title = UiKit.label(
+		"Title",
+		"",
+		UDim2.fromScale(0.6, 0.08),
+		UDim2.fromScale(0.02, 0.02),
+		{ max = 30 }
+	)
 	title.Font = Enum.Font.GothamBold
 	title.Text = "Choose your Calling"
 	title.Parent = frame
 
-	local later = makeButton("Later", "Later", UDim2.fromScale(0.14, 0.08))
+	local later = UiKit.button(
+		"Later",
+		"Later",
+		UDim2.fromScale(0.14, 0.08),
+		{ min = 10, minSize = Vector2.new(40, 32) }
+	)
 	later.AnchorPoint = Vector2.new(1, 0)
 	later.Position = UDim2.fromScale(0.98, 0.02)
-	later.Activated:Connect(function()
+	UiKit.onPress(later, function()
 		dismissedPicker = true
 		frame.Visible = false
 	end)
 	later.Parent = frame
 
-	local list = makeScroller("Cards", UDim2.fromScale(0.96, 0.84), UDim2.fromScale(0.02, 0.13))
+	local list = UiKit.scroller("Cards", UDim2.fromScale(0.96, 0.84), UDim2.fromScale(0.02, 0.13))
 	local grid = Instance.new("UIGridLayout")
-	grid.CellSize = UDim2.new(0.32, 0, 0, 250)
+	grid.CellSize = UDim2.new(0.32, 0, 0, 220)
 	grid.CellPadding = UDim2.new(0.01, 0, 0, 8)
 	grid.SortOrder = Enum.SortOrder.LayoutOrder
 	grid.Parent = list
@@ -429,25 +404,28 @@ local function buildPicker(gui: ScreenGui)
 end
 
 local function buildPanel(gui: ScreenGui)
-	local book = Instance.new("Frame")
-	book.Name = "Panel"
-	book.AnchorPoint = Vector2.new(0.5, 0.5)
-	book.Position = UDim2.fromScale(0.5, 0.5)
-	book.Size = UDim2.fromScale(0.8, 0.85)
-	book.BackgroundColor3 = PANEL_COLOR
-	book.Visible = false
-	addCorner(book, 14)
+	local book = UiKit.window("Panel", UDim2.fromScale(0.8, 0.85), "big")
 
-	local title =
-		makeLabel("CallingText", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.02, 0.02), 30)
+	local title = UiKit.label(
+		"CallingText",
+		"",
+		UDim2.fromScale(0.6, 0.08),
+		UDim2.fromScale(0.02, 0.02),
+		{ max = 30 }
+	)
 	title.Font = Enum.Font.GothamBold
 	title.Parent = book
 	callingLabel = title
 
-	local close = makeButton("Close", "X", UDim2.fromScale(0.08, 0.08))
+	local close = UiKit.button(
+		"Close",
+		"X",
+		UDim2.fromScale(0.08, 0.08),
+		{ min = 10, minSize = Vector2.new(40, 32) }
+	)
 	close.AnchorPoint = Vector2.new(1, 0)
 	close.Position = UDim2.fromScale(0.98, 0.02)
-	close.Activated:Connect(PathUI.toggle)
+	UiKit.onPress(close, PathUI.toggle)
 	close.Parent = book
 
 	local strip = Instance.new("Frame")
@@ -463,7 +441,7 @@ local function buildPanel(gui: ScreenGui)
 	strip.Parent = book
 	slotStrip = strip
 
-	local list = makeScroller("Rows", UDim2.fromScale(0.96, 0.77), UDim2.fromScale(0.02, 0.21))
+	local list = UiKit.scroller("Rows", UDim2.fromScale(0.96, 0.77), UDim2.fromScale(0.02, 0.21))
 	local listLayout = Instance.new("UIListLayout")
 	listLayout.Padding = UDim.new(0, 8)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -478,20 +456,7 @@ end
 function PathUI.mount(playerGui: PlayerGui, given: Handlers)
 	handlers = given
 
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "PathGui"
-	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 12
-
-	local openButton = makeButton("PathsButton", "Paths", UDim2.fromScale(0.14, 0.07))
-	openButton.AnchorPoint = Vector2.new(0, 1)
-	openButton.Position = UDim2.fromScale(0.02, 0.89)
-	local openLimit = openButton:FindFirstChildOfClass("UITextSizeConstraint")
-	if openLimit ~= nil then
-		openLimit.MinTextSize = 12
-	end
-	openButton.Activated:Connect(PathUI.toggle)
-	openButton.Parent = gui
+	local gui = UiKit.screen("PathGui", 12)
 
 	buildPicker(gui)
 	buildPanel(gui)
@@ -547,7 +512,8 @@ function PathUI.render(view: View)
 		end
 	end
 
-	clearRows(strip)
+	loadoutButtons = {}
+	UiKit.clearRows(strip)
 	for _, slot in view.slots do
 		local empty = slot.abilityId == ""
 		local cell = Instance.new("Frame")
@@ -555,35 +521,44 @@ function PathUI.render(view: View)
 		cell.LayoutOrder = slot.slot
 		cell.Size = UDim2.new(0.2425, 0, 1, 0)
 		cell.BackgroundColor3 = if empty then LOCKED_COLOR else CARD_COLOR
-		addCorner(cell, 8)
-		local text = makeLabel("Name", UDim2.new(0.74, 0, 1, 0), UDim2.fromScale(0.04, 0), 18)
-		text.TextColor3 = if empty then TEXT_DIM else TEXT_LIGHT
+		UiKit.corner(cell, 8)
+		local text = UiKit.label(
+			"Name",
+			"",
+			UDim2.new(0.74, 0, 1, 0),
+			UDim2.fromScale(0.04, 0),
+			{ max = 18 }
+		)
+		text.TextColor3 = if empty then TEXT_DIM else UiKit.TEXT_LIGHT
 		text.Text = slot.slot .. ": " .. (if empty then "Empty" else slot.name)
 		text.Parent = cell
 		if not empty then
-			local clear = makeButton("Clear" .. slot.slot, "×", UDim2.new(0.2, 0, 0.8, 0))
+			local clear =
+				UiKit.button("Clear" .. slot.slot, "×", UDim2.new(0.2, 0, 0.8, 0), { min = 10 })
 			clear.AnchorPoint = Vector2.new(1, 0.5)
 			clear.Position = UDim2.fromScale(0.98, 0.5)
-			clear.Activated:Connect(function()
-				handlers.loadout({ slot = slot.slot, abilityId = "" })
+			UiKit.onPress(clear, function()
+				sendLoadout({ slot = slot.slot, abilityId = "" })
 			end)
 			clear.Parent = cell
+			table.insert(loadoutButtons, clear)
 		end
 		cell.Parent = strip
 	end
 
-	clearRows(rows)
+	UiKit.clearRows(rows)
 	for index, row in view.rows do
 		makeRow(row, index, view.needsCalling).Parent = rows
 	end
 
-	clearRows(cards)
+	UiKit.clearRows(cards)
 	if view.needsCalling then
 		for index, row in view.rows do
 			makeCard(row, index).Parent = cards
 		end
 	end
 	pick.Visible = view.needsCalling and not dismissedPicker
+	UiKit.answered(loadoutGuard)
 end
 
 function PathUI.isOpen(): boolean

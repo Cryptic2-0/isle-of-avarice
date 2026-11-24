@@ -25,6 +25,7 @@ local EdictUI = require(script.Parent.EdictUI)
 local HazardController = require(script.Parent.HazardController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
+local MenuBar = require(script.Parent.MenuBar)
 local PartyUI = require(script.Parent.PartyUI)
 local PathUI = require(script.Parent.PathUI)
 local RenounceUI = require(script.Parent.RenounceUI)
@@ -33,6 +34,7 @@ local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
 local TradeUI = require(script.Parent.TradeUI)
 local TrialUI = require(script.Parent.TrialUI)
+local UiKit = require(script.Parent.UiKit)
 
 local HUD_REFRESH_SECONDS = 0.5
 
@@ -80,6 +82,7 @@ local renounceAction = remotes:WaitForChild(Net.RenounceAction) :: RemoteEvent
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
+UiKit.startLayout()
 LedgerUI.mount(playerGui, function(request)
 	ledgerAction:FireServer(request)
 end, function(request)
@@ -128,14 +131,21 @@ TradeUI.mount(playerGui, {
 	end,
 })
 PartyUI.mount(playerGui, {
-	request = function()
-		partyRequest:FireServer()
-	end,
 	reply = function(accept)
 		partyReply:FireServer(accept)
 	end,
 	action = function(request)
 		partyAction:FireServer(request)
+	end,
+})
+MenuBar.mount(playerGui, {
+	ledger = LedgerUI.toggle,
+	paths = PathUI.toggle,
+	trade = function()
+		tradeRequest:FireServer()
+	end,
+	party = function()
+		partyRequest:FireServer()
 	end,
 })
 RenounceUI.mount(playerGui, function(request)
@@ -390,7 +400,7 @@ local function refreshHud()
 	if place ~= nil and place.regionId ~= lastRegionId then
 		lastRegionId = place.regionId
 		Atmosphere.set(place.regionId)
-		Toast.show(place.name .. ": " .. place.hint)
+		Toast.region(place.name .. ": " .. place.hint)
 	end
 	StatusHUD.render(
 		StatusView.build(
@@ -407,7 +417,7 @@ task.spawn(function()
 	while true do
 		refreshHud()
 		renderTrial()
-		PartyUI.refresh(localPlayer)
+		PartyUI.refresh(localPlayer, TrialUI.shownLines())
 		task.wait(HUD_REFRESH_SECONDS)
 	end
 end)

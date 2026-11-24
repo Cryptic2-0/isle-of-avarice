@@ -225,3 +225,16 @@ T.test("M7 messages", function()
 		"Ann has Renounced the Ledger and starts again."
 	)
 end)
+
+T.test("format: {player}, a missing value, no values and an unknown code", function()
+	T.eq(
+		Messages.format("LEDGER_COMPLETE", { player = "Ann" }),
+		"Ann has claimed every Relic and is Crowned!"
+	)
+	T.eq(
+		Messages.format("CLAIM_LOST", { names = "Barnacle Key" }),
+		"{player} took from you: Barnacle Key."
+	)
+	T.eq(Messages.format("LEDGER_COMPLETE"), "{player} has claimed every Relic and is Crowned!")
+	T.eq(Messages.format("NO_SUCH_CODE", { player = "Ann" }), "NO_SUCH_CODE")
+end)

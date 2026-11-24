@@ -92,3 +92,23 @@ T.test("Veil needs no status, and hostile numbers add no line", function()
 	end
 	T.eq(StatusView.build(nil, false, nil, nil), {})
 end)
+
+T.test("fit keeps the most urgent lines in their order and drops the region first", function()
+	local lines: { StatusView.Line } = {
+		{ text = "Tallyport", kind = "region" },
+		{ text = "Safe zone", kind = "safe" },
+		{ text = "New-player shield", kind = "shield" },
+		{ text = "Respawn shield: 9s", kind = "shield" },
+	}
+	T.eq(StatusView.fit(lines, 4), lines)
+	T.eq(StatusView.fit(lines, 3), { lines[2], lines[3], lines[4] })
+	T.eq(StatusView.fit(lines, 2), { lines[3], lines[4] })
+	T.eq(StatusView.fit(lines, 0), {})
+	T.eq(#lines, 4)
+	local urgent: { StatusView.Line } = {
+		{ text = "Thornwood", kind = "region" },
+		{ text = "MARKED 1:00", kind = "marked" },
+		{ text = "Briars", kind = "hazard" },
+	}
+	T.eq(StatusView.fit(urgent, 2), { urgent[2], urgent[3] })
+end)
