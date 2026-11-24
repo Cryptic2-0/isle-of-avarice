@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Ledger = require(ReplicatedStorage.Shared.Rules.Ledger)
 local PathProgress = require(ReplicatedStorage.Shared.Rules.PathProgress)
+local TrialRun = require(ReplicatedStorage.Shared.Rules.TrialRun)
 local Types = require(ReplicatedStorage.Shared.Types)
 local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
 local ProfileStore = require(script.Parent.Vendor.ProfileStore)
@@ -19,6 +20,7 @@ local TEMPLATE = {
 	vault = {},
 	shieldEnded = false,
 	paths = PathProgress.new(),
+	trials = TrialRun.newRecord(),
 }
 
 -- Longest a leaving player's profile stays open for holds.
@@ -76,6 +78,7 @@ local function loadProfile(player: Player)
 	profile.Data.ledger = Ledger.sanitize(profile.Data.ledger)
 	profile.Data.vault = Vault.sanitize(profile.Data.vault, profile.Data.ledger)
 	profile.Data.paths = PathProgress.sanitize(profile.Data.paths)
+	profile.Data.trials = TrialRun.sanitize(profile.Data.trials, os.time())
 	if type(profile.Data.shieldEnded) ~= "boolean" then
 		profile.Data.shieldEnded = false
 	end

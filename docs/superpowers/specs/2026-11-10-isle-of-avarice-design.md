@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 5, 2026-11-12: M3 decisions in section 4, parties added to the roadmap)
+**Date:** 2026-11-10 (revision 6, 2026-11-12: M4 creatures, trials and Relics 013–030 in sections 3.9–3.12)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -60,7 +60,7 @@ open, and the island will crown whoever fills it.
 ### 3.1 The Ledger
 
 - **Relic slots:** numbered `001`–`050` at launch. Slot `017` accepts only
-  Relic `017`. The first playable version ships 12 Relics.
+  Relic `017`. M1 shipped 12 Relics; M4 brings 30.
 - **Free slots:** 20 slots that hold anything: spare Relics, Edicts,
   trade goods.
 - A Relic in its own numbered slot is **claimed**. A Relic in a free slot
@@ -210,6 +210,142 @@ Claiming every Relic triggers a server-wide ceremony. The player earns the
 **Crowned** title, a badge and a cosmetic, and joins the all-time
 leaderboard. They may then **Renounce**: return all cards to the island
 for a permanent prestige mark and start again.
+
+### 3.9 Creatures (M4 starting values)
+
+Island beasts live at fixed dens outside Tallyport. The server runs them.
+
+| Creature | Health | Attack | Speed | Sight | Base XP | Coin | Respawn |
+|---|---|---|---|---|---|---|---|
+| **Brinehound** | 60 | Bite: 8 damage, 5 studs, every 1.4 s | 16 | 35 | 30 | 4 | 30 s |
+| **Shellback** | 160 | Claw: 14 damage, 6 studs, every 2 s | 10 | 25 | 70 | 10 | 45 s |
+| **Bogspitter** | 90 | Spit: shot, 30 studs, 10 damage, every 2.5 s; keeps 15 studs away | 12 | 40 | 60 | 8 | 45 s |
+| **Brine Colossus** | 900 | Slam: 25 damage to every player within 10 studs, every 4 s | 9 | 45 | 500 | 60 | 10 min |
+
+Dens: four Brinehound packs of 3, three Shellback dens of 2, three
+Bogspitter dens of 2, one Brine Colossus. Each creature respawns at its
+den on its own timer.
+
+**Behaviour.** A creature wanders within 12 studs of its den. It chases
+the nearest player it can see within its sight range. It never enters
+Tallyport, and it gives up when its target is more than 60 studs from
+the den, enters the safe zone or is defeated: it walks home and heals to
+full. It does not chase a player whose respawn shield is up.
+
+**Fighting creatures.**
+
+- The Strike and every ability hit creatures, with the same reach, aim
+  and line-of-sight rules as against players. Slow, root, burn, pull,
+  knockback and taunt work on them (a taunted creature chases the
+  taunter). Training posts stay what they were.
+- Creatures are PvE: hitting one never Marks a player, and the
+  new-player shield does not stop it. Hitting one ends your respawn
+  shield, like any attack.
+- Creature damage follows the effect rules (immune, reduction, shield,
+  then health). Rebuke reflects it back at the creature. The safe zone
+  and the respawn shield block it.
+- Combat logging counts only damage between players.
+- A player defeated by a creature respawns in Tallyport. There is no
+  blind claim and nobody gets XP for it. (Losses of non-Relic cards come
+  with M5.)
+
+**Rewards.** When a creature is defeated, every player who damaged it in
+the last 30 seconds is a contributor. Each contributor gets the full Coin
+and XP, and rolls its drop table on their own. XP goes to the Path that
+player dealt the most damage to it with (the Strike counts as the
+Calling; a tie goes to the Calling). A player without a Calling gets the
+Coin only.
+
+### 3.10 Trials and quests (M4 starting values)
+
+**Wardens** stand at six spots. Each offers one trial. Taking it opens a
+window with the goal, time limit and rewards, and says whether its Relic
+is sealed. One trial at a time per player.
+
+| Trial | Kind | Goal | Time | Relic | Coin | XP |
+|---|---|---|---|---|---|---|
+| **Tidewalk** | course | touch 6 markers in order | 60 s | R013 (Silver) | 30 | 120 |
+| **Gullstep Climb** | course | touch 8 markers in order | 75 s | R014 (Silver) | 40 | 160 |
+| **Salt Post** | delivery | carry the parcel to the Harbour Warden | 70 s | R015 (Silver) | 35 | 140 |
+| **Cull the Pack** | hunt | defeat 5 Brinehounds | 120 s | R016 (Silver) | 40 | 180 |
+| **Shellbreaker** | hunt | defeat 3 Shellbacks | 150 s | R024 (Gold) | 70 | 300 |
+| **The Tallyman's Duel** | duel | defeat the Drowned Tallyman | 90 s | R025 (Gold) | 80 | 350 |
+
+- A trial fails on timeout, on defeat, or when the player leaves. A
+  failed trial can be retried after 30 seconds; a passed one after 5
+  minutes.
+- Trial XP goes to the Calling. Coin is paid even when the Relic is
+  sealed; the Relic is skipped (sealed) or, with no free slot, lost with
+  a message.
+- Hunts count creatures the player contributed to (3.9).
+- The **Drowned Tallyman** (duel) appears only for the duelling player
+  and only they can hurt it or be hurt by it: 300 health, Strike-like
+  hits of 12 damage every 1.2 s at 7 studs, speed 15, and every 8 s a
+  Lunge (dash 12 studs, 18 damage).
+- **Quest — The Unpaid Debt** (Platinum): pass Tidewalk, Salt Post and
+  The Tallyman's Duel in that order, then contribute to defeating the
+  Brine Colossus. Reward: R027 (Platinum), 150 Coin, 600 XP. Progress is
+  saved. A step done out of order does not count.
+
+### 3.11 Relics 013–030 (M4)
+
+| Slot | Tier | Source |
+|---|---|---|
+| 013–016 | Silver | trials (above) |
+| 017–018 | Silver | caches in hard-to-reach spots |
+| 019 | Gold | Brinehound, 2% per contributor |
+| 020 | Gold | Shellback, 5% |
+| 021 | Gold | Bogspitter, 5% |
+| 022 | Gold | Brine Colossus, 100% |
+| 023 | Gold | Brine Colossus, 20% |
+| 024–025 | Gold | trials (above) |
+| 026 | Gold | cache on the highest point |
+| 027 | Platinum | quest (above) |
+| 028–030 | Copper | caches |
+
+Every drop and reward obeys scarcity (3.2): a sealed Relic is not given.
+
+### 3.12 M4 details (rulings made while planning)
+
+- A creature "sees" a player within its sight range with an unblocked
+  line from the creature (bodies never block). A hit on a creature with
+  no target makes the attacker its target if that player is a valid
+  target: alive, outside Tallyport, no respawn shield, within 60 studs
+  of the den. A creature already chasing keeps its target. A taunted
+  creature chases the taunter while the taunter is a valid target.
+- A creature walking home is immune and ignores taunt. At its den it
+  heals to full and forgets its contributors and statuses. Creatures
+  stop 4 studs outside Tallyport; a pull or knockback cannot put one
+  inside. Dens are at least 130 studs from the town centre.
+- A player standing in Tallyport cannot damage creatures.
+- The new-player shield does not block creature damage; the safe zone
+  (even for a Marked player) and the respawn shield do.
+- When both a player and a creature hit someone, the most recent hit
+  within 15 seconds decides who defeated them. A creature's last blow is
+  a creature defeat. Creature hits never take a player's kill or
+  combat-log credit.
+- XP Path: a tie not involving the Calling goes to the Path earlier in
+  hexagon order. Rebuke's reflected damage counts as Bulwark; burns and
+  zones count for the Path of the ability that made them.
+- A capped drop with many contributors serves them most-damage-first;
+  once the cap is reached the rest are told it is sealed. Contributors
+  who left get nothing. A Relic reward to a Ledger locked by an open
+  claim is lost with a message, like a full Ledger; Coin and XP are
+  still paid.
+- The Harbour Warden offers Tidewalk at the harbour; Salt Post starts at
+  the Saltworks Warden. A trial is accepted within 15 studs of its
+  Warden; its timer starts on Accept; a marker counts within 6 studs; the
+  parcel is delivered within 10 studs of the Harbour Warden. Leaving
+  mid-trial counts as a fail. Hunts count creatures defeated while the
+  trial runs.
+- The quest repeats: after its reward, progress restarts at step 1.
+- The Drowned Tallyman has sight 60 and is leashed 60 studs from its
+  arena; other players do not see it; it pays nothing itself (the trial
+  pays).
+- Hard-to-reach caches sit at least 20 studs up, reached by ledges that
+  rise at most 4 studs each; R026's ledge is the island's highest point.
+- The Ledger and the blind claim show the slots of the Relics that exist
+  (30 in M4, 50 at launch).
 
 ## 4. The Six Paths
 

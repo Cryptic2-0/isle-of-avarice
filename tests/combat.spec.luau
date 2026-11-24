@@ -92,3 +92,24 @@ T.test("pickTarget prefers a taunter that is in reach", function()
 	T.eq(Combat.pickTarget(me, { at(2, 0, 0, -3), at(7, 0, 9, -6) }, nil, 7), 2, "taunter too high")
 	T.eq(Combat.pickTarget(me, { at(1, 0, 0, -3), at(2, 0, 0, -6) }, nil, 1), 2, "taunter is self")
 end)
+
+T.test("creditFor: a creature's last blow is a creature defeat", function()
+	local log = Combat.recordHit({}, 2, 7, 10)
+	T.eq(Combat.creditFor(log, 2, 13, 15), 7)
+	T.eq(Combat.creditFor(log, 2, 13, 15, {}), 7)
+	T.eq(Combat.creditFor(log, 2, 13, 15, Combat.recordHit({}, 2, -2000001, 12)), nil)
+	T.eq(
+		Combat.creditFor(log, 2, 13, 15, Combat.recordHit({}, 2, -2000001, 10)),
+		nil,
+		"same instant"
+	)
+	T.eq(Combat.creditFor(log, 2, 13, 15, Combat.recordHit({}, 2, -2000001, 9)), 7)
+	T.eq(
+		Combat.creditFor(log, 2, 24, 15, Combat.recordHit({}, 2, -2000001, 8)),
+		7,
+		"the creature hit is outside the window"
+	)
+	T.eq(Combat.creditFor(log, 2, 26, 15, Combat.recordHit({}, 2, -2000001, 20)), nil)
+	-- A creature hit on someone else changes nothing.
+	T.eq(Combat.creditFor(log, 2, 13, 15, Combat.recordHit({}, 3, -2000001, 12)), 7)
+end)

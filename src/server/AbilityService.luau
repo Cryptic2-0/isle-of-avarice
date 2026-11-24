@@ -1,15 +1,15 @@
 --!strict
 -- Turns a client's "cast slot N" into the effects of the 18 abilities. The client names only
 -- a slot: the ability, targets, damage, movement and timing are all decided here, from the pure
--- Casting plan and the server's own view of the world. Every player hit goes through
+-- Casting plan and the server's own view of the world. Every hit (player or post) goes through
 -- CombatService.damage, and a hit's statuses, pull or knockback follow only when it landed.
-local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Abilities = require(ReplicatedStorage.Shared.Catalog.Abilities)
 local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
 local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
+local CreatureBrain = require(ReplicatedStorage.Shared.Rules.CreatureBrain)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
@@ -18,6 +18,8 @@ local Targeting = require(ReplicatedStorage.Shared.Rules.Targeting)
 local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 local CombatService = require(script.Parent.CombatService)
+local Fighters = require(script.Parent.Fighters)
+local Fx = require(script.Parent.Fx)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
 local Sight = require(script.Parent.Sight)
@@ -30,16 +32,7 @@ type Vec3 = Types.Vec3
 
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
-local WALL_MARGIN = 2 -- a move stops this many studs short of anything in its way
 local ZONE_WALL_MARGIN = 1 -- a zone's centre stops this far short of a wall
-local GROUND_PROBE = 50 -- how far below a move's end point to look for ground
-local R6_LEG_HEIGHT = 2
-local SHOT_WIDTH = 0.3
-local SHOT_SECONDS = 0.15
-local RING_SECONDS = 0.3
-local RING_SEGMENTS = 24
-local RING_WIDTH = 0.6
-local RING_HEIGHT = 0.2
 local RING_LIFT = 0.2 -- above the caster's feet
 local DEFAULT_COLOR = Color3.fromRGB(200, 200, 200)
 
@@ -63,19 +56,7 @@ end
 
 -- The Humanoid and HumanoidRootPart of a living character, or nil.
 local function living(player: Player): (Humanoid?, BasePart?)
-	local character = player.Character
-	if character == nil then
-		return nil, nil
-	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid == nil or humanoid.Health <= 0 then
-		return nil, nil
-	end
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if root == nil or not root:IsA("BasePart") then
-		return nil, nil
-	end
-	return humanoid, root
+	return Fighters.body(player.UserId)
 end
 
 local function fighterOf(player: Player, humanoid: Humanoid, root: BasePart): Fighter
@@ -89,17 +70,6 @@ local function fighterOf(player: Player, humanoid: Humanoid, root: BasePart): Fi
 	}
 end
 
-local function effectsFolder(): Folder
-	local existing = workspace:FindFirstChild("Effects")
-	if existing ~= nil and existing:IsA("Folder") then
-		return existing
-	end
-	local folder = Instance.new("Folder")
-	folder.Name = "Effects"
-	folder.Parent = workspace
-	return folder
-end
-
 local function pathColor(path: string): Color3
 	local info = Paths.info[path :: Types.PathId]
 	if info == nil then
@@ -108,50 +78,9 @@ local function pathColor(path: string): Color3
 	return Color3.fromRGB(info.color.r, info.color.g, info.color.b)
 end
 
--- Height of the root's centre above the feet of a standing character.
-local function standHeight(humanoid: Humanoid, root: BasePart): number
-	if humanoid.RigType == Enum.HumanoidRigType.R15 then
-		return humanoid.HipHeight + root.Size.Y / 2
-	end
-	return R6_LEG_HEIGHT + root.Size.Y / 2
-end
-
 -- ---------------------------------------------------------------------------------------
 -- World rays: movement (dash, pull, knockback) and line of sight
 -- ---------------------------------------------------------------------------------------
-
--- Moves a character towards `target` using only the server's own geometry. `target` always
--- comes from a server plan, never from a client. A level ray from the root towards the
--- target's x and z stops WALL_MARGIN short of anything in the way; a ray down from there
--- stands the character on the ground, or keeps its current height if there is none. The
--- facing is kept and the velocity zeroed. Returns the level distance actually travelled
--- (0 when nothing moved).
-local function moveCharacter(humanoid: Humanoid, root: BasePart, target: Vec3): number
-	local from = root.Position
-	local dx = target.x - from.X
-	local dz = target.z - from.Z
-	local distance = math.sqrt(dx * dx + dz * dz)
-	-- Written so NaN or infinite targets move nobody.
-	if not (distance > 0 and distance < math.huge) then
-		return 0
-	end
-	local direction = Vector3.new(dx / distance, 0, dz / distance)
-	local params = Sight.rayParams()
-	local travel = distance
-	local blocked = workspace:Raycast(from, direction * distance, params)
-	if blocked ~= nil then
-		travel = math.max(0, blocked.Distance - WALL_MARGIN)
-	end
-	local stop = from + direction * travel
-	local y = from.Y
-	local ground = workspace:Raycast(stop, Vector3.new(0, -GROUND_PROBE, 0), params)
-	if ground ~= nil then
-		y = ground.Position.Y + standHeight(humanoid, root)
-	end
-	root.CFrame = CFrame.new(stop.X, y, stop.Z) * root.CFrame.Rotation
-	root.AssemblyLinearVelocity = Vector3.zero
-	return travel
-end
 
 -- ---------------------------------------------------------------------------------------
 -- Effects on players
@@ -191,31 +120,6 @@ local function alliesOf(player: Player, ability: Ability): { Player }
 	return result
 end
 
--- The hit's statuses on a victim the damage reached. Only called after damage() returned true.
-local function applyHitStatuses(player: Player, ability: Ability, victim: Player)
-	local burn, rootFor, slow, taunt = ability.burn, ability.root, ability.slow, ability.taunt
-	if burn == nil and rootFor == nil and slow == nil and taunt == nil then
-		return
-	end
-	local byId = player.UserId
-	StatusService.update(victim, function(status, now)
-		local out = status
-		if burn ~= nil then
-			out = Effects.applyBurn(out, burn.dps, burn.duration, byId, now)
-		end
-		if rootFor ~= nil then
-			out = Effects.applyRoot(out, rootFor, now)
-		end
-		if slow ~= nil then
-			out = Effects.applySlow(out, slow.factor, slow.duration, now)
-		end
-		if taunt ~= nil then
-			out = Effects.applyTaunt(out, byId, taunt, now)
-		end
-		return out
-	end)
-end
-
 local function vector(v: Vec3): Vector3
 	return Vector3.new(v.x, v.y, v.z)
 end
@@ -226,48 +130,46 @@ end
 local function inSight(caster: Fighter, others: { Fighter }, targetId: number): boolean
 	for _, other in others do
 		if other.id == targetId then
-			local postId = if CombatService.isPost(targetId) then targetId else nil
-			return Sight.obstruction(vector(caster.position), vector(other.position), postId) == nil
+			local target = Fighters.model(targetId)
+			return Sight.obstruction(vector(caster.position), vector(other.position), target) == nil
 		end
 	end
 	return false
 end
 
--- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. A post
--- trains the ability's Path (posts ignore every effect); a player takes the hit through
--- CombatService.damage, and its statuses and its pull or knockback follow only when that
--- returned true. Heal-on-hit heals the caster and allies when any player hit landed or a post
--- was hit.
+-- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. Every
+-- hit goes through CombatService.damage (a post trains the ability's Path and ignores every
+-- effect); its statuses and its pull or knockback follow only when that returned true.
+-- Heal-on-hit heals the caster and allies when any hit landed.
 local function applyHits(
 	player: Player,
 	ability: Ability,
 	plan: Plan,
 	caster: Fighter,
-	others: { Fighter },
-	byId: { [number]: Player }
+	others: { Fighter }
 )
 	local connected = false
 	for _, hit in plan.hits do
-		if not inSight(caster, others, hit.targetId) then
+		local id = hit.targetId
+		if not inSight(caster, others, id) then
 			continue
 		end
-		if CombatService.isPost(hit.targetId) then
-			CombatService.hitPost(player, hit.targetId, ability.path)
-			connected = true
-			continue
-		end
-		local victim = byId[hit.targetId]
-		if victim == nil or not CombatService.damage(player, victim, hit.damage) then
+		if not CombatService.damage(player.UserId, id, hit.damage, { path = ability.path }) then
 			continue
 		end
 		connected = true
-		applyHitStatuses(player, ability, victim)
+		StatusService.applyHit(player.UserId, id, ability)
 		-- No ability both pulls and knocks back; each point is for the plan's one target.
 		local destination = plan.pullTo or plan.knockbackTo
 		if destination ~= nil then
-			local humanoid, root = living(victim)
+			local humanoid, root = Fighters.body(id)
 			if humanoid ~= nil and root ~= nil then
-				moveCharacter(humanoid, root, destination)
+				-- No pull or knockback ever lands a creature inside Tallyport.
+				local entry = Fighters.get(id)
+				if entry ~= nil and entry.kind == "creature" then
+					destination = CreatureBrain.outsideTown(destination)
+				end
+				Sight.move(humanoid, root, destination)
 			end
 		end
 	end
@@ -302,7 +204,7 @@ local function applySelfEffects(player: Player, ability: Ability)
 		if not anyStatus then
 			continue
 		end
-		StatusService.update(ally, function(status, now)
+		StatusService.update(ally.UserId, function(status, now)
 			local out = status
 			if cleanse then
 				out = Effects.cleanse(out)
@@ -330,31 +232,6 @@ end
 -- ---------------------------------------------------------------------------------------
 -- Visuals (server-made, short-lived, in workspace.Effects)
 -- ---------------------------------------------------------------------------------------
-
-local function effectPart(name: string, color: Color3): Part
-	local part = Instance.new("Part")
-	part.Name = name
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.CastShadow = false
-	part.Material = Enum.Material.Neon
-	part.Color = color
-	return part
-end
-
-local function showRay(from: Vector3, to: Vector3, color: Color3)
-	local length = (to - from).Magnitude
-	if not (length > 0 and length < math.huge) then
-		return
-	end
-	local part = effectPart("Shot", color)
-	part.Size = Vector3.new(SHOT_WIDTH, SHOT_WIDTH, length)
-	part.CFrame = CFrame.lookAt(from, to) * CFrame.new(0, 0, -length / 2)
-	part.Parent = effectsFolder()
-	Debris:AddItem(part, SHOT_SECONDS)
-end
 
 -- One ray per shot, from the caster to the fighter that shot found, or to full range, cut
 -- short where something solid blocks it (as the hit is). The fan and the target use the same
@@ -389,30 +266,9 @@ local function showShots(ability: Ability, caster: Fighter, others: { Fighter },
 				end
 			end
 		end
-		local postId = if targetId ~= nil and CombatService.isPost(targetId) then targetId else nil
-		showRay(from, Sight.obstruction(from, to, postId) or to, color)
+		local target = if targetId ~= nil then Fighters.model(targetId) else nil
+		Fx.ray(from, Sight.obstruction(from, to, target) or to, color)
 	end
-end
-
--- A flat ring of the burst's radius around the caster's feet.
-local function showRing(center: Vector3, radius: number, color: Color3)
-	if not (radius > 0 and radius < math.huge) then
-		return
-	end
-	local ring = Instance.new("Model")
-	ring.Name = "Ring"
-	local segment = 2 * radius * math.sin(math.pi / RING_SEGMENTS) + RING_WIDTH
-	for i = 1, RING_SEGMENTS do
-		local part = effectPart("Segment", color)
-		-- Local X points outwards from the centre, local Z along the ring.
-		part.Size = Vector3.new(RING_WIDTH, RING_HEIGHT, segment)
-		part.CFrame = CFrame.new(center)
-			* CFrame.Angles(0, (i - 1) / RING_SEGMENTS * 2 * math.pi, 0)
-			* CFrame.new(radius, 0, 0)
-		part.Parent = ring
-	end
-	ring.Parent = effectsFolder()
-	Debris:AddItem(ring, RING_SECONDS)
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -449,7 +305,7 @@ local function placeZone(zone: Casting.Zone, from: Vector3): Casting.Zone
 	local probeTop = from.Y + Combat.STRIKE_MAX_HEIGHT
 	local ground = workspace:Raycast(
 		Vector3.new(x, probeTop, z),
-		Vector3.new(0, -(GROUND_PROBE + Combat.STRIKE_MAX_HEIGHT), 0),
+		Vector3.new(0, -(Sight.GROUND_PROBE + Combat.STRIKE_MAX_HEIGHT), 0),
 		params
 	)
 	if ground ~= nil then
@@ -471,11 +327,11 @@ local function runWave(player: Player, character: Model?, ability: Ability)
 		return
 	end
 	local now = os.clock()
-	local others, byId = CombatService.fighters(player)
-	local taunter = Effects.tauntedBy(StatusService.get(player), now)
+	local others = Fighters.list(player.UserId)
+	local taunter = Effects.tauntedBy(StatusService.get(player.UserId), now)
 	local caster = fighterOf(player, humanoid, root)
 	local plan = Casting.plan(ability, caster, candidates(ability, caster, others), taunter)
-	applyHits(player, ability, plan, caster, others, byId)
+	applyHits(player, ability, plan, caster, others)
 end
 
 local function handleCast(player: Player, rawSlot: any)
@@ -498,7 +354,7 @@ local function handleCast(player: Player, rawSlot: any)
 
 	-- No yielding call from here to the commit: the cooldown check cannot go stale.
 	local now = os.clock()
-	local status = StatusService.get(player)
+	local status = StatusService.get(player.UserId)
 	local state = castStates[player] or Casting.new()
 	local id, code = Casting.canCast(state, progress, rawSlot, now, Effects.isRooted(status, now))
 	if id == nil then
@@ -516,7 +372,7 @@ local function handleCast(player: Player, rawSlot: any)
 	cooldownRemote:FireClient(player, rawSlot :: number, ability.cooldown)
 
 	local character = player.Character
-	local others, byId = CombatService.fighters(player)
+	local others = Fighters.list(player.UserId)
 	local taunter = Effects.tauntedBy(status, now)
 	local caster = fighterOf(player, humanoid, root)
 	local targets = candidates(ability, caster, others)
@@ -524,7 +380,7 @@ local function handleCast(player: Player, rawSlot: any)
 
 	local moveTo = plan.moveTo
 	if moveTo ~= nil then
-		local clear = moveCharacter(humanoid, root, moveTo)
+		local clear = Sight.move(humanoid, root, moveTo)
 		if ability.kind == "dash" then
 			-- The plan scanned the dash's full length; a wall can stop it short. Only an enemy
 			-- inside the stretch actually travelled, plus the gap to what stopped it (the move
@@ -532,7 +388,7 @@ local function handleCast(player: Player, rawSlot: any)
 			-- passed, scanned from the start point. Line of sight still rules out anything
 			-- behind a wall.
 			local hits: { Casting.Hit } = {}
-			local reach = math.min(ability.distance or 0, clear + WALL_MARGIN + 1.5)
+			local reach = math.min(ability.distance or 0, clear + Sight.WALL_MARGIN + 1.5)
 			local targetId = Targeting.dashHit(caster, others, reach)
 			if targetId ~= nil then
 				table.insert(hits, { targetId = targetId, damage = ability.damage or 0 })
@@ -540,13 +396,13 @@ local function handleCast(player: Player, rawSlot: any)
 			plan.hits = hits
 		end
 	end
-	applyHits(player, ability, plan, caster, others, byId)
+	applyHits(player, ability, plan, caster, others)
 	for k = 1, plan.waves - 1 do
 		task.delay(plan.interval * k, runWave, player, character, ability)
 	end
 	local zone = plan.zone
 	if zone ~= nil then
-		StatusService.addZone(player, placeZone(zone, root.Position), ability.path)
+		StatusService.addZone(player.UserId, placeZone(zone, root.Position), ability.path)
 	end
 	applySelfEffects(player, ability)
 
@@ -554,15 +410,15 @@ local function handleCast(player: Player, rawSlot: any)
 		showShots(ability, caster, targets, taunter)
 	elseif ability.kind == "burst" then
 		local p = caster.position
-		local center = Vector3.new(p.x, p.y - standHeight(humanoid, root) + RING_LIFT, p.z)
-		showRing(center, ability.radius or 0, pathColor(ability.path))
+		local center = Vector3.new(p.x, p.y - Sight.standHeight(humanoid, root) + RING_LIFT, p.z)
+		Fx.ring(center, ability.radius or 0, pathColor(ability.path))
 	end
 end
 
 function AbilityService.start()
 	cooldownRemote = LedgerService.makeRemote(Net.AbilityCooldown)
 	LedgerService.makeRemote(Net.CastAbility).OnServerEvent:Connect(handleCast)
-	effectsFolder()
+	Fx.folder()
 
 	Players.PlayerRemoving:Connect(function(player)
 		castStates[player] = nil

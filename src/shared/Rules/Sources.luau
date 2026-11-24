@@ -27,6 +27,33 @@ function Sources.isAvailable(state: SourceState, cacheId: string, now: number): 
 	return availableAt ~= nil and now >= availableAt
 end
 
+-- Puts a Relic in a free slot: the one way a cache, a creature, a trial or the quest gives
+-- one. Checks run in order: data, locked ledger, unknown Relic, sealed, free slots.
+function Sources.give(
+	ledger: Ledger?,
+	relicId: Types.CardId,
+	sealed: boolean,
+	locked: boolean
+): (Ledger?, string)
+	if ledger == nil then
+		return nil, "DATA_NOT_LOADED"
+	end
+	if locked then
+		return nil, "LEDGER_LOCKED"
+	end
+	if Relics.byId[relicId] == nil then
+		return nil, "UNKNOWN_CARD"
+	end
+	if sealed then
+		return nil, "SEALED"
+	end
+	local result, err = Ledger.add(ledger, relicId)
+	if result == nil then
+		return nil, err or "FREE_FULL"
+	end
+	return result, "GOT_CARD"
+end
+
 -- Checks run in order: data, locked ledger, distance, cache, sealed, free slots. A failure returns the
 -- same state untouched, so a refused attempt never consumes the cache.
 -- On success the fourth value is the time the cache becomes available again.
@@ -55,12 +82,9 @@ function Sources.tryCollect(
 	if relic == nil then
 		return state, nil, "CACHE_EMPTY", nil
 	end
-	if sealed then
-		return state, nil, "SEALED", nil
-	end
-	local result, err = Ledger.add(ledger, cache.relicId)
+	local result, code = Sources.give(ledger, cache.relicId, sealed, locked)
 	if result == nil then
-		return state, nil, err or "FREE_FULL", nil
+		return state, nil, code, nil
 	end
 	local newState = table.clone(state)
 	local availableAt = now + Tiers.info[relic.tier].cacheRespawnSeconds

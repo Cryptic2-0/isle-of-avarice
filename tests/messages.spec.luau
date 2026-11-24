@@ -59,6 +59,20 @@ local codes = {
 	"NO_ABILITY",
 	"ON_COOLDOWN",
 	"ROOTED",
+	"CREATURE_DEFEATED",
+	"REWARD_SEALED",
+	"REWARD_LOST",
+	"REWARD_LOCKED",
+	"TRIAL_STARTED",
+	"TRIAL_PASSED",
+	"TRIAL_FAILED_TIME",
+	"TRIAL_FAILED_DEFEAT",
+	"TRIAL_BUSY",
+	"TRIAL_COOLDOWN",
+	"MARKER_REACHED",
+	"HUNT_PROGRESS",
+	"QUEST_STEP",
+	"QUEST_COMPLETE",
 }
 
 T.test("every message code has text", function()
@@ -76,4 +90,26 @@ end)
 
 T.test("format fills in path and level", function()
 	T.eq(Messages.format("LEVEL_UP", { path = "Gale", level = "10" }), "Gale reached level 10.")
+end)
+
+T.test("format fills in trial and creature messages", function()
+	T.eq(
+		Messages.format("TRIAL_PASSED", { name = "Tidewalk", coin = "30" }),
+		"You passed Tidewalk! +30 Coin."
+	)
+	T.eq(
+		Messages.format("CREATURE_DEFEATED", { creature = "Brinehound", coin = "4" }),
+		"Brinehound defeated! +4 Coin."
+	)
+	T.eq(
+		Messages.format("TRIAL_COOLDOWN", { name = "Tidewalk", seconds = "12" }),
+		"You can try Tidewalk again in 12 seconds."
+	)
+	T.eq(Messages.format("MARKER_REACHED", { n = "2", total = "6" }), "Marker 2 of 6.")
+	T.eq(Messages.format("QUEST_STEP", { n = "2" }), "The Unpaid Debt: step 2 of 4 done.")
+	T.eq(Messages.format("QUEST_COMPLETE", { coin = "150" }), "The Unpaid Debt is paid! +150 Coin.")
+	T.eq(
+		Messages.format("REWARD_SEALED", { name = "Bog Pearl" }),
+		"Bog Pearl is sealed on this server, so you did not get it."
+	)
 end)

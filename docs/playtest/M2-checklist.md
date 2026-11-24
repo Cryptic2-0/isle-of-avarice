@@ -52,7 +52,7 @@ Studio's menus change between versions. If you cannot find these options, look f
 
 8. **Defeat**
    - What to do: take both players outside town again. As A, Strike B until B is defeated. That takes about 5 Strikes. Wait about a second between Strikes; faster clicks are ignored.
-   - What should happen: A sees "You defeated Player2. Make your claim." and a screen titled "Claim on Player2" with 12 numbered slots, "Picks left: 5" and a countdown from 30s. B respawns in Tallyport and sees "Player1 defeated you and is making a claim on your Ledger."
+   - What should happen: A sees "You defeated Player2. Make your claim." and a screen titled "Claim on Player2" with 30 numbered slots, "Picks left: 5" and a countdown from 30s. B respawns in Tallyport and sees "Player1 defeated you and is making a claim on your Ledger."
 
 9. **The victim's Ledger is locked**
    - What to do: while A's claim screen is still open, as B, open the Ledger (press B) and press "Discard" next to a spare card.

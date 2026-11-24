@@ -75,17 +75,27 @@ function Combat.recordHit(log: HitLog, victimId: number, attackerId: number, now
 	return newLog
 end
 
+-- Who gets the defeat: the last player to hit the victim within the window. With
+-- `creatureLog` (creature hits on players), a creature hit within the window that is at
+-- least as recent as the player's makes it a creature defeat: nobody gets it.
 function Combat.creditFor(
 	log: HitLog,
 	victimId: number,
 	now: number,
-	windowSeconds: number
+	windowSeconds: number,
+	creatureLog: HitLog?
 ): number?
 	local entry = log[tostring(victimId)]
-	if entry ~= nil and now - entry.at <= windowSeconds then
-		return entry.attackerId
+	if entry == nil or not (now - entry.at <= windowSeconds) then
+		return nil
 	end
-	return nil
+	if creatureLog ~= nil then
+		local bite = creatureLog[tostring(victimId)]
+		if bite ~= nil and now - bite.at <= windowSeconds and bite.at >= entry.at then
+			return nil
+		end
+	end
+	return entry.attackerId
 end
 
 function Combat.clear(log: HitLog, victimId: number): HitLog

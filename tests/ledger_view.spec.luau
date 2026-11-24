@@ -5,10 +5,10 @@ local Relics = require("../src/shared/Catalog/Relics")
 
 T.test("view of a partly filled Ledger", function()
 	local view = LedgerView.build({ claimed = { R002 = true }, free = { "R001", "R002", "R001" } })
-	T.eq(view.progressText, "1 / 12")
+	T.eq(view.progressText, "1 / 30")
 	T.eq(view.freeText, "3 / 20")
 	T.eq(view.complete, false)
-	T.eq(#view.slots, 12)
+	T.eq(#view.slots, 30)
 	T.eq(view.slots[1], {
 		slot = 1,
 		label = "001",
@@ -50,13 +50,13 @@ T.test("view of a completed Ledger", function()
 	end
 	local view = LedgerView.build({ claimed = claimed, free = {} })
 	T.eq(view.complete, true)
-	T.eq(view.progressText, "12 / 12")
+	T.eq(view.progressText, "30 / 30")
 	T.eq(view.freeText, "0 / 20")
 	T.eq(#view.free, 0)
 end)
 
 T.test("view of an empty Ledger", function()
 	local view = LedgerView.build({ claimed = {}, free = {} })
-	T.eq(view.progressText, "0 / 12")
+	T.eq(view.progressText, "0 / 30")
 	T.eq(view.complete, false)
 end)

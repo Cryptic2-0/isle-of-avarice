@@ -1,5 +1,6 @@
 --!strict
 local T = require("./harness")
+local Abilities = require("../src/shared/Catalog/Abilities")
 local Effects = require("../src/shared/Rules/Effects")
 
 T.test("damage resolution: plain, immune, reduction, shield, reflect, bad amounts", function()
@@ -117,6 +118,15 @@ T.test("taunt and empower", function()
 		{ 20, 0, 0 }
 	)
 	T.eq(select(2, Effects.takeEmpower(emp, 0 / 0)), 0)
+end)
+
+T.test("an ability hit applies its burn, root, slow and taunt", function()
+	local ab = Abilities.byId
+	T.eq({ Effects.burnTick(Effects.applyHit(Effects.new(), ab.cinder_bolt, 7, 0), 1) }, { 3, 7 })
+	T.truthy(Effects.isRooted(Effects.applyHit(Effects.new(), ab.bog_snare, 7, 0), 1))
+	T.eq(Effects.speedFactor(Effects.applyHit(Effects.new(), ab.undertow, 7, 0), 1), 0.7)
+	T.eq(Effects.tauntedBy(Effects.applyHit(Effects.new(), ab.challenge, 7, 0), 1), 7)
+	T.eq(Effects.applyHit(Effects.new(), ab.gust_blade, 7, 0), Effects.new()) -- no on-hit status
 end)
 
 T.test("no function mutates the status passed in", function()

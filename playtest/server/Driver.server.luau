@@ -1,7 +1,7 @@
 --!nonstrict
 -- Automated two-player play test. Only in the play-test build (playtest.project.json),
 -- never in dist. Start a local server with 2 players; this script walks through the M1,
--- M2 and M3 checklists and the world checks (W.1 to W.7, for the nine-region island),
+-- M2, M3 and M4 checklists and the world checks (W.1 to W.7, for the nine-region island),
 -- driving each player through their Agent, and prints one line per check:
 -- "[PLAYTEST] PASS ..." or "[PLAYTEST] FAIL ...", then a DONE summary.
 --
@@ -17,18 +17,24 @@
 -- in Tallyport), then M1 and M2, with M3.1 to M3.3 (first join, choosing a Calling) right
 -- after M2.1. A can claim B only once an hour and M2 makes that claim (and B's on A), so
 -- M2.8, M2.13 and M2.14 also check the Calling's defeat XP (M3.10). Then the rest of M3,
--- and M2.15, which ends B's session, last of all.
+-- then M4 (creatures, trials and the quest), and M2.15, which ends B's session, last of all.
+-- Creatures are put to sleep for the whole run (CreatureService.setActive) and M4 wakes one
+-- at a time; it sets their health directly, fixes the drop rolls and skips trial time.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Server = ServerScriptService:WaitForChild("Server")
+local CreatureService = require(Server:WaitForChild("CreatureService"))
 local DataService = require(Server:WaitForChild("DataService"))
+local Fighters = require(Server:WaitForChild("Fighters"))
 local LedgerService = require(Server:WaitForChild("LedgerService"))
 local PathService = require(Server:WaitForChild("PathService"))
 local ProtectionService = require(Server:WaitForChild("ProtectionService"))
+local Sight = require(Server:WaitForChild("Sight"))
 local StatusService = require(Server:WaitForChild("StatusService"))
+local TrialService = require(Server:WaitForChild("TrialService"))
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rules = Shared:WaitForChild("Rules")
 local Geography = require(Rules:WaitForChild("Geography"))
@@ -37,6 +43,7 @@ local Ledger = require(Rules:WaitForChild("Ledger"))
 local PathProgress = require(Rules:WaitForChild("PathProgress"))
 local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
+local Creatures = require(Shared:WaitForChild("Catalog"):WaitForChild("Creatures"))
 local Relics = require(Shared:WaitForChild("Catalog"):WaitForChild("Relics"))
 local Sites = require(Shared:WaitForChild("Catalog"):WaitForChild("Sites"))
 local World = require(Shared:WaitForChild("Catalog"):WaitForChild("World"))
@@ -77,6 +84,7 @@ local claimPayload = {} -- player -> last ClaimUpdate payload (nil = closed)
 local hitFx = {} -- player -> count of HitFx seen
 local uiReport = {} -- player -> last UI snapshot
 local cooldowns = {} -- player -> { { slot, seconds, at } }, each AbilityCooldown seen
+local offers = {} -- player -> last TrialOffer view
 local agentErrors = {}
 
 report.OnServerEvent:Connect(function(player, kind, a, b)
@@ -90,6 +98,8 @@ report.OnServerEvent:Connect(function(player, kind, a, b)
 		table.insert(cooldowns[player], { slot = a, seconds = b, at = os.clock() })
 	elseif kind == "claim" then
 		claimPayload[player] = a
+	elseif kind == "offer" then
+		offers[player] = a
 	elseif kind == "hitfx" then
 		hitFx[player] = (hitFx[player] or 0) + 1
 	elseif kind == "ui" then
@@ -461,6 +471,648 @@ local function equip(player: Player, slot: number, abilityId: string)
 	)
 end
 
+------------------------------------------------------------------------------- M4 helpers
+
+local HOUND_1, HOUND_2, HOUND_3 = -2000001, -2000002, -2000003
+local SHELLBACK_1 = -2000013 -- den 5, beside the Shell Warden
+local BOGSPITTER_1 = -2000019
+local COLOSSUS = -2000025
+-- Added to the trial clocks, so the driver can skip a run's time and a cooldown.
+local clockSkip, realSkip = 0, 0
+
+local function creatureBody(id: number): (Humanoid?, BasePart?)
+	return Fighters.body(id)
+end
+
+local function creatureHealth(id: number): number
+	local humanoid = creatureBody(id)
+	return if humanoid ~= nil then humanoid.Health else -1
+end
+
+local function denOf(id: number): Vector3
+	local slot = World.creatureSlots[World.creatureIndex(id)]
+	local p = World.dens[slot.den].position
+	return Vector3.new(p.x, 3, p.z)
+end
+
+-- A spot `distance` from `center` on land with a clear line back to it.
+local function clearSpot(center: Vector3, distance: number): Vector3
+	for step = 0, 15 do
+		local angle = step * math.pi / 8
+		local spot = center + Vector3.new(math.cos(angle) * distance, 0, math.sin(angle) * distance)
+		if Geography.isLand(spot.X, spot.Z) and Sight.inSight(spot, center, nil) then
+			return spot
+		end
+	end
+	return center + Vector3.new(distance, 0, 0)
+end
+
+-- A fresh den creature that stands still (not in the active set), at the given health.
+local function freshCreature(id: number, healthNow: number?): boolean
+	CreatureService.respawn(id)
+	task.wait(0.3)
+	local humanoid = creatureBody(id)
+	if humanoid == nil then
+		return false
+	end
+	if healthNow ~= nil then
+		humanoid.Health = healthNow
+	end
+	return true
+end
+
+-- Stands the player 4 studs from the creature, facing it, and Strikes. A teleport across the
+-- island can take a moment to settle, so a Strike that changed nothing is tried once more.
+-- `once`: for checks that expect the Strike to change nothing.
+local function strikeCreature(player: Player, id: number, once: boolean?)
+	for _ = 1, if once then 1 else 2 do
+		local _, root = creatureBody(id)
+		if root == nil then
+			return
+		end
+		local before = creatureHealth(id)
+		local target = Vector3.new(root.Position.X, 3, root.Position.Z)
+		local spot = clearSpot(target, 4)
+		place(player, spot, target)
+		waitFor(function()
+			return flatDistance(positionOf(player), spot) <= 1.5
+		end, 2)
+		task.wait(0.5)
+		strike(player)
+		if creatureHealth(id) ~= before then
+			return
+		end
+	end
+end
+
+local function coinOf(player: Player): number
+	local data = DataService.get(player)
+	return if data ~= nil then data.coin else -1
+end
+
+local function questStepOf(player: Player): number
+	local data = DataService.get(player)
+	return if data ~= nil then data.trials.questStep else -1
+end
+
+local function hasFree(player: Player, relicId: string): boolean
+	local ledger = LedgerService.get(player)
+	return ledger ~= nil and table.find(ledger.free, relicId) ~= nil
+end
+
+local function beside(position, offset: Vector3?): Vector3
+	return Vector3.new(position.x, position.y + 3, position.z) + (offset or Vector3.new(3, 0, 0))
+end
+
+-- Talks to a Warden and returns the offer window's data as the client received it.
+local function talkTo(player: Player, trialId: string)
+	offers[player] = nil
+	place(player, beside(World.wardens[trialId]), beside(World.wardens[trialId], Vector3.zero))
+	task.wait(0.4)
+	send(player, "warden", trialId)
+	waitFor(function()
+		return offers[player] ~= nil
+	end, 4)
+	return offers[player] or {}
+end
+
+-- Accepts a trial beside its Warden. True when the run started.
+local function acceptTrial(player: Player, trialId: string): boolean
+	place(player, beside(World.wardens[trialId]), beside(World.wardens[trialId], Vector3.zero))
+	task.wait(0.4)
+	local from = mark(player)
+	send(player, "accept", trialId)
+	return waitFor(function()
+		return noteSince(player, from, "TRIAL_STARTED") ~= nil
+	end, 3)
+end
+
+local function runProgress(player: Player): number
+	local current = TrialService.run(player)
+	return if current ~= nil then current.progress else -1
+end
+
+local function championOf(player: Player): Instance?
+	for _, model in CollectionService:GetTagged("Creature") do
+		if
+			model:GetAttribute("OwnerUserId") == player.UserId and model:IsDescendantOf(workspace)
+		then
+			return model
+		end
+	end
+	return nil
+end
+
+-- Creatures, trials and the quest. Every creature is asleep except the one a check wakes.
+local function runM4(A: Player, B: Player)
+	TrialService.setClocks(function()
+		return os.clock() + clockSkip
+	end, function()
+		return os.time() + realSkip
+	end)
+	CreatureService.setRng(function()
+		return 0.99
+	end)
+	waitAlive(A)
+	waitAlive(B)
+	LedgerService.set(A, { claimed = {}, free = {} })
+	LedgerService.set(B, { claimed = {}, free = {} })
+	local dataA, dataB = DataService.get(A), DataService.get(B)
+	dataA.trials = { cooldowns = {}, questStep = 0 }
+	dataB.trials = { cooldowns = {}, questStep = 0 }
+
+	-- M4.1: the world.
+	local models = 0
+	for _, model in CollectionService:GetTagged("Creature") do
+		if model:IsDescendantOf(workspace) then
+			models += 1
+		end
+	end
+	check("M4.1 25 creatures stand at their dens", models == 25, tostring(models))
+	local wrong = {}
+	for _, slot in World.creatureSlots do
+		local humanoid = creatureBody(slot.id)
+		local kind = Creatures.byId[slot.kind]
+		if
+			humanoid == nil
+			or humanoid.MaxHealth ~= kind.health
+			or humanoid.Health ~= kind.health
+		then
+			table.insert(wrong, tostring(slot.id))
+		end
+	end
+	check("M4.1 every creature has its catalog health", #wrong == 0, table.concat(wrong, ", "))
+	check("M4.1 6 Wardens", #CollectionService:GetTagged("Warden") == 6)
+	check("M4.1 14 course markers", #CollectionService:GetTagged("TrialMarker") == 14)
+
+	-- M4.2: wander, notice, chase, bite.
+	local den = denOf(HOUND_1)
+	-- A may still be Marked from the fights of M2 and M3: what matters is that M4 adds no time.
+	local function markedUntil(player: Player): number
+		local protection = ProtectionService.status(player, os.clock())
+		return if protection ~= nil then protection.markedUntil else -1
+	end
+	local markedBefore = markedUntil(A)
+	place(A, IN_TOWN, B_TOWN)
+	place(B, B_TOWN, IN_TOWN)
+	CreatureService.setActive({ HOUND_1 })
+	local strayed = 0
+	for _ = 1, 25 do
+		task.wait(0.2)
+		local info = CreatureService.info(HOUND_1)
+		if info ~= nil and info.position ~= nil then
+			strayed = math.max(strayed, flatDistance(info.position, den))
+		end
+	end
+	check("M4.2 an idle Brinehound stays within 14 studs of its den", strayed <= 14, fmt(strayed))
+	check("M4.2 it wanders", strayed > 0.5, fmt(strayed))
+
+	ProtectionService.endRespawnShield(A)
+	heal(A)
+	place(A, clearSpot(den, 20), den)
+	local chased = waitFor(function()
+		local info = CreatureService.info(HOUND_1)
+		return info ~= nil and info.mode == "chase" and info.targetId == A.UserId
+	end, 6)
+	local seenInfo = CreatureService.info(HOUND_1)
+	check(
+		"M4.2 it notices A 20 studs away and chases",
+		chased,
+		if seenInfo ~= nil then `{seenInfo.mode}, target {seenInfo.targetId}` else "no creature"
+	)
+	local before = health(A)
+	local bitten = waitFor(function()
+		return health(A) < before - 1
+	end, 10)
+	local lost = before - health(A)
+	check("M4.2 its Bite takes 8", bitten and lost >= 7 and lost <= 9, fmt(lost))
+	check(
+		"M4.2 being bitten Marks nobody",
+		markedUntil(A) == markedBefore,
+		`{fmt(markedBefore)} -> {fmt(markedUntil(A))}`
+	)
+
+	-- M4.3: A hits it, then runs: it walks home, cannot be hurt on the way, and heals.
+	strikeCreature(A, HOUND_1)
+	local hurt = creatureHealth(HOUND_1)
+	check("M4.3 A's Strike takes 20 from the Brinehound", hurt >= 39 and hurt <= 41, fmt(hurt))
+	check(
+		"M4.3 hitting a creature does not Mark A",
+		markedUntil(A) == markedBefore,
+		`{fmt(markedBefore)} -> {fmt(markedUntil(A))}`
+	)
+	place(A, den + Vector3.new(0, 0, 0) + (clearSpot(den, 20) - den).Unit * 75, den)
+	local returning = waitFor(function()
+		local info = CreatureService.info(HOUND_1)
+		return info ~= nil and info.mode == "return"
+	end, 4)
+	check("M4.3 past 60 studs from the den it gives up", returning)
+	local onTheWay = creatureHealth(HOUND_1)
+	strikeCreature(A, HOUND_1, true)
+	check(
+		"M4.3 it cannot be hurt while walking home",
+		creatureHealth(HOUND_1) >= onTheWay,
+		`{fmt(onTheWay)} -> {fmt(creatureHealth(HOUND_1))}`
+	)
+	place(A, IN_TOWN, B_TOWN)
+	local home = waitFor(function()
+		local info = CreatureService.info(HOUND_1)
+		return info ~= nil and info.mode == "wander" and creatureHealth(HOUND_1) == 60
+	end, 12)
+	check("M4.3 home again it is at full health", home, fmt(creatureHealth(HOUND_1)))
+	CreatureService.setActive({})
+
+	-- M4.4: rewards for everyone who helped.
+	check("M4.4 setup: a Shellback at 40 health", freshCreature(SHELLBACK_1, 40))
+	ProtectionService.endRespawnShield(B)
+	local coinA, coinB = coinOf(A), coinOf(B)
+	local callingA, callingB = PathService.get(A).calling, PathService.get(B).calling
+	local xpA, xpB = xpOf(A, callingA), xpOf(B, callingB)
+	local ma, mb = mark(A), mark(B)
+	strikeCreature(A, SHELLBACK_1)
+	check(
+		"M4.4 A's Strike leaves it at 20",
+		math.abs(creatureHealth(SHELLBACK_1) - 20) <= 1,
+		fmt(creatureHealth(SHELLBACK_1))
+	)
+	-- A steps away first: B's Strike takes the nearest fighter in its arc, and that must be
+	-- the Shellback, not A standing on the same spot.
+	place(A, OUTSIDE, OUTSIDE_2)
+	task.wait(0.3)
+	strikeCreature(B, SHELLBACK_1)
+	local paidA =
+		expectNote("M4.4 A is told the Shellback is defeated", A, ma, "CREATURE_DEFEATED", 4)
+	expectNote("M4.4 B is told too", B, mb, "CREATURE_DEFEATED", 4)
+	check(
+		"M4.4 the message names it and the Coin",
+		paidA ~= nil and paidA.args.creature == "Shellback" and paidA.args.coin == "10"
+	)
+	check(
+		"M4.4 both get the full 10 Coin",
+		coinOf(A) == coinA + 10 and coinOf(B) == coinB + 10,
+		`A {coinA} -> {coinOf(A)}, B {coinB} -> {coinOf(B)}`
+	)
+	check(
+		"M4.4 both get XP on their Calling (the Strike counts as it)",
+		xpOf(A, callingA) > xpA and xpOf(B, callingB) > xpB,
+		`A {callingA} {xpA} -> {xpOf(A, callingA)}, B {callingB} {xpB} -> {xpOf(B, callingB)}`
+	)
+	local uiCoin = inspectUntil(A, function(ui)
+		return ui.coin == "Coin: " .. tostring(coinOf(A))
+	end)
+	check(
+		"M4.4 A's Coin line shows it",
+		uiCoin.coin == "Coin: " .. tostring(coinOf(A)),
+		tostring(uiCoin.coin)
+	)
+	check(
+		"M4.4 the Shellback is gone",
+		waitFor(function()
+			return creatureBody(SHELLBACK_1) == nil
+		end, 3)
+	)
+
+	-- M4.5: drops obey the roll, the server cap and the free slots.
+	CreatureService.setRng(function()
+		return 0
+	end)
+	check("M4.5 setup: a Brinehound at 15 health", freshCreature(HOUND_2, 15))
+	ma = mark(A)
+	strikeCreature(A, HOUND_2)
+	local got = expectNote("M4.5 a winning roll gives the drop: GOT_CARD", A, ma, "GOT_CARD", 4)
+	check(
+		"M4.5 it is the Brine-Fang Charm, in A's free slots",
+		got ~= nil and got.args.name == "Brine-Fang Charm" and hasFree(A, "R019")
+	)
+	LedgerService.set(B, { claimed = {}, free = { "R019", "R019", "R019" } })
+	check("M4.5 setup: another Brinehound at 15 health", freshCreature(HOUND_3, 15))
+	ma = mark(A)
+	coinA = coinOf(A)
+	strikeCreature(A, HOUND_3)
+	expectNote("M4.5 with 4 held on the server the drop is sealed", A, ma, "REWARD_SEALED", 4)
+	check("M4.5 the Coin is still paid", coinOf(A) == coinA + 4, `{coinA} -> {coinOf(A)}`)
+	local full = {}
+	for _ = 1, Ledger.FREE_SLOTS do
+		table.insert(full, "R001")
+	end
+	LedgerService.set(A, { claimed = {}, free = full })
+	check("M4.5 setup: a Bogspitter at 15 health", freshCreature(BOGSPITTER_1, 15))
+	ma = mark(A)
+	strikeCreature(A, BOGSPITTER_1)
+	expectNote("M4.5 with full free slots the drop is lost", A, ma, "REWARD_LOST", 4)
+	LedgerService.set(A, { claimed = {}, free = {} })
+	LedgerService.set(B, { claimed = {}, free = {} })
+	CreatureService.setRng(function()
+		return 0.99
+	end)
+	check("M4.5 setup: a Brinehound at 15 health", freshCreature(HOUND_2, 15))
+	ma = mark(A)
+	strikeCreature(A, HOUND_2)
+	expectNote("M4.5 a losing roll still pays Coin", A, ma, "CREATURE_DEFEATED", 4)
+	check("M4.5 and gives no Relic", noteSince(A, ma, "GOT_CARD") == nil and not hasFree(A, "R019"))
+
+	-- M4.6: a creature's last blow is nobody's defeat.
+	check("M4.6 setup: a fresh Brinehound", freshCreature(HOUND_1, nil))
+	den = denOf(HOUND_1)
+	local arena = clearSpot(den, 8)
+	ProtectionService.endRespawnShield(A)
+	ProtectionService.endRespawnShield(B)
+	heal(A)
+	faceOff(B, A, OUTSIDE)
+	strike(B)
+	check("M4.6 setup: B hits A", health(A) < 100, fmt(health(A)))
+	ma, mb = mark(A), mark(B)
+	local xpBefore = xpOf(B, callingB)
+	place(B, IN_TOWN, B_TOWN)
+	place(A, arena, den)
+	local humanoidA = humanoidOf(A)
+	if humanoidA ~= nil then
+		humanoidA.Health = 5
+	end
+	CreatureService.setActive({ HOUND_1 })
+	check(
+		"M4.6 the Brinehound defeats A",
+		waitFor(function()
+			return health(A) <= 0
+		end, 12)
+	)
+	CreatureService.setActive({})
+	task.wait(1.5)
+	check(
+		"M4.6 B gets no claim and A is told of none",
+		noteSince(B, mb, "CLAIM_STARTED") == nil
+			and noteSince(B, mb, "CLAIM_COOLDOWN") == nil
+			and noteSince(A, ma, "DEFEATED_BY") == nil,
+		`B {codesSince(B, mb)}, A {codesSince(A, ma)}`
+	)
+	check("M4.6 nobody gets defeat XP", xpOf(B, callingB) == xpBefore)
+	waitAlive(A)
+	task.wait(0.5)
+	check(
+		"M4.6 A respawns in Tallyport",
+		flatDistance(positionOf(A), Vector3.zero) <= World.townRadius,
+		at(positionOf(A))
+	)
+	ProtectionService.endRespawnShield(A)
+
+	-- M4.7: Tidewalk, from the offer to the cooldown.
+	local offer = talkTo(A, "tidewalk")
+	check(
+		"M4.7 the Harbour Warden offers Tidewalk",
+		offer.title == "Tidewalk" and offer.canStart == true,
+		`{tostring(offer.title)}, canStart {tostring(offer.canStart)}`
+	)
+	local uiOffer = inspectUntil(A, function(ui)
+		return ui.offerVisible == true
+	end)
+	check(
+		"M4.7 the window shows it with Accept on",
+		uiOffer.offerVisible == true
+			and uiOffer.offerTitle == "Tidewalk"
+			and uiOffer.acceptActive == true,
+		`{tostring(uiOffer.offerTitle)}, {tostring(uiOffer.offerRelic)}`
+	)
+	send(A, "closeOffer")
+	for _, bad in { "nope", 5, { "tidewalk" } } :: { any } do
+		ma = mark(A)
+		send(A, "accept", bad)
+		expectNote(`M4.7 hostile accept ({typeof(bad)}): BAD_REQUEST`, A, ma, "BAD_REQUEST")
+	end
+	ma = mark(A)
+	send(A, "accept", nil)
+	expectNote("M4.7 hostile accept (nothing): BAD_REQUEST", A, ma, "BAD_REQUEST")
+	place(A, beside(World.wardens.tidewalk, Vector3.new(20, 0, 0)), Vector3.zero)
+	task.wait(0.4)
+	ma = mark(A)
+	send(A, "accept", "tidewalk")
+	expectNote("M4.7 from 20 studs: TOO_FAR", A, ma, "TOO_FAR")
+	check("M4.7 nothing started", TrialService.run(A) == nil)
+
+	coinA = coinOf(A)
+	xpA = xpOf(A, callingA)
+	ma = mark(A)
+	check("M4.7 accepting beside the Warden starts it", acceptTrial(A, "tidewalk"))
+	local uiRun = inspectUntil(A, function(ui)
+		return has((ui.trialLines or {})[1], "marker 0 / 6")
+	end)
+	check(
+		"M4.7 the HUD reads Tidewalk: marker 0 / 6",
+		(uiRun.trialLines or {})[1] == "Tidewalk: marker 0 / 6",
+		table.concat(uiRun.trialLines or {}, " | ")
+	)
+	local markers = World.courses.tidewalk
+	check(
+		"M4.7 the beacon stands at marker 1",
+		uiRun.beacon ~= nil
+			and math.abs(uiRun.beacon.x - markers[1].x) < 0.5
+			and math.abs(uiRun.beacon.z - markers[1].z) < 0.5
+	)
+	place(A, Vector3.new(markers[2].x, markers[2].y, markers[2].z), Vector3.zero)
+	task.wait(0.6)
+	check("M4.7 marker 2 first does not count", runProgress(A) == 0, tostring(runProgress(A)))
+	for index, marker in markers do
+		place(A, Vector3.new(marker.x, marker.y, marker.z), Vector3.zero)
+		waitFor(function()
+			return runProgress(A) >= index or TrialService.run(A) == nil
+		end, 2)
+	end
+	local passedNote = expectNote("M4.7 all six in order: TRIAL_PASSED", A, ma, "TRIAL_PASSED", 4)
+	check(
+		"M4.7 the message names the trial and its Coin",
+		passedNote ~= nil and passedNote.args.name == "Tidewalk" and passedNote.args.coin == "30"
+	)
+	check("M4.7 A has the Low-Tide Tally Stick", hasFree(A, "R013"))
+	check("M4.7 +30 Coin", coinOf(A) == coinA + 30, `{coinA} -> {coinOf(A)}`)
+	check("M4.7 Calling XP rose", xpOf(A, callingA) > xpA)
+	check("M4.7 the quest moved to step 1", questStepOf(A) == 1, tostring(questStepOf(A)))
+	expectNote("M4.7 A is told the quest step", A, ma, "QUEST_STEP")
+
+	ma = mark(A)
+	place(A, beside(World.wardens.tidewalk), Vector3.zero)
+	task.wait(0.4)
+	send(A, "accept", "tidewalk")
+	expectNote("M4.7 again at once: TRIAL_COOLDOWN", A, ma, "TRIAL_COOLDOWN")
+	offer = talkTo(A, "tidewalk")
+	check(
+		"M4.7 the offer says when to try again",
+		offer.canStart == false
+			and (offer.note == "Try again in 5:00." or has(offer.note, "Try again in 4:5")),
+		tostring(offer.note)
+	)
+	send(A, "closeOffer")
+	realSkip += 301
+	check("M4.7 after 5 minutes it can be taken again", acceptTrial(A, "tidewalk"))
+
+	-- M4.8: one trial at a time; out of time.
+	ma = mark(A)
+	place(A, beside(World.wardens.gullstep_climb), Vector3.zero)
+	task.wait(0.4)
+	send(A, "accept", "gullstep_climb")
+	expectNote("M4.8 a second trial: TRIAL_BUSY", A, ma, "TRIAL_BUSY")
+	ma = mark(A)
+	clockSkip += 61
+	expectNote("M4.8 past its 60 seconds: TRIAL_FAILED_TIME", A, ma, "TRIAL_FAILED_TIME")
+	check("M4.8 the run is over", TrialService.run(A) == nil)
+	ma = mark(A)
+	place(A, beside(World.wardens.tidewalk), Vector3.zero)
+	task.wait(0.4)
+	send(A, "accept", "tidewalk")
+	expectNote("M4.8 a failed trial waits 30 seconds", A, ma, "TRIAL_COOLDOWN")
+	realSkip += 31
+
+	-- M4.9: Salt Post.
+	ma = mark(A)
+	check("M4.9 the Saltworks Warden starts Salt Post", acceptTrial(A, "salt_post"))
+	local character = A.Character
+	check("M4.9 A carries a parcel", character ~= nil and character:FindFirstChild("Parcel") ~= nil)
+	place(A, beside(World.harbour), Vector3.zero)
+	expectNote("M4.9 at the Harbour Warden: TRIAL_PASSED", A, ma, "TRIAL_PASSED", 4)
+	check("M4.9 the parcel is gone", character ~= nil and character:FindFirstChild("Parcel") == nil)
+	check("M4.9 the quest moved to step 2", questStepOf(A) == 2, tostring(questStepOf(A)))
+	mb = mark(B)
+	check("M4.9 B starts Salt Post without Tidewalk", acceptTrial(B, "salt_post"))
+	place(B, beside(World.harbour), Vector3.zero)
+	expectNote("M4.9 B passes it", B, mb, "TRIAL_PASSED", 4)
+	check(
+		"M4.9 out of order it does not count for the quest",
+		questStepOf(B) == 0,
+		tostring(questStepOf(B))
+	)
+	realSkip += 301
+	ma = mark(A)
+	check("M4.9 A starts Salt Post again", acceptTrial(A, "salt_post"))
+	humanoidA = humanoidOf(A)
+	if humanoidA ~= nil then
+		humanoidA.Health = 0
+	end
+	expectNote("M4.9 defeated on the way: TRIAL_FAILED_DEFEAT", A, ma, "TRIAL_FAILED_DEFEAT", 4)
+	waitAlive(A)
+	ProtectionService.endRespawnShield(A)
+
+	-- M4.10: Cull the Pack.
+	ma = mark(A)
+	check("M4.10 the Pack Warden starts Cull the Pack", acceptTrial(A, "cull_the_pack"))
+	check("M4.10 setup: a Shellback at 15 health", freshCreature(SHELLBACK_1, 15))
+	strikeCreature(A, SHELLBACK_1)
+	task.wait(0.5)
+	check("M4.10 a Shellback does not count", runProgress(A) == 0, tostring(runProgress(A)))
+	for count, id in { HOUND_1, HOUND_2, HOUND_3, HOUND_1, HOUND_2 } do
+		freshCreature(id, 15)
+		strikeCreature(A, id)
+		waitFor(function()
+			return runProgress(A) >= count or TrialService.run(A) == nil
+		end, 3)
+	end
+	local last = noteWith(A, ma, "HUNT_PROGRESS", "n", "5")
+	check("M4.10 five Brinehounds: HUNT_PROGRESS up to 5 of 5", last ~= nil, codesSince(A, ma))
+	expectNote("M4.10 TRIAL_PASSED", A, ma, "TRIAL_PASSED", 4)
+	check("M4.10 A has the Brinehound Collar", hasFree(A, "R016"))
+
+	-- M4.11: the duel.
+	ma = mark(A)
+	check("M4.11 the Duel Warden starts the duel", acceptTrial(A, "tallymans_duel"))
+	local champion = championOf(A)
+	check("M4.11 a Drowned Tallyman owned by A appears", champion ~= nil)
+	if champion ~= nil then
+		local championId = champion:GetAttribute("CreatureId")
+		local seenByA = inspectUntil(A, function(ui)
+			return (ui.champions or {})[tostring(A.UserId)] == true
+		end)
+		local seenByB = inspect(B)
+		check("M4.11 A's screen draws it", (seenByA.champions or {})[tostring(A.UserId)] == true)
+		check("M4.11 B's screen does not", (seenByB.champions or {})[tostring(A.UserId)] == false)
+		local championHealth = creatureHealth(championId)
+		heal(B)
+		strikeCreature(B, championId, true)
+		check(
+			"M4.11 B cannot hurt it",
+			creatureHealth(championId) == championHealth,
+			`{fmt(championHealth)} -> {fmt(creatureHealth(championId))}`
+		)
+		check("M4.11 it never hurts B", health(B) >= 99, fmt(health(B)))
+		place(B, IN_TOWN, B_TOWN)
+		local championHumanoid = creatureBody(championId)
+		if championHumanoid ~= nil then
+			championHumanoid.Health = 15
+		end
+		heal(A)
+		strikeCreature(A, championId)
+		expectNote("M4.11 A defeats it: TRIAL_PASSED", A, ma, "TRIAL_PASSED", 4)
+		check("M4.11 the quest moved to step 3", questStepOf(A) == 3, tostring(questStepOf(A)))
+		check(
+			"M4.11 the champion is gone",
+			waitFor(function()
+				return championOf(A) == nil
+			end, 4)
+		)
+	end
+	realSkip += 301
+	ma = mark(A)
+	heal(A)
+	if acceptTrial(A, "tallymans_duel") then
+		clockSkip += 91
+		expectNote("M4.11 a duel out of time fails", A, ma, "TRIAL_FAILED_TIME")
+		check(
+			"M4.11 and its champion is removed",
+			waitFor(function()
+				return championOf(A) == nil
+			end, 3)
+		)
+	else
+		check("M4.11 a second duel starts after the cooldown", false, codesSince(A, ma))
+	end
+
+	-- M4.12: the Brine Colossus ends the quest.
+	CreatureService.setRng(function()
+		return 0.5
+	end)
+	check("M4.12 setup: the Brine Colossus at 15 health", freshCreature(COLOSSUS, 15))
+	coinA = coinOf(A)
+	ma, mb = mark(A), mark(B)
+	heal(A)
+	strikeCreature(A, COLOSSUS)
+	expectNote("M4.12 A is told the quest is complete", A, ma, "QUEST_COMPLETE", 4)
+	check("M4.12 A has the Writ of the Unpaid Debt", hasFree(A, "R027"))
+	check("M4.12 and the Colossus Heartstone (a certain drop)", hasFree(A, "R022"))
+	check("M4.12 but not the 20% drop on a roll of 0.5", not hasFree(A, "R023"))
+	check("M4.12 +60 and +150 Coin", coinOf(A) == coinA + 210, `{coinA} -> {coinOf(A)}`)
+	check("M4.12 the quest starts again at step 0", questStepOf(A) == 0, tostring(questStepOf(A)))
+	check("M4.12 B, who did not hit it, gets nothing", noteSince(B, mb, "CREATURE_DEFEATED") == nil)
+
+	-- M4.13: a cache up a climb cannot be opened from the ground.
+	local cache = World.cacheById.C019
+	local ledges = World.climbs.C019
+	ma = mark(A)
+	place(A, Vector3.new(ledges[1].x - 8, 3, ledges[1].z), Vector3.zero)
+	task.wait(0.4)
+	send(A, "prompt", "C019")
+	-- 20 studs up, the prompt is out of reach, so the game either refuses or hears nothing.
+	task.wait(2)
+	check(
+		"M4.13 C019 cannot be opened from the ground",
+		noteSince(A, ma, "GOT_CARD") == nil and not hasFree(A, "R017"),
+		codesSince(A, ma)
+	)
+	ma = mark(A)
+	place(
+		A,
+		Vector3.new(cache.position.x + 2.5, cache.position.y + 2, cache.position.z),
+		Vector3.zero
+	)
+	task.wait(0.6)
+	send(A, "prompt", "C019")
+	expectNote("M4.13 from its top ledge: GOT_CARD", A, ma, "GOT_CARD", 4)
+	check("M4.13 A has the Rook's-Nest Purse", hasFree(A, "R017"))
+
+	-- Leave the world quiet for the checks that follow.
+	CreatureService.setActive({})
+	TrialService.setClocks(os.clock, os.time)
+	place(A, IN_TOWN, B_TOWN)
+	place(B, B_TOWN, IN_TOWN)
+	waitAlive(A)
+	waitAlive(B)
+end
+
 local function run()
 	log("waiting for 2 players")
 	if not waitFor(function()
@@ -482,6 +1134,8 @@ local function run()
 		end, 60)
 	)
 	check("both characters spawn", waitAlive(A) and waitAlive(B))
+	-- No creature disturbs M1 to M3: they all stand still until M4 wakes one.
+	CreatureService.setActive({})
 	check(
 		"both agents ready",
 		waitFor(function()
@@ -494,7 +1148,7 @@ local function run()
 	local island = workspace:FindFirstChild("Island")
 	check("M1.1 island is built", island ~= nil)
 	local cacheCount = #CollectionService:GetTagged("Cache")
-	check("M1.1 18 caches tagged", cacheCount == 18, tostring(cacheCount))
+	check("M1.1 24 caches tagged", cacheCount == 24, tostring(cacheCount))
 	local town = island and island:FindFirstChild("Tallyport")
 	local spawnPad = town and town:FindFirstChild("Spawn")
 	check("M2 spawn gives no default force field", spawnPad ~= nil and spawnPad.Duration == 0)
@@ -837,8 +1491,8 @@ local function run()
 	task.wait(0.5)
 	uiA = inspect(A)
 	check(
-		"M1.6 book shows Relics: 1 / 12",
-		uiA.progress == "Relics: 1 / 12",
+		"M1.6 book shows Relics: 1 / 30",
+		uiA.progress == "Relics: 1 / 30",
 		tostring(uiA.progress)
 	)
 	send(A, "toggleLedger", false)
@@ -886,12 +1540,13 @@ local function run()
 
 	-- M1.11: completing the Ledger tells everyone.
 	local claimed = {}
-	for i = 1, 11 do
-		claimed[string.format("R%03d", i)] = true
+	local lastRelic = Relics.list[Relics.count].id
+	for i = 1, Relics.count - 1 do
+		claimed[Relics.list[i].id] = true
 	end
-	LedgerService.set(A, { claimed = claimed, free = { "R012" } })
+	LedgerService.set(A, { claimed = claimed, free = { lastRelic } })
 	ma, mb = mark(A), mark(B)
-	send(A, "ledger", { kind = "claim", freeIndex = 1, cardId = "R012" })
+	send(A, "ledger", { kind = "claim", freeIndex = 1, cardId = lastRelic })
 	expectNote("M1.11 last claim: LEDGER_COMPLETE to A", A, ma, "LEDGER_COMPLETE")
 	local complete = expectNote("M1.11 LEDGER_COMPLETE reaches B too", B, mb, "LEDGER_COMPLETE")
 	check(
@@ -1495,7 +2150,7 @@ local function run()
 		heal(B)
 		local mBolt = mark(A)
 		local boltCast = cast(A, 4)
-		local burn = StatusService.get(B)
+		local burn = StatusService.get(B.UserId)
 		local burnLeft = fmt(burn.burnUntil - os.clock())
 		local boltCodes = codesSince(A, mBolt)
 		check(
@@ -1566,7 +2221,7 @@ local function run()
 		local bBeforeWard = health(B)
 		local bladeIntoWard = cast(A, 3)
 		task.wait(0.3)
-		local shieldLeft = StatusService.get(B).shield
+		local shieldLeft = StatusService.get(B.UserId).shield
 		local wardCodes = codesSince(B, mWard)
 		check(
 			"M3.8 Ward absorbs an 18-damage Gust Blade: B's health unchanged, shield 30 -> 12",
@@ -1592,7 +2247,7 @@ local function run()
 		)
 		local mChallenge = mark(B)
 		local challengeCast = cast(B, 4)
-		local taunt = StatusService.get(A)
+		local taunt = StatusService.get(A.UserId)
 		local tauntLeft = fmt(taunt.tauntUntil - os.clock())
 		local challengeCodes = codesSince(B, mChallenge)
 		check(
@@ -1602,7 +2257,7 @@ local function run()
 		)
 		-- B's Ward shield from the step above may still be up; clear it so the Strike's full
 		-- 20 reaches B's health.
-		StatusService.update(B, function(s, _now)
+		StatusService.update(B.UserId, function(s, _now)
 			local out = table.clone(s)
 			out.shield = 0
 			out.shieldUntil = 0
@@ -1870,6 +2525,12 @@ local function run()
 			`{PathService.get(A).calling}, {dataA.coin} Coin`
 		)
 	end
+
+	--------------------------------------------------------------------------- M4 creatures and trials
+	-- In its own protected call: a failure here is reported and M2.15 still runs.
+	local m4Ok, m4Err = xpcall(runM4, debug.traceback, A, B)
+	check("M4 section ran to its end", m4Ok, tostring(m4Err))
+	CreatureService.setActive({})
 
 	--------------------------------------------------------------------------- M2.15 combat log (ends B)
 	waitAlive(A)
