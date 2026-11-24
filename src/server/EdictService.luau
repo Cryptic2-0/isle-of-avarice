@@ -84,6 +84,11 @@ local function sync(player: Player)
 	syncRemote:FireClient(player, EdictRules.veilSeconds(veilUntil[player], os.clock()), list)
 end
 
+-- Sends the player their EdictSync again (the client asked for its state).
+function EdictService.resync(player: Player)
+	sync(player)
+end
+
 -- Marks the two as having met. True when it was new for either side.
 local function markMet(a: Player, b: Player): boolean
 	local fresh = false
@@ -429,6 +434,7 @@ function EdictService.start()
 	DataService.onLoaded(function(player)
 		sync(player)
 	end)
+	LedgerService.onRequest(EdictService.resync)
 	Players.PlayerRemoving:Connect(onRemoving)
 	RunService.Heartbeat:Connect(onHeartbeat)
 end

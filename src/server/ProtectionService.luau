@@ -264,6 +264,7 @@ function ProtectionService.start()
 		updateForceField(player)
 		sendStatus(player)
 	end)
+	LedgerService.onRequest(sendStatus)
 
 	Players.PlayerAdded:Connect(watchPlayer)
 	for _, player in Players:GetPlayers() do

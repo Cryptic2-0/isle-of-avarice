@@ -56,6 +56,14 @@ local function sync(player: Player, data: Types.PlayerData)
 	pathSync:FireClient(player, data.paths, data.coin, os.time())
 end
 
+-- Sends the player their PathSync again (the client asked for its state). Nothing until loaded.
+function PathService.resync(player: Player)
+	local data = DataService.get(player)
+	if data ~= nil then
+		sync(player, data)
+	end
+end
+
 -- The player's saved Path progress, or nil until loaded and after they left.
 function PathService.get(player: Player): PathProgress?
 	local data = DataService.get(player)
@@ -200,6 +208,7 @@ function PathService.start()
 	DataService.onLoaded(function(player, data)
 		sync(player, data)
 	end)
+	LedgerService.onRequest(PathService.resync)
 
 	ClaimService.onClaimStarted(function(killer)
 		local progress = PathService.get(killer)

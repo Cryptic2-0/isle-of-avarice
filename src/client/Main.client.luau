@@ -422,5 +422,6 @@ task.spawn(function()
 	end
 end)
 
--- The first sync may have fired before this script connected; ask again.
+-- The first syncs may have fired before this script connected; ask again. The server answers
+-- with every per-player sync (Ledger, Paths, Coin, trials, Edicts, status).
 ledgerRequest:FireServer()

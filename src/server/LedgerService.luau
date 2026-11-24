@@ -28,6 +28,7 @@ local buckets: { [Player]: RateLimiter.Bucket } = {}
 local lastSlowDown: { [Player]: number } = {}
 local locked: { [Player]: boolean } = {}
 local changedCallbacks: { (player: Player, ledger: Ledger) -> () } = {}
+local requestCallbacks: { (player: Player) -> () } = {}
 local remotesFolder: Folder?
 
 -- The player's Ledger, or nil until their data has loaded and after they left.
@@ -72,6 +73,12 @@ end
 
 function LedgerService.onChanged(callback: (player: Player, ledger: Ledger) -> ())
 	table.insert(changedCallbacks, callback)
+end
+
+-- Registers a service's own sync, re-sent (each in pcall) when the client asks for its state
+-- again. The first syncs at load may fire before the client script has connected its handlers.
+function LedgerService.onRequest(callback: (player: Player) -> ())
+	table.insert(requestCallbacks, callback)
 end
 
 -- Creates a RemoteEvent in the Remotes folder. Works for services started after LedgerService.start().
@@ -145,6 +152,12 @@ local function handleRequest(player: Player)
 	local ledger = LedgerService.get(player)
 	if ledger ~= nil then
 		ledgerSync:FireClient(player, ledger, LedgerService.getVault(player) or {})
+	end
+	for _, callback in requestCallbacks do
+		local ok, err = pcall(callback, player)
+		if not ok then
+			warn(`[IsleOfAvarice] onRequest callback failed: {err}`)
+		end
 	end
 end
 

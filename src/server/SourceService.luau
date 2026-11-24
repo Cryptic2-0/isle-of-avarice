@@ -254,6 +254,14 @@ local function connect(instance: Instance)
 	end)
 end
 
+-- Sends the player their CoinSync again (the client asked for its state). Nothing until loaded.
+function SourceService.resync(player: Player)
+	local data = DataService.get(player)
+	if data ~= nil and player.Parent == Players then
+		coinSync:FireClient(player, data.coin)
+	end
+end
+
 function SourceService.start()
 	coinSync = LedgerService.makeRemote(Net.CoinSync)
 	DataService.onLoaded(function(player, data)
@@ -261,6 +269,7 @@ function SourceService.start()
 			coinSync:FireClient(player, data.coin)
 		end
 	end)
+	LedgerService.onRequest(SourceService.resync)
 
 	for _, instance in CollectionService:GetTagged("Cache") do
 		connect(instance)
