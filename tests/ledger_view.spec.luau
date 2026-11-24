@@ -17,6 +17,8 @@ T.test("view of a partly filled Ledger", function()
 		tier = "Copper",
 		claimed = false,
 		spares = 2,
+		vaulted = false,
+		canVault = true,
 	})
 	T.eq(view.slots[2].claimed, true)
 	T.eq(view.slots[2].spares, 1)
@@ -28,6 +30,17 @@ T.test("view of a partly filled Ledger", function()
 		canClaim = true,
 	})
 	T.eq(view.free[2].canClaim, false)
+	T.eq(view.vaultText, "0 / 3")
+	T.eq(view.slots[3].canVault, false)
+end)
+
+T.test("view shows vaulted cards", function()
+	local view = LedgerView.build({ claimed = { R002 = true }, free = { "R001" } }, { R002 = true })
+	T.eq(view.slots[2].vaulted, true)
+	T.eq(view.slots[2].canVault, false)
+	T.eq(view.slots[1].vaulted, false)
+	T.eq(view.slots[1].canVault, true)
+	T.eq(view.vaultText, "1 / 3")
 end)
 
 T.test("view of a completed Ledger", function()

@@ -74,7 +74,25 @@ local function buildTallyport(island: Folder)
 	spawnPad.Neutral = true
 	spawnPad.Size = Vector3.new(6, 1, 6)
 	spawnPad.CFrame = CFrame.new(World.spawn.x, World.spawn.y, World.spawn.z)
+	-- No default spawn force field: ProtectionService gives the respawn shield instead.
+	spawnPad.Duration = 0
 	spawnPad.Parent = town
+
+	-- Safe-zone marker: a flat disc over the plaza. A Roblox cylinder's axis is X,
+	-- so it is turned a quarter about Z to lie flat. Plaza top is groundY + 0.2.
+	local disc = Instance.new("Part")
+	disc.Name = "SafeZone"
+	disc.Shape = Enum.PartType.Cylinder
+	disc.Anchored = true
+	disc.CanCollide = false
+	disc.CanTouch = false
+	disc.CanQuery = false
+	disc.Size = Vector3.new(0.05, World.townRadius * 2, World.townRadius * 2)
+	disc.CFrame = CFrame.new(0, World.groundY + 0.2 + 0.1, 0) * CFrame.Angles(0, 0, math.rad(90))
+	disc.Color = Color3.fromRGB(255, 225, 140)
+	disc.Material = Enum.Material.Neon
+	disc.Transparency = 0.8
+	disc.Parent = town
 
 	-- Four buildings of different sizes at the plaza corners (width, height, depth).
 	local buildings = {

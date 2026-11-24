@@ -31,6 +31,32 @@ local templates: { [string]: string } = {
 	SLOW_DOWN = "Slow down.",
 	DATA_NOT_LOADED = "Your Ledger is still loading.",
 	LEDGER_COMPLETE = "{player} has completed the Ledger!",
+	SEALED = "The island has sealed this Relic. Too many are already held here.",
+	LEDGER_LOCKED = "Your Ledger is locked while a claim is made against you.",
+	VAULTED = "{name} is now in your Vault.",
+	UNVAULTED = "{name} left your Vault.",
+	VAULT_FULL = "Your Vault is full.",
+	NOT_HELD = "You do not hold that Relic.",
+	CROWN_NO_VAULT = "Crown Relics cannot be Vaulted.",
+	ALREADY_VAULTED = "That Relic is already in your Vault.",
+	NOT_VAULTED = "That Relic is not in your Vault.",
+	NOT_IN_SAFE_ZONE = "You can change your Vault only in Tallyport.",
+	SHIELD_SELF = "You are shielded. Drop your shield to fight.",
+	TARGET_SHIELDED = "That player is shielded.",
+	SAFE_ZONE = "No fighting in Tallyport.",
+	SHIELD_ENDED = "Your new-player shield has ended. Other players can now attack you.",
+	MARKED = "You started a fight. You are Marked for 5 minutes.",
+	DEFEATED_BY = "{player} defeated you and is making a claim on your Ledger.",
+	CLAIM_STARTED = "You defeated {player}. Make your claim.",
+	CLAIM_COOLDOWN = "You defeated {player}, but you already claimed from them in the last hour.",
+	CLAIM_TAKEN = "You took {name}!",
+	CLAIM_MISS = "Nothing there.",
+	CLAIM_LOST = "{player} took from you: {names}.",
+	CLAIM_SAFE = "{player} took nothing from you.",
+	CLAIM_OVER = "The claim is over.",
+	ALREADY_PICKED = "You already picked that slot.",
+	TIER_LIMIT = "You cannot take any more Relics of that rarity.",
+	BAD_SLOT = "That did not work.",
 }
 
 local function format(code: string, args: { [string]: string }?): string
@@ -253,7 +279,7 @@ return {
 -- Names of the remotes the server creates under ReplicatedStorage.
 return {
 	FOLDER = "Remotes",
-	-- server -> one client: (ledger: Ledger)
+	-- server -> one client: (ledger: Ledger, vault: Vault)
 	LedgerSync = "LedgerSync",
 	-- client -> server: (request: table)
 	LedgerAction = "LedgerAction",
@@ -261,6 +287,20 @@ return {
 	LedgerRequest = "LedgerRequest",
 	-- server -> client(s): (code: string, args: { [string]: string }?)
 	Notify = "Notify",
+	-- client -> server: (request: table)
+	VaultAction = "VaultAction",
+	-- server -> one client: (status: { newShield: boolean, respawnShieldSeconds: number, markedSeconds: number })
+	StatusSync = "StatusSync",
+	-- client -> server: ()
+	ShieldDrop = "ShieldDrop",
+	-- client -> server: ()
+	Strike = "Strike",
+	-- server -> all clients: (victimUserId: number)
+	HitFx = "HitFx",
+	-- server -> one client: (payload: { victimName: string, claim: Claim, secondsLeft: number }?), nil closes the screen
+	ClaimUpdate = "ClaimUpdate",
+	-- client -> server: (slot: number)
+	ClaimPick = "ClaimPick",
 }
 ]]></string>
         </Properties>
@@ -270,6 +310,274 @@ return {
           <string name="Name">Rules</string>
         </Properties>
         <Item class="ModuleScript" referent="9">
+          <Properties>
+            <string name="Name">BlindClaim</string>
+            <string name="Source"><![CDATA[--!strict
+local Ledger = require("./Ledger")
+local Relics = require("../Catalog/Relics")
+local Types = require("../Types")
+
+type CardId = Types.CardId
+type Ledger = Types.Ledger
+type Vault = Types.Vault
+
+export type Claim = {
+	picksLeft: number,
+	expiresAt: number,
+	taken: { [string]: number },
+	picked: { [string]: string },
+	takenIds: { CardId },
+}
+
+local BlindClaim = {}
+
+BlindClaim.PICKS = 5
+BlindClaim.DURATION = 30
+BlindClaim.TIER_LIMIT = { Crown = 1, Platinum = 1, Gold = 2, Silver = 3, Copper = 3 }
+
+function BlindClaim.start(now: number): Claim
+	return {
+		picksLeft = BlindClaim.PICKS,
+		expiresAt = now + BlindClaim.DURATION,
+		taken = {},
+		picked = {},
+		takenIds = {},
+	}
+end
+
+function BlindClaim.isOpen(claim: Claim, now: number): boolean
+	return claim.picksLeft > 0 and now < claim.expiresAt
+end
+
+-- Spends one pick on a slot. Refusals return the inputs untouched and spend nothing.
+-- rawSlot comes straight from a client: any type, never raises.
+function BlindClaim.pick(
+	claim: Claim,
+	victim: Ledger,
+	victimVault: Vault,
+	killer: Ledger,
+	rawSlot: any,
+	now: number
+): (Claim, Ledger, Ledger, string, CardId?)
+	if not BlindClaim.isOpen(claim, now) then
+		return claim, victim, killer, "CLAIM_OVER"
+	end
+	if
+		type(rawSlot) ~= "number"
+		or rawSlot ~= rawSlot
+		or rawSlot < 1
+		or rawSlot > Relics.count
+		or rawSlot ~= math.floor(rawSlot)
+	then
+		return claim, victim, killer, "BAD_SLOT"
+	end
+	local slot: number = rawSlot
+	local key = tostring(slot)
+	if claim.picked[key] ~= nil then
+		return claim, victim, killer, "ALREADY_PICKED"
+	end
+	local relic = Relics.list[slot]
+	local limit = BlindClaim.TIER_LIMIT[relic.tier] or 0
+	if (claim.taken[relic.tier] or 0) >= limit then
+		return claim, victim, killer, "TIER_LIMIT"
+	end
+
+	local result: Claim = {
+		picksLeft = claim.picksLeft - 1,
+		expiresAt = claim.expiresAt,
+		taken = table.clone(claim.taken),
+		picked = table.clone(claim.picked),
+		takenIds = table.clone(claim.takenIds),
+	}
+
+	local newKiller = nil
+	if Ledger.count(victim, relic.id) > 0 and victimVault[relic.id] ~= true then
+		newKiller = Ledger.add(killer, relic.id)
+	end
+	if newKiller == nil then
+		result.picked[key] = "MISS"
+		return result, victim, killer, "MISS"
+	end
+
+	local newVictim: Ledger =
+		{ claimed = table.clone(victim.claimed), free = table.clone(victim.free) }
+	local index = table.find(newVictim.free, relic.id)
+	if index ~= nil then
+		table.remove(newVictim.free, index)
+	else
+		newVictim.claimed[relic.id] = nil
+	end
+	result.picked[key] = "TAKEN"
+	result.taken[relic.tier] = (result.taken[relic.tier] or 0) + 1
+	table.insert(result.takenIds, relic.id)
+	return result, newVictim, newKiller, "TAKEN", relic.id
+end
+
+return BlindClaim
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="10">
+          <Properties>
+            <string name="Name">ClaimView</string>
+            <string name="Source"><![CDATA[--!strict
+local BlindClaim = require("./BlindClaim")
+local Relics = require("../Catalog/Relics")
+local Types = require("../Types")
+
+type Tier = Types.Tier
+
+export type SlotView = {
+	slot: number,
+	label: string,
+	name: string,
+	tier: Tier,
+	state: "open" | "taken" | "miss" | "locked",
+}
+export type View = {
+	title: string,
+	picksText: string,
+	secondsLeft: number,
+	open: boolean,
+	slots: { SlotView },
+}
+
+local ClaimView = {}
+
+-- Turns a claim into display data. Pure: slot contents stay hidden, only outcomes show.
+function ClaimView.build(victimName: string, claim: BlindClaim.Claim, now: number): View
+	local open = BlindClaim.isOpen(claim, now)
+	local slots: { SlotView } = {}
+	for _, relic in Relics.list do
+		local outcome = claim.picked[tostring(relic.slot)]
+		local state: "open" | "taken" | "miss" | "locked"
+		if outcome == "TAKEN" then
+			state = "taken"
+		elseif outcome == "MISS" then
+			state = "miss"
+		elseif
+			not open
+			or (claim.taken[relic.tier] or 0) >= (BlindClaim.TIER_LIMIT[relic.tier] or 0)
+		then
+			state = "locked"
+		else
+			state = "open"
+		end
+		table.insert(slots, {
+			slot = relic.slot,
+			label = string.format("%03d", relic.slot),
+			name = relic.name,
+			tier = relic.tier,
+			state = state,
+		})
+	end
+	return {
+		title = `Claim on {victimName}`,
+		picksText = `Picks left: {claim.picksLeft}`,
+		secondsLeft = math.max(0, math.ceil(claim.expiresAt - now)),
+		open = open,
+		slots = slots,
+	}
+end
+
+return ClaimView
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="11">
+          <Properties>
+            <string name="Name">Combat</string>
+            <string name="Source"><![CDATA[--!strict
+local Types = require("../Types")
+
+type Vec3 = Types.Vec3
+
+export type Fighter = { id: number, position: Vec3, look: Vec3 }
+-- key: tostring(victim id)
+export type HitLog = { [string]: { attackerId: number, at: number } }
+
+local Combat = {}
+
+Combat.MAX_HEALTH = 100
+Combat.STRIKE_DAMAGE = 20
+Combat.STRIKE_COOLDOWN = 0.8
+Combat.STRIKE_RANGE = 8
+Combat.STRIKE_MIN_DOT = 0.5 -- target must be within 60 degrees of straight ahead
+Combat.STRIKE_MAX_HEIGHT = 6 -- maximum vertical gap
+Combat.KILL_CREDIT_SECONDS = 15
+Combat.COMBAT_LOG_SECONDS = 30
+
+function Combat.canStrike(lastStrikeAt: number?, now: number): boolean
+	return lastStrikeAt == nil or now - lastStrikeAt >= Combat.STRIKE_COOLDOWN
+end
+
+-- Distance and direction ignore the y axis. Returns the id of the nearest fighter in reach and arc.
+function Combat.pickTarget(attacker: Fighter, others: { Fighter }): number?
+	local lookLength =
+		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
+	if not (lookLength > 0 and lookLength < math.huge) then
+		return nil
+	end
+	local lookX = attacker.look.x / lookLength
+	local lookZ = attacker.look.z / lookLength
+
+	local bestId: number? = nil
+	local bestDistance = math.huge
+	for _, other in others do
+		if other.id == attacker.id then
+			continue
+		end
+		if not (math.abs(other.position.y - attacker.position.y) <= Combat.STRIKE_MAX_HEIGHT) then
+			continue
+		end
+		local dx = other.position.x - attacker.position.x
+		local dz = other.position.z - attacker.position.z
+		local distance = math.sqrt(dx * dx + dz * dz)
+		if not (distance <= Combat.STRIKE_RANGE) then
+			continue
+		end
+		-- Standing on the attacker counts as in the arc.
+		if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
+			continue
+		end
+		if distance < bestDistance then
+			bestDistance = distance
+			bestId = other.id
+		end
+	end
+	return bestId
+end
+
+function Combat.recordHit(log: HitLog, victimId: number, attackerId: number, now: number): HitLog
+	local newLog = table.clone(log)
+	newLog[tostring(victimId)] = { attackerId = attackerId, at = now }
+	return newLog
+end
+
+function Combat.creditFor(
+	log: HitLog,
+	victimId: number,
+	now: number,
+	windowSeconds: number
+): number?
+	local entry = log[tostring(victimId)]
+	if entry ~= nil and now - entry.at <= windowSeconds then
+		return entry.attackerId
+	end
+	return nil
+end
+
+function Combat.clear(log: HitLog, victimId: number): HitLog
+	local newLog = table.clone(log)
+	newLog[tostring(victimId)] = nil
+	return newLog
+end
+
+return Combat
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="12">
           <Properties>
             <string name="Name">Ledger</string>
             <string name="Source"><![CDATA[--!strict
@@ -405,7 +713,7 @@ return Ledger
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="10">
+        <Item class="ModuleScript" referent="13">
           <Properties>
             <string name="Name">LedgerActions</string>
             <string name="Source"><![CDATA[--!strict
@@ -476,17 +784,19 @@ return LedgerActions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="11">
+        <Item class="ModuleScript" referent="14">
           <Properties>
             <string name="Name">LedgerView</string>
             <string name="Source"><![CDATA[--!strict
 local Ledger = require("./Ledger")
 local Relics = require("../Catalog/Relics")
+local Vault = require("./Vault")
 local Types = require("../Types")
 
 type CardId = Types.CardId
 type Tier = Types.Tier
 type Ledger = Types.Ledger
+type Vault = Types.Vault
 
 export type SlotView = {
 	slot: number,
@@ -496,12 +806,15 @@ export type SlotView = {
 	tier: Tier,
 	claimed: boolean,
 	spares: number,
+	vaulted: boolean,
+	canVault: boolean,
 }
 export type FreeView =
 	{ index: number, cardId: CardId, name: string, tier: Tier, canClaim: boolean }
 export type View = {
 	progressText: string,
 	freeText: string,
+	vaultText: string,
 	complete: boolean,
 	slots: { SlotView },
 	free: { FreeView },
@@ -510,7 +823,8 @@ export type View = {
 local LedgerView = {}
 
 -- Turns a Ledger into display data. Pure: the client renders this and nothing else.
-function LedgerView.build(ledger: Ledger): View
+function LedgerView.build(ledger: Ledger, vault: Vault?): View
+	local vaulted: Vault = vault or {}
 	local spares: { [CardId]: number } = {}
 	for _, cardId in ledger.free do
 		spares[cardId] = (spares[cardId] or 0) + 1
@@ -526,6 +840,10 @@ function LedgerView.build(ledger: Ledger): View
 			tier = relic.tier,
 			claimed = ledger.claimed[relic.id] == true,
 			spares = spares[relic.id] or 0,
+			vaulted = vaulted[relic.id] == true,
+			canVault = Ledger.count(ledger, relic.id) > 0
+				and relic.tier ~= "Crown"
+				and vaulted[relic.id] ~= true,
 		})
 	end
 
@@ -546,6 +864,7 @@ function LedgerView.build(ledger: Ledger): View
 	return {
 		progressText = `{Ledger.claimedCount(ledger)} / {Relics.count}`,
 		freeText = `{#ledger.free} / {Ledger.FREE_SLOTS}`,
+		vaultText = `{Vault.size(vaulted)} / {Vault.MAX}`,
 		complete = Ledger.isComplete(ledger),
 		slots = slots,
 		free = free,
@@ -556,7 +875,128 @@ return LedgerView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="12">
+        <Item class="ModuleScript" referent="15">
+          <Properties>
+            <string name="Name">Protection</string>
+            <string name="Source"><![CDATA[--!strict
+local World = require("../Catalog/World")
+local Combat = require("./Combat")
+local Types = require("../Types")
+
+type Vec3 = Types.Vec3
+type Ledger = Types.Ledger
+
+export type Status = {
+	inSafeZone: boolean,
+	newShield: boolean,
+	respawnShieldUntil: number,
+	markedUntil: number,
+}
+-- key: killerId .. ":" .. victimId -> time of last claim
+export type ClaimHistory = { [string]: number }
+
+local Protection = {}
+
+Protection.SHIELD_RELICS = 3
+Protection.RESPAWN_SHIELD_SECONDS = 60
+Protection.MARKED_SECONDS = 300
+Protection.RETALIATE_SECONDS = 30
+Protection.CLAIM_COOLDOWN_SECONDS = 3600
+
+local function claimKey(killerId: number, victimId: number): string
+	return tostring(killerId) .. ":" .. tostring(victimId)
+end
+
+function Protection.inSafeZone(position: Vec3): boolean
+	local distance = math.sqrt(position.x * position.x + position.z * position.z)
+	-- Written as a negation so a NaN position counts as inside (protected), not outside.
+	return not (distance > World.townRadius)
+end
+
+-- Claimed Relics plus spare ones.
+function Protection.shouldEndShield(ledger: Ledger): boolean
+	local count = #ledger.free
+	for _ in ledger.claimed do
+		count += 1
+	end
+	return count >= Protection.SHIELD_RELICS
+end
+
+function Protection.isMarked(status: Status, now: number): boolean
+	-- NaN compares false, so a NaN time reads as NOT Marked, which keeps safe-zone protection.
+	return now < status.markedUntil
+end
+
+function Protection.isShielded(status: Status, now: number): boolean
+	-- Written as a negation so a NaN time counts as still shielded (fails closed).
+	return status.newShield or not (now >= status.respawnShieldUntil)
+end
+
+function Protection.canDamage(attacker: Status, victim: Status, now: number): (boolean, string?)
+	if attacker.newShield then
+		return false, "SHIELD_SELF"
+	end
+	if Protection.isShielded(victim, now) then
+		return false, "TARGET_SHIELDED"
+	end
+	local victimMarked = Protection.isMarked(victim, now)
+	if victim.inSafeZone and not victimMarked then
+		return false, "SAFE_ZONE"
+	end
+	if attacker.inSafeZone and not victimMarked then
+		return false, "SAFE_ZONE"
+	end
+	return true, nil
+end
+
+-- True when this hit starts a fight: the victim is not Marked and did not hit the attacker recently.
+function Protection.isAggressor(
+	log: Combat.HitLog,
+	attackerId: number,
+	victimId: number,
+	victimMarked: boolean,
+	now: number
+): boolean
+	if victimMarked then
+		return false
+	end
+	local entry = log[tostring(attackerId)]
+	if
+		entry ~= nil
+		and entry.attackerId == victimId
+		and now - entry.at <= Protection.RETALIATE_SECONDS
+	then
+		return false
+	end
+	return true
+end
+
+function Protection.canClaim(
+	history: ClaimHistory,
+	killerId: number,
+	victimId: number,
+	now: number
+): boolean
+	local last = history[claimKey(killerId, victimId)]
+	return last == nil or now - last >= Protection.CLAIM_COOLDOWN_SECONDS
+end
+
+function Protection.recordClaim(
+	history: ClaimHistory,
+	killerId: number,
+	victimId: number,
+	now: number
+): ClaimHistory
+	local newHistory = table.clone(history)
+	newHistory[claimKey(killerId, victimId)] = now
+	return newHistory
+end
+
+return Protection
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="16">
           <Properties>
             <string name="Name">RateLimiter</string>
             <string name="Source"><![CDATA[--!strict
@@ -591,7 +1031,45 @@ return RateLimiter
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="13">
+        <Item class="ModuleScript" referent="17">
+          <Properties>
+            <string name="Name">Scarcity</string>
+            <string name="Source"><![CDATA[--!strict
+local Ledger = require("./Ledger")
+local Relics = require("../Catalog/Relics")
+local Tiers = require("../Catalog/Tiers")
+local Types = require("../Types")
+
+type CardId = Types.CardId
+type Ledger = Types.Ledger
+
+local Scarcity = {}
+
+-- Copies of one Relic held across the given ledgers, claimed and spare alike.
+function Scarcity.countHeld(ledgers: { Ledger }, relicId: CardId): number
+	local total = 0
+	for _, ledger in ledgers do
+		total += Ledger.count(ledger, relicId)
+	end
+	return total
+end
+
+-- A cache is sealed once the server holds as many copies as the tier cap.
+-- Tiers without a cap, and unknown ids, are never sealed.
+function Scarcity.isSealed(relicId: CardId, held: number): boolean
+	local relic = Relics.byId[relicId]
+	if relic == nil then
+		return false
+	end
+	local cap = Tiers.info[relic.tier].serverCap
+	return cap ~= nil and held >= cap
+end
+
+return Scarcity
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="18">
           <Properties>
             <string name="Name">Sources</string>
             <string name="Source"><![CDATA[--!strict
@@ -623,43 +1101,221 @@ function Sources.isAvailable(state: SourceState, cacheId: string, now: number): 
 	return availableAt ~= nil and now >= availableAt
 end
 
--- Checks run in order: data, distance, cache, free slots. A failure returns the
+-- Checks run in order: data, locked ledger, distance, cache, sealed, free slots. A failure returns the
 -- same state untouched, so a refused attempt never consumes the cache.
+-- On success the fourth value is the time the cache becomes available again.
 function Sources.tryCollect(
 	state: SourceState,
 	ledger: Ledger?,
 	cache: Cache,
 	now: number,
-	distance: number
-): (SourceState, Ledger?, string)
+	distance: number,
+	sealed: boolean,
+	locked: boolean
+): (SourceState, Ledger?, string, number?)
 	if ledger == nil then
-		return state, nil, "DATA_NOT_LOADED"
+		return state, nil, "DATA_NOT_LOADED", nil
+	end
+	if locked then
+		return state, nil, "LEDGER_LOCKED", nil
 	end
 	if not (distance <= Sources.MAX_DISTANCE) then
-		return state, nil, "TOO_FAR"
+		return state, nil, "TOO_FAR", nil
 	end
 	if not Sources.isAvailable(state, cache.id, now) then
-		return state, nil, "CACHE_EMPTY"
+		return state, nil, "CACHE_EMPTY", nil
 	end
 	local relic = Relics.byId[cache.relicId]
 	if relic == nil then
-		return state, nil, "CACHE_EMPTY"
+		return state, nil, "CACHE_EMPTY", nil
+	end
+	if sealed then
+		return state, nil, "SEALED", nil
 	end
 	local result, err = Ledger.add(ledger, cache.relicId)
 	if result == nil then
-		return state, nil, err or "FREE_FULL"
+		return state, nil, err or "FREE_FULL", nil
 	end
 	local newState = table.clone(state)
-	newState[cache.id] = now + Tiers.info[relic.tier].cacheRespawnSeconds
-	return newState, result, "GOT_CARD"
+	local availableAt = now + Tiers.info[relic.tier].cacheRespawnSeconds
+	newState[cache.id] = availableAt
+	return newState, result, "GOT_CARD", availableAt
 end
 
 return Sources
 ]]></string>
           </Properties>
         </Item>
+        <Item class="ModuleScript" referent="19">
+          <Properties>
+            <string name="Name">StatusView</string>
+            <string name="Source"><![CDATA[--!strict
+-- Status lines for the HUD. Pure: the client renders this and nothing else.
+
+export type Line = { text: string, kind: "safe" | "shield" | "marked" }
+export type Status = { newShield: boolean, respawnShieldSeconds: number, markedSeconds: number }
+
+local StatusView = {}
+
+-- Written so NaN and negative values read as "not running".
+local function running(seconds: number): boolean
+	return seconds > 0 and seconds < math.huge
+end
+
+function StatusView.build(status: Status?, inSafeZone: boolean): { Line }
+	local lines: { Line } = {}
+	if inSafeZone then
+		table.insert(lines, { text = "Safe zone", kind = "safe" })
+	end
+	if status == nil then
+		return lines
+	end
+	if status.newShield then
+		table.insert(lines, { text = "New-player shield", kind = "shield" })
+	end
+	if running(status.respawnShieldSeconds) then
+		local seconds = math.ceil(status.respawnShieldSeconds)
+		table.insert(lines, { text = `Respawn shield: {seconds}s`, kind = "shield" })
+	end
+	if running(status.markedSeconds) then
+		local total = math.ceil(status.markedSeconds)
+		local text = string.format("MARKED %d:%02d", total // 60, total % 60)
+		table.insert(lines, { text = text, kind = "marked" })
+	end
+	return lines
+end
+
+return StatusView
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="20">
+          <Properties>
+            <string name="Name">Vault</string>
+            <string name="Source"><![CDATA[--!strict
+local Ledger = require("./Ledger")
+local Relics = require("../Catalog/Relics")
+local Types = require("../Types")
+
+type CardId = Types.CardId
+type Ledger = Types.Ledger
+type Vault = Types.Vault
+
+local MAX_CARD_ID_LENGTH = 16
+
+local Vault = {}
+
+Vault.MAX = 3
+
+function Vault.size(vault: Vault): number
+	local total = 0
+	for _, value in vault do
+		if value then
+			total += 1
+		end
+	end
+	return total
+end
+
+-- Drops vaulted ids the ledger no longer holds.
+function Vault.prune(vault: Vault, ledger: Ledger): Vault
+	local result: Vault = {}
+	for cardId, value in vault do
+		if value and Ledger.count(ledger, cardId) > 0 then
+			result[cardId] = true
+		end
+	end
+	return result
+end
+
+-- Turns arbitrary saved data into a valid Vault. Never errors.
+-- Keeps known, held, non-Crown ids whose value is true; at most MAX, lowest slot numbers first.
+function Vault.sanitize(raw: any, ledger: Ledger): Vault
+	local result: Vault = {}
+	if type(raw) ~= "table" then
+		return result
+	end
+	for _, relic in Relics.list do
+		if Vault.size(result) >= Vault.MAX then
+			break
+		end
+		if
+			relic.tier ~= "Crown"
+			and raw[relic.id] == true
+			and Ledger.count(ledger, relic.id) > 0
+		then
+			result[relic.id] = true
+		end
+	end
+	return result
+end
+
+-- Validates a raw client request and applies it to the vault.
+-- Request shape: { kind = "add" | "remove", cardId = string }
+-- Success: new vault, "VAULTED" | "UNVAULTED", card id.
+-- Failure: nil, error code, nil. Never errors on hostile input.
+function Vault.apply(
+	vault: Vault?,
+	ledger: Ledger?,
+	raw: any,
+	inSafeZone: boolean,
+	locked: boolean
+): (Vault?, string, CardId?)
+	if vault == nil or ledger == nil then
+		return nil, "DATA_NOT_LOADED", nil
+	end
+	if locked then
+		return nil, "LEDGER_LOCKED", nil
+	end
+	if type(raw) ~= "table" then
+		return nil, "BAD_REQUEST", nil
+	end
+	local kind = raw.kind
+	local cardId = raw.cardId
+	if kind ~= "add" and kind ~= "remove" then
+		return nil, "BAD_REQUEST", nil
+	end
+	if type(cardId) ~= "string" or #cardId > MAX_CARD_ID_LENGTH then
+		return nil, "BAD_REQUEST", nil
+	end
+	if not inSafeZone then
+		return nil, "NOT_IN_SAFE_ZONE", nil
+	end
+	if kind == "add" then
+		local relic = Relics.byId[cardId]
+		if relic == nil then
+			return nil, "UNKNOWN_CARD", nil
+		end
+		if relic.tier == "Crown" then
+			return nil, "CROWN_NO_VAULT", nil
+		end
+		if Ledger.count(ledger, cardId) == 0 then
+			return nil, "NOT_HELD", nil
+		end
+		if vault[cardId] then
+			return nil, "ALREADY_VAULTED", nil
+		end
+		if Vault.size(vault) >= Vault.MAX then
+			return nil, "VAULT_FULL", nil
+		end
+		local result = table.clone(vault)
+		result[cardId] = true
+		return result, "VAULTED", cardId
+	end
+	if not vault[cardId] then
+		return nil, "NOT_VAULTED", nil
+	end
+	local result = table.clone(vault)
+	result[cardId] = nil
+	return result, "UNVAULTED", cardId
+end
+
+return Vault
+]]></string>
+          </Properties>
+        </Item>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Types</string>
           <string name="Source"><![CDATA[--!strict
@@ -669,7 +1325,14 @@ export type Relic = { id: CardId, slot: number, name: string, tier: Tier, descri
 export type Ledger = { claimed: { [CardId]: boolean }, free: { CardId } }
 export type Vec3 = { x: number, y: number, z: number }
 export type Cache = { id: string, relicId: CardId, position: Vec3 }
-export type PlayerData = { schemaVersion: number, ledger: Ledger, coin: number }
+export type Vault = { [CardId]: boolean }
+export type PlayerData = {
+	schemaVersion: number,
+	ledger: Ledger,
+	coin: number,
+	vault: Vault,
+	shieldEnded: boolean,
+}
 
 return {}
 ]]></string>
@@ -677,15 +1340,421 @@ return {}
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="15">
+  <Item class="ServerScriptService" referent="22">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="16">
+    <Item class="Folder" referent="23">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="24">
+        <Properties>
+          <string name="Name">ClaimService</string>
+          <string name="Source"><![CDATA[--!strict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local BlindClaim = require(ReplicatedStorage.Shared.Rules.BlindClaim)
+local Net = require(ReplicatedStorage.Shared.Net)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
+local CombatService = require(script.Parent.CombatService)
+local DataService = require(script.Parent.DataService)
+local LedgerService = require(script.Parent.LedgerService)
+
+local BUCKET_CAPACITY = 10
+local BUCKET_REFILL_PER_SECOND = 5
+
+local ClaimService = {}
+
+-- One open claim, made by `killer` on `victim`. Names are kept because either may leave.
+type Session = {
+	killer: Player,
+	victim: Player,
+	killerName: string,
+	victimName: string,
+	claim: BlindClaim.Claim,
+	release: () -> (),
+	closed: boolean,
+}
+
+-- Open claims by killer. A killer has at most one; a victim is in at most one (they are locked).
+local sessions: { [Player]: Session } = {}
+-- Last claim time per killer and victim (UserIds), on the os.clock() clock.
+local history: Protection.ClaimHistory = {}
+local buckets: { [Player]: RateLimiter.Bucket } = {}
+local claimUpdate: RemoteEvent
+
+-- True if the player has a token left in their rate-limit bucket (takes one).
+local function allowed(player: Player): boolean
+	local now = os.clock()
+	local bucket = buckets[player]
+	if bucket == nil then
+		bucket = RateLimiter.new(BUCKET_CAPACITY, now)
+		buckets[player] = bucket
+	end
+	return RateLimiter.allow(bucket, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_SECOND)
+end
+
+local function sendUpdate(session: Session)
+	if session.killer.Parent ~= Players then
+		return
+	end
+	claimUpdate:FireClient(session.killer, {
+		victimName = session.victimName,
+		claim = session.claim,
+		secondsLeft = math.max(0, session.claim.expiresAt - os.clock()),
+	})
+end
+
+-- Ends a claim. Every path that ends a claim comes here; it runs once only.
+local function close(session: Session)
+	if session.closed then
+		return
+	end
+	session.closed = true
+	if sessions[session.killer] == session then
+		sessions[session.killer] = nil
+	end
+
+	LedgerService.unlock(session.victim)
+	session.release()
+
+	if session.killer.Parent == Players then
+		claimUpdate:FireClient(session.killer, nil)
+		LedgerService.notify(session.killer, "CLAIM_OVER")
+	end
+	if session.victim.Parent == Players then
+		local names: { string } = {}
+		for _, id in session.claim.takenIds do
+			local relic = Relics.byId[id]
+			table.insert(names, if relic ~= nil then relic.name else id)
+		end
+		if #names > 0 then
+			LedgerService.notify(session.victim, "CLAIM_LOST", {
+				player = session.killerName,
+				names = table.concat(names, ", "),
+			})
+		else
+			LedgerService.notify(session.victim, "CLAIM_SAFE", { player = session.killerName })
+		end
+	end
+end
+
+-- Runs in the thread that reported the defeat. For a combat log that is the leaver's
+-- PlayerRemoving, so the hold is taken before their profile can be released.
+local function onDefeat(killer: Player, victim: Player)
+	if sessions[killer] ~= nil or LedgerService.isLocked(victim) then
+		return
+	end
+	if LedgerService.get(killer) == nil or LedgerService.get(victim) == nil then
+		return
+	end
+	local now = os.clock()
+	if not Protection.canClaim(history, killer.UserId, victim.UserId, now) then
+		if killer.Parent == Players then
+			LedgerService.notify(killer, "CLAIM_COOLDOWN", { player = victim.DisplayName })
+		end
+		return
+	end
+
+	history = Protection.recordClaim(history, killer.UserId, victim.UserId, now)
+	local session: Session = {
+		killer = killer,
+		victim = victim,
+		killerName = killer.DisplayName,
+		victimName = victim.DisplayName,
+		claim = BlindClaim.start(now),
+		release = DataService.hold(victim),
+		closed = false,
+	}
+	LedgerService.lock(victim)
+	sessions[killer] = session
+
+	if victim.Parent == Players then
+		LedgerService.notify(victim, "DEFEATED_BY", { player = session.killerName })
+	end
+	LedgerService.notify(killer, "CLAIM_STARTED", { player = session.victimName })
+	sendUpdate(session)
+
+	task.delay(BlindClaim.DURATION, close, session)
+end
+
+local function handlePick(player: Player, slot: any)
+	if player.Parent ~= Players then
+		return
+	end
+	if not allowed(player) then
+		return
+	end
+	local session = sessions[player]
+	if session == nil or session.closed then
+		return
+	end
+
+	-- Read both sides and check both are loaded before writing either.
+	-- No yielding call from here to the two writes.
+	local victimLedger = LedgerService.get(session.victim)
+	local victimVault = LedgerService.getVault(session.victim)
+	local killerLedger = LedgerService.get(player)
+	if victimLedger == nil or victimVault == nil or killerLedger == nil then
+		close(session)
+		return
+	end
+
+	local now = os.clock()
+	local claim, newVictim, newKiller, code, cardId =
+		BlindClaim.pick(session.claim, victimLedger, victimVault, killerLedger, slot, now)
+
+	-- The new claim is stored only once the card has moved, so a failed write records nothing.
+	if code == "TAKEN" then
+		if not LedgerService.set(session.victim, newVictim) then
+			close(session)
+			return
+		end
+		if not LedgerService.set(player, newKiller) then
+			-- Cannot happen after the check above; if it does, give the card back.
+			LedgerService.set(session.victim, victimLedger)
+			close(session)
+			return
+		end
+		session.claim = claim
+		local relic = if cardId ~= nil then Relics.byId[cardId] else nil
+		LedgerService.notify(
+			player,
+			"CLAIM_TAKEN",
+			{ name = if relic ~= nil then relic.name else "" }
+		)
+	elseif code == "MISS" then
+		session.claim = claim
+		LedgerService.notify(player, "CLAIM_MISS")
+	else
+		-- A refusal returns the claim unchanged and spends no pick.
+		LedgerService.notify(player, code)
+	end
+
+	sendUpdate(session)
+	if not BlindClaim.isOpen(session.claim, now) then
+		close(session)
+	end
+end
+
+function ClaimService.start()
+	claimUpdate = LedgerService.makeRemote(Net.ClaimUpdate)
+	local claimPick = LedgerService.makeRemote(Net.ClaimPick)
+	claimPick.OnServerEvent:Connect(handlePick)
+
+	CombatService.onDefeat(onDefeat)
+
+	Players.PlayerRemoving:Connect(function(player)
+		buckets[player] = nil
+		-- A leaving killer's claim ends. A leaving victim's claim goes on: their profile is held.
+		local session = sessions[player]
+		if session ~= nil then
+			close(session)
+		end
+	end)
+end
+
+return ClaimService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="25">
+        <Properties>
+          <string name="Name">CombatService</string>
+          <string name="Source"><![CDATA[--!strict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
+local Net = require(ReplicatedStorage.Shared.Net)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local DataService = require(script.Parent.DataService)
+local LedgerService = require(script.Parent.LedgerService)
+local ProtectionService = require(script.Parent.ProtectionService)
+
+local CombatService = {}
+
+-- Who last hit whom, keyed by victim UserId. Time from os.clock().
+local hitLog: Combat.HitLog = {}
+local lastStrike: { [Player]: number } = {}
+local defeatCallbacks: { (killer: Player, victim: Player) -> () } = {}
+local hitFx: RemoteEvent
+
+-- The Humanoid and HumanoidRootPart of a living character, or nil.
+local function living(player: Player): (Humanoid?, BasePart?)
+	local character = player.Character
+	if character == nil then
+		return nil, nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil or humanoid.Health <= 0 then
+		return nil, nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
+		return nil, nil
+	end
+	return humanoid, root
+end
+
+local function fighterOf(id: number, root: BasePart): Combat.Fighter
+	local p = root.Position
+	local look = root.CFrame.LookVector
+	return {
+		id = id,
+		position = { x = p.X, y = p.Y, z = p.Z },
+		look = { x = look.X, y = look.Y, z = look.Z },
+	}
+end
+
+-- Runs every defeat callback now, in this thread, so a callback can take a DataService hold
+-- inside PlayerRemoving before the leaver's profile is released.
+local function fireDefeat(killer: Player, victim: Player)
+	for _, callback in defeatCallbacks do
+		local ok, err = pcall(callback, killer, victim)
+		if not ok then
+			warn(`[IsleOfAvarice] onDefeat callback failed: {err}`)
+		end
+	end
+end
+
+-- Gives the kill to whoever hit the victim within the window, if they are still here.
+local function creditDefeat(victim: Player, windowSeconds: number)
+	local now = os.clock()
+	local killerId = Combat.creditFor(hitLog, victim.UserId, now, windowSeconds)
+	hitLog = Combat.clear(hitLog, victim.UserId)
+	if killerId == nil then
+		return
+	end
+	local killer = Players:GetPlayerByUserId(killerId)
+	if killer ~= nil and killer ~= victim then
+		fireDefeat(killer, victim)
+	end
+end
+
+-- The client only says "I swung". Target, reach, damage and timing are all decided here.
+local function handleStrike(player: Player)
+	if player.Parent ~= Players then
+		return
+	end
+	local _, attackerRoot = living(player)
+	if attackerRoot == nil then
+		return
+	end
+	local now = os.clock()
+	if not Combat.canStrike(lastStrike[player], now) then
+		return
+	end
+	lastStrike[player] = now
+
+	local others: { Combat.Fighter } = {}
+	local byId: { [number]: { player: Player, humanoid: Humanoid } } = {}
+	for _, other in Players:GetPlayers() do
+		if other == player then
+			continue
+		end
+		local humanoid, root = living(other)
+		if humanoid ~= nil and root ~= nil then
+			table.insert(others, fighterOf(other.UserId, root))
+			byId[other.UserId] = { player = other, humanoid = humanoid }
+		end
+	end
+
+	local targetId = Combat.pickTarget(fighterOf(player.UserId, attackerRoot), others)
+	if targetId == nil then
+		return
+	end
+	local target = byId[targetId]
+	if target == nil then
+		return
+	end
+	local victim = target.player
+
+	-- No yielding call from here to TakeDamage: statuses cannot go stale.
+	local attackerStatus = ProtectionService.status(player, now)
+	if attackerStatus == nil then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
+	local victimStatus = ProtectionService.status(victim, now)
+	if victimStatus == nil then
+		-- Victim's data is not loaded yet: treat them as shielded.
+		LedgerService.notify(player, "TARGET_SHIELDED")
+		return
+	end
+	local ok, code = Protection.canDamage(attackerStatus, victimStatus, now)
+	if not ok then
+		LedgerService.notify(player, code or "BAD_REQUEST")
+		return
+	end
+
+	ProtectionService.endRespawnShield(player)
+	local victimMarked = Protection.isMarked(victimStatus, now)
+	if Protection.isAggressor(hitLog, player.UserId, victim.UserId, victimMarked, now) then
+		ProtectionService.mark(player, now)
+	end
+	-- Record the hit before the damage: with immediate signal behaviour, Died can fire
+	-- inside TakeDamage, and the kill must already be credited by then.
+	hitLog = Combat.recordHit(hitLog, victim.UserId, player.UserId, now)
+	target.humanoid:TakeDamage(Combat.STRIKE_DAMAGE)
+	hitFx:FireAllClients(victim.UserId)
+end
+
+local function onCharacterAdded(player: Player, character: Model)
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	if humanoid == nil or not humanoid:IsA("Humanoid") then
+		return
+	end
+	humanoid.MaxHealth = Combat.MAX_HEALTH
+	humanoid.Health = Combat.MAX_HEALTH
+	humanoid.Died:Connect(function()
+		creditDefeat(player, Combat.KILL_CREDIT_SECONDS)
+	end)
+end
+
+local function watchPlayer(player: Player)
+	player.CharacterAdded:Connect(function(character)
+		onCharacterAdded(player, character)
+	end)
+	local character = player.Character
+	if character ~= nil then
+		task.spawn(onCharacterAdded, player, character)
+	end
+end
+
+-- Player-versus-player defeats, and leaving within the combat-log window after being hit.
+function CombatService.onDefeat(callback: (killer: Player, victim: Player) -> ())
+	table.insert(defeatCallbacks, callback)
+end
+
+function CombatService.start()
+	hitFx = LedgerService.makeRemote(Net.HitFx)
+	local strike = LedgerService.makeRemote(Net.Strike)
+	strike.OnServerEvent:Connect(handleStrike)
+
+	Players.PlayerAdded:Connect(watchPlayer)
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
+	end
+
+	-- Combat log: leaving soon after being hit counts as a defeat.
+	DataService.beforeRelease(function(player)
+		creditDefeat(player, Combat.COMBAT_LOG_SECONDS)
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		lastStrike[player] = nil
+	end)
+end
+
+return CombatService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[--!strict
@@ -694,6 +1763,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Ledger = require(ReplicatedStorage.Shared.Rules.Ledger)
 local Types = require(ReplicatedStorage.Shared.Types)
+local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
 local ProfileStore = require(script.Parent.Vendor.ProfileStore)
 
 type PlayerData = Types.PlayerData
@@ -704,7 +1774,13 @@ local TEMPLATE = {
 	schemaVersion = 1,
 	ledger = { claimed = {}, free = {} },
 	coin = 0,
+	vault = {},
+	shieldEnded = false,
 }
+
+-- Longest a leaving player's profile stays open for holds.
+local MAX_HOLD_SECONDS = 45
+local HOLD_POLL_SECONDS = 0.25
 
 local store = ProfileStore.New("PlayerData_v1", TEMPLATE)
 
@@ -712,6 +1788,11 @@ local store = ProfileStore.New("PlayerData_v1", TEMPLATE)
 local profiles: { [Player]: any } = {}
 -- Players whose load is in flight, so a player is never loaded twice.
 local loading: { [Player]: boolean } = {}
+-- Players whose session is being ended because they are leaving, so they are not kicked.
+local leaving: { [Player]: boolean } = {}
+-- Number of open holds per player; a held profile stays open after the player has left.
+local holds: { [Player]: number } = {}
+local beforeReleaseCallbacks: { (player: Player) -> () } = {}
 local loadedCallbacks: { (player: Player, data: PlayerData) -> () } = {}
 
 local function fireLoaded(player: Player, data: PlayerData)
@@ -750,8 +1831,12 @@ local function loadProfile(player: Player)
 	profile:AddUserId(player.UserId)
 	profile:Reconcile()
 	profile.Data.ledger = Ledger.sanitize(profile.Data.ledger)
+	profile.Data.vault = Vault.sanitize(profile.Data.vault, profile.Data.ledger)
+	if type(profile.Data.shieldEnded) ~= "boolean" then
+		profile.Data.shieldEnded = false
+	end
 	local coin = profile.Data.coin
-	if type(coin) ~= "number" or coin ~= coin or coin < 0 then
+	if type(coin) ~= "number" or coin ~= coin or coin == math.huge or coin < 0 then
 		profile.Data.coin = 0
 	end
 
@@ -759,7 +1844,9 @@ local function loadProfile(player: Player)
 		if profiles[player] == profile then
 			profiles[player] = nil
 		end
-		if player.Parent == Players then
+		local isLeaving = leaving[player]
+		leaving[player] = nil
+		if player.Parent == Players and not isLeaving then
 			player:Kick("Your data was loaded elsewhere. Please rejoin.")
 		end
 	end)
@@ -772,8 +1859,46 @@ local function releaseProfile(player: Player)
 	local profile = profiles[player]
 	profiles[player] = nil
 	if profile ~= nil then
+		leaving[player] = true
 		profile:EndSession()
 	end
+end
+
+-- Runs when a player is leaving, before the profile is released. Holds are taken here.
+function DataService.beforeRelease(callback: (player: Player) -> ())
+	table.insert(beforeReleaseCallbacks, callback)
+end
+
+-- Keeps the player's profile open (for up to MAX_HOLD_SECONDS after they leave).
+-- Returns a function that lets go; it works once only.
+function DataService.hold(player: Player): () -> ()
+	holds[player] = (holds[player] or 0) + 1
+	local released = false
+	return function()
+		if released then
+			return
+		end
+		released = true
+		local count = holds[player]
+		if count ~= nil then
+			holds[player] = if count > 1 then count - 1 else nil
+		end
+	end
+end
+
+local function handleRemoving(player: Player)
+	for _, callback in beforeReleaseCallbacks do
+		local ok, err = pcall(callback, player)
+		if not ok then
+			warn(`[IsleOfAvarice] beforeRelease callback failed: {err}`)
+		end
+	end
+	local deadline = os.clock() + MAX_HOLD_SECONDS
+	while holds[player] ~= nil and os.clock() < deadline do
+		task.wait(HOLD_POLL_SECONDS)
+	end
+	holds[player] = nil
+	releaseProfile(player)
 end
 
 -- Returns the player's saved data, or nil until it has loaded and after it was released.
@@ -783,6 +1908,17 @@ function DataService.get(player: Player): PlayerData?
 		return profile.Data
 	end
 	return nil
+end
+
+-- The saved data of every player whose profile is open, including held players who have left.
+function DataService.all(): { PlayerData }
+	local result: { PlayerData } = {}
+	for _, profile in profiles do
+		if profile:IsActive() then
+			table.insert(result, profile.Data)
+		end
+	end
+	return result
 end
 
 -- Registers a callback that runs (in its own thread) once a player's data is loaded and sanitised.
@@ -800,7 +1936,7 @@ function DataService.start()
 	Players.PlayerAdded:Connect(function(player)
 		loadProfile(player)
 	end)
-	Players.PlayerRemoving:Connect(releaseProfile)
+	Players.PlayerRemoving:Connect(handleRemoving)
 	for _, player in Players:GetPlayers() do
 		task.spawn(loadProfile, player)
 	end
@@ -810,7 +1946,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">LedgerService</string>
           <string name="Source"><![CDATA[--!strict
@@ -823,12 +1959,15 @@ local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
 local Types = require(ReplicatedStorage.Shared.Types)
+local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
 local DataService = require(script.Parent.DataService)
 
 type Ledger = Types.Ledger
+type Vault = Types.Vault
 
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
+local SLOW_DOWN_INTERVAL = 1
 
 local LedgerService = {}
 
@@ -839,6 +1978,10 @@ local notifyRemote: RemoteEvent
 
 local buckets: { [Player]: RateLimiter.Bucket } = {}
 local completed: { [Player]: boolean } = {}
+local lastSlowDown: { [Player]: number } = {}
+local locked: { [Player]: boolean } = {}
+local changedCallbacks: { (player: Player, ledger: Ledger) -> () } = {}
+local remotesFolder: Folder?
 
 -- The player's Ledger, or nil until their data has loaded and after they left.
 function LedgerService.get(player: Player): Ledger?
@@ -849,18 +1992,89 @@ function LedgerService.get(player: Player): Ledger?
 	return data.ledger
 end
 
--- Writes the Ledger to saved data and tells that player's client. Ignored if no data is loaded.
-function LedgerService.set(player: Player, ledger: Ledger)
+-- The player's Vault, or nil until their data has loaded and after they left.
+function LedgerService.getVault(player: Player): Vault?
 	local data = DataService.get(player)
 	if data == nil then
-		return
+		return nil
+	end
+	return data.vault
+end
+
+-- Ledgers of every player whose data is loaded (including held players who have left).
+function LedgerService.all(): { Ledger }
+	local result: { Ledger } = {}
+	for _, data in DataService.all() do
+		table.insert(result, data.ledger)
+	end
+	return result
+end
+
+-- A locked player's Ledger and Vault may not be changed by that player.
+function LedgerService.lock(player: Player)
+	locked[player] = true
+end
+
+function LedgerService.unlock(player: Player)
+	locked[player] = nil
+end
+
+function LedgerService.isLocked(player: Player): boolean
+	return locked[player] == true
+end
+
+function LedgerService.onChanged(callback: (player: Player, ledger: Ledger) -> ())
+	table.insert(changedCallbacks, callback)
+end
+
+-- Creates a RemoteEvent in the Remotes folder. Works for services started after LedgerService.start().
+function LedgerService.makeRemote(name: string): RemoteEvent
+	local folder = remotesFolder
+	assert(folder ~= nil, "LedgerService.start must run before makeRemote")
+	local remote = Instance.new("RemoteEvent")
+	remote.Name = name
+	remote.Parent = folder
+	return remote
+end
+
+-- Writes the Ledger to saved data, prunes the Vault to match, and tells that player's client.
+-- Returns false, changing nothing, if no data is loaded.
+function LedgerService.set(player: Player, ledger: Ledger): boolean
+	local data = DataService.get(player)
+	if data == nil then
+		return false
 	end
 	data.ledger = ledger
-	ledgerSync:FireClient(player, ledger)
+	data.vault = Vault.prune(data.vault, ledger)
+	if player.Parent == Players then
+		ledgerSync:FireClient(player, ledger, data.vault)
+	end
+	for _, callback in changedCallbacks do
+		task.spawn(callback, player, ledger)
+	end
+	return true
+end
+
+-- Writes the Vault to saved data and tells that player's client.
+-- Returns false, changing nothing, if no data is loaded.
+function LedgerService.setVault(player: Player, vault: Vault): boolean
+	local data = DataService.get(player)
+	if data == nil then
+		return false
+	end
+	data.vault = vault
+	if player.Parent == Players then
+		ledgerSync:FireClient(player, data.ledger, vault)
+	end
+	return true
 end
 
 function LedgerService.notify(player: Player, code: string, args: { [string]: string }?)
 	notifyRemote:FireClient(player, code, args)
+end
+
+function LedgerService.notifyAll(code: string, args: { [string]: string }?)
+	notifyRemote:FireAllClients(code, args)
 end
 
 -- True if the player has a token left in their rate-limit bucket (takes one).
@@ -875,18 +2089,34 @@ local function allowed(player: Player): boolean
 end
 
 local function handleRequest(player: Player)
+	if player.Parent ~= Players then
+		return
+	end
 	if not allowed(player) then
 		return
 	end
 	local ledger = LedgerService.get(player)
 	if ledger ~= nil then
-		ledgerSync:FireClient(player, ledger)
+		ledgerSync:FireClient(player, ledger, LedgerService.getVault(player) or {})
 	end
 end
 
 local function handleAction(player: Player, request: any)
+	if player.Parent ~= Players then
+		return
+	end
 	if not allowed(player) then
-		LedgerService.notify(player, "SLOW_DOWN")
+		local now = os.clock()
+		local last = lastSlowDown[player]
+		if last == nil or now - last >= SLOW_DOWN_INTERVAL then
+			lastSlowDown[player] = now
+			LedgerService.notify(player, "SLOW_DOWN")
+		end
+		return
+	end
+
+	if LedgerService.isLocked(player) then
+		LedgerService.notify(player, "LEDGER_LOCKED")
 		return
 	end
 
@@ -896,7 +2126,10 @@ local function handleAction(player: Player, request: any)
 		LedgerService.notify(player, code)
 		return
 	end
-	LedgerService.set(player, newLedger)
+	if not LedgerService.set(player, newLedger) then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
 	local relic = if cardId ~= nil then Relics.byId[cardId] else nil
 	LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
 
@@ -911,28 +2144,31 @@ function LedgerService.start()
 	folder.Name = Net.FOLDER
 	folder.Parent = ReplicatedStorage
 
-	local function makeRemote(name: string): RemoteEvent
-		local remote = Instance.new("RemoteEvent")
-		remote.Name = name
-		remote.Parent = folder
-		return remote
-	end
-	ledgerSync = makeRemote(Net.LedgerSync)
-	ledgerAction = makeRemote(Net.LedgerAction)
-	ledgerRequest = makeRemote(Net.LedgerRequest)
-	notifyRemote = makeRemote(Net.Notify)
+	remotesFolder = folder
+	ledgerSync = LedgerService.makeRemote(Net.LedgerSync)
+	ledgerAction = LedgerService.makeRemote(Net.LedgerAction)
+	ledgerRequest = LedgerService.makeRemote(Net.LedgerRequest)
+	notifyRemote = LedgerService.makeRemote(Net.Notify)
 
 	ledgerAction.OnServerEvent:Connect(handleAction)
 	ledgerRequest.OnServerEvent:Connect(handleRequest)
 	Players.PlayerRemoving:Connect(function(player)
 		buckets[player] = nil
 		completed[player] = nil
+		lastSlowDown[player] = nil
+		-- A held player's profile is still open; whoever holds it unlocks them.
+		-- Deferred so the holds taken by other PlayerRemoving handlers exist by now.
+		task.defer(function()
+			if DataService.get(player) == nil then
+				locked[player] = nil
+			end
+		end)
 	end)
 
 	DataService.onLoaded(function(player, data)
 		-- A player may have left before this callback ran.
 		if player.Parent == Players then
-			ledgerSync:FireClient(player, data.ledger)
+			ledgerSync:FireClient(player, data.ledger, data.vault)
 		end
 	end)
 end
@@ -941,14 +2177,18 @@ return LedgerService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="19">
+      <Item class="Script" referent="28">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
           <string name="Source"><![CDATA[--!strict
+local ClaimService = require(script.Parent.ClaimService)
+local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
+local ProtectionService = require(script.Parent.ProtectionService)
 local SourceService = require(script.Parent.SourceService)
+local VaultService = require(script.Parent.VaultService)
 local WorldBuilder = require(script.Parent.WorldBuilder)
 
 -- A failing step is reported but does not stop the steps after it.
@@ -962,6 +2202,10 @@ end
 runStep("WorldBuilder.build", WorldBuilder.build)
 runStep("LedgerService.start", LedgerService.start)
 runStep("SourceService.start", SourceService.start)
+runStep("VaultService.start", VaultService.start)
+runStep("ProtectionService.start", ProtectionService.start)
+runStep("CombatService.start", CombatService.start)
+runStep("ClaimService.start", ClaimService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 
@@ -969,20 +2213,316 @@ print("[IsleOfAvarice] server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="29">
+        <Properties>
+          <string name="Name">ProtectionService</string>
+          <string name="Source"><![CDATA[--!strict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Net = require(ReplicatedStorage.Shared.Net)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local Types = require(ReplicatedStorage.Shared.Types)
+local DataService = require(script.Parent.DataService)
+local LedgerService = require(script.Parent.LedgerService)
+
+type Ledger = Types.Ledger
+type Status = Protection.Status
+
+local SHIELD_NAME = "Shield"
+local MARKED_TAG_NAME = "MarkedTag"
+local MARKED_COLOR = Color3.fromRGB(230, 40, 40)
+
+local ProtectionService = {}
+
+-- Per-player timers, on the os.clock() clock. The new-player shield lives in saved data.
+type Timers = { respawnShieldUntil: number, markedUntil: number }
+local timers: { [Player]: Timers } = {}
+
+local statusSync: RemoteEvent
+
+-- Read-only defaults for a player with no entry. Never written to.
+local NO_TIMERS: Timers = { respawnShieldUntil = 0, markedUntil = 0 }
+
+-- The player's timers, created on first use. Only for players still in the game.
+local function timersFor(player: Player): Timers
+	local t = timers[player]
+	if t == nil then
+		t = { respawnShieldUntil = 0, markedUntil = 0 }
+		timers[player] = t
+	end
+	return t
+end
+
+-- Reads the player's timers without creating an entry (safe for players who left).
+local function peekTimers(player: Player): Timers
+	return timers[player] or NO_TIMERS
+end
+
+-- True while the player's data is loaded and the new-player shield has not ended.
+local function hasNewShield(player: Player): boolean
+	local data = DataService.get(player)
+	return data ~= nil and not data.shieldEnded
+end
+
+-- The HumanoidRootPart of a living character, or nil.
+local function livingRoot(player: Player): BasePart?
+	local character = player.Character
+	if character == nil then
+		return nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid == nil or humanoid.Health <= 0 then
+		return nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
+		return nil
+	end
+	return root
+end
+
+local function sendStatus(player: Player)
+	if player.Parent ~= Players then
+		return
+	end
+	local now = os.clock()
+	local t = peekTimers(player)
+	statusSync:FireClient(player, {
+		newShield = hasNewShield(player),
+		respawnShieldSeconds = math.max(0, t.respawnShieldUntil - now),
+		markedSeconds = math.max(0, t.markedUntil - now),
+	})
+end
+
+-- Adds or removes the visible Shield force field so it matches the player's shields.
+local function updateForceField(player: Player)
+	local character = player.Character
+	if character == nil then
+		return
+	end
+	local shielded = hasNewShield(player) or os.clock() < peekTimers(player).respawnShieldUntil
+	local existing = character:FindFirstChild(SHIELD_NAME)
+	if shielded and existing == nil then
+		local field = Instance.new("ForceField")
+		field.Name = SHIELD_NAME
+		field.Visible = true
+		field.Parent = character
+	elseif not shielded and existing ~= nil then
+		existing:Destroy()
+	end
+end
+
+local function removeMarkedTag(character: Model)
+	for _, child in character:GetDescendants() do
+		if child.Name == MARKED_TAG_NAME and child:IsA("BillboardGui") then
+			child:Destroy()
+		end
+	end
+end
+
+local function addMarkedTag(character: Model)
+	removeMarkedTag(character)
+	local anchor = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+	if anchor == nil or not anchor:IsA("BasePart") then
+		return
+	end
+	local tag = Instance.new("BillboardGui")
+	tag.Name = MARKED_TAG_NAME
+	tag.Adornee = anchor
+	tag.AlwaysOnTop = true
+	tag.MaxDistance = 200
+	tag.Size = UDim2.fromOffset(120, 30)
+	tag.StudsOffset = Vector3.new(0, 2.5, 0)
+
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Text = "MARKED"
+	label.TextColor3 = MARKED_COLOR
+	label.TextStrokeTransparency = 0.3
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Parent = tag
+
+	tag.Parent = anchor
+end
+
+-- Removes the Marked tag once the Marked time has run out (a later mark extends it).
+local function scheduleUnmark(player: Player, after: number)
+	task.delay(after, function()
+		local t = timers[player]
+		if t == nil or os.clock() < t.markedUntil then
+			return
+		end
+		local character = player.Character
+		if character ~= nil then
+			removeMarkedTag(character)
+		end
+		sendStatus(player)
+	end)
+end
+
+-- Ends the new-player shield for good.
+local function endNewShield(player: Player)
+	local data = DataService.get(player)
+	if data == nil or data.shieldEnded then
+		return
+	end
+	data.shieldEnded = true
+	if player.Parent == Players then
+		LedgerService.notify(player, "SHIELD_ENDED")
+	end
+	updateForceField(player)
+	sendStatus(player)
+end
+
+local function checkShieldEnd(player: Player, ledger: Ledger)
+	if Protection.shouldEndShield(ledger) then
+		endNewShield(player)
+	end
+end
+
+local function onCharacterAdded(player: Player, character: Model)
+	local now = os.clock()
+	local t = timersFor(player)
+	t.respawnShieldUntil = now + Protection.RESPAWN_SHIELD_SECONDS
+	updateForceField(player)
+	if now < t.markedUntil then
+		addMarkedTag(character)
+	end
+	sendStatus(player)
+
+	task.delay(Protection.RESPAWN_SHIELD_SECONDS, function()
+		if player.Character == character then
+			updateForceField(player)
+			sendStatus(player)
+		end
+	end)
+end
+
+local function watchPlayer(player: Player)
+	player.CharacterAdded:Connect(function(character)
+		onCharacterAdded(player, character)
+	end)
+	local character = player.Character
+	if character ~= nil then
+		task.spawn(onCharacterAdded, player, character)
+	end
+end
+
+-- The player's protection status, or nil without loaded data or a living character.
+function ProtectionService.status(player: Player, _now: number): Status?
+	if DataService.get(player) == nil then
+		return nil
+	end
+	local root = livingRoot(player)
+	if root == nil then
+		return nil
+	end
+	local t = peekTimers(player)
+	local p = root.Position
+	return {
+		inSafeZone = Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z }),
+		newShield = hasNewShield(player),
+		respawnShieldUntil = t.respawnShieldUntil,
+		markedUntil = t.markedUntil,
+	}
+end
+
+-- Marks the player for MARKED_SECONDS from now. A player already Marked has the time extended.
+function ProtectionService.mark(player: Player, now: number)
+	if player.Parent ~= Players then
+		return
+	end
+	local t = timersFor(player)
+	local wasMarked = now < t.markedUntil
+	t.markedUntil = now + Protection.MARKED_SECONDS
+	if not wasMarked then
+		LedgerService.notify(player, "MARKED")
+		local character = player.Character
+		if character ~= nil then
+			addMarkedTag(character)
+		end
+	end
+	sendStatus(player)
+	scheduleUnmark(player, Protection.MARKED_SECONDS)
+end
+
+-- Ends the respawn shield early (the player attacked someone).
+function ProtectionService.endRespawnShield(player: Player)
+	local t = timers[player]
+	if t == nil or t.respawnShieldUntil == 0 then
+		return
+	end
+	t.respawnShieldUntil = 0
+	updateForceField(player)
+	sendStatus(player)
+end
+
+function ProtectionService.start()
+	statusSync = LedgerService.makeRemote(Net.StatusSync)
+	local shieldDrop = LedgerService.makeRemote(Net.ShieldDrop)
+
+	shieldDrop.OnServerEvent:Connect(function(player)
+		if player.Parent ~= Players then
+			return
+		end
+		endNewShield(player)
+	end)
+
+	LedgerService.onChanged(checkShieldEnd)
+	DataService.onLoaded(function(player, data)
+		checkShieldEnd(player, data.ledger)
+		updateForceField(player)
+		sendStatus(player)
+	end)
+
+	Players.PlayerAdded:Connect(watchPlayer)
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		timers[player] = nil
+	end)
+end
+
+return ProtectionService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">SourceService</string>
           <string name="Source"><![CDATA[--!strict
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
-local Tiers = require(ReplicatedStorage.Shared.Catalog.Tiers)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
+local Scarcity = require(ReplicatedStorage.Shared.Rules.Scarcity)
 local Sources = require(ReplicatedStorage.Shared.Rules.Sources)
+local DataService = require(script.Parent.DataService)
 local LedgerService = require(script.Parent.LedgerService)
 
 local SourceService = {}
+
+local function isSealed(relicId: string): boolean
+	return Scarcity.isSealed(relicId, Scarcity.countHeld(LedgerService.all(), relicId))
+end
+
+-- Sealed caches read "Sealed cache" with a dull pillar; open ones read "Cache" with a glowing one.
+local function showSealed(part: BasePart, sealed: boolean)
+	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+	if prompt ~= nil then
+		prompt.ObjectText = if sealed then "Sealed cache" else "Cache"
+	end
+	local pillar = part:FindFirstChild("Pillar")
+	if pillar ~= nil and pillar:IsA("BasePart") then
+		pillar.Material = if sealed then Enum.Material.SmoothPlastic else Enum.Material.Neon
+	end
+end
 
 local function setVisible(part: BasePart, visible: boolean)
 	local transparency = if visible then 0 else 1
@@ -1011,6 +2551,18 @@ end
 function SourceService.start()
 	local state = Sources.new(World.caches)
 
+	local cacheParts: { BasePart } = {}
+
+	local function refreshSealed()
+		for _, part in cacheParts do
+			local cacheId = part:GetAttribute("CacheId")
+			local cache = if type(cacheId) == "string" then World.cacheById[cacheId] else nil
+			if cache ~= nil then
+				showSealed(part, isSealed(cache.relicId))
+			end
+		end
+	end
+
 	local function connect(part: Instance)
 		if not part:IsA("BasePart") then
 			return
@@ -1019,6 +2571,7 @@ function SourceService.start()
 		if prompt == nil then
 			return
 		end
+		table.insert(cacheParts, part)
 		prompt.Triggered:Connect(function(player: Player)
 			local cacheId = part:GetAttribute("CacheId")
 			local cache = if type(cacheId) == "string" then World.cacheById[cacheId] else nil
@@ -1027,42 +2580,139 @@ function SourceService.start()
 			end
 
 			-- No yielding call between tryCollect and storing the new state.
-			local newState, newLedger, code = Sources.tryCollect(
+			local now = os.clock()
+			local newState, newLedger, code, availableAt = Sources.tryCollect(
 				state,
 				LedgerService.get(player),
 				cache,
-				os.clock(),
-				distanceToPlayer(player, part)
+				now,
+				distanceToPlayer(player, part),
+				isSealed(cache.relicId),
+				LedgerService.isLocked(player)
 			)
-			if newLedger == nil then
+			if newLedger == nil or availableAt == nil then
 				LedgerService.notify(player, code)
 				return
 			end
+			if not LedgerService.set(player, newLedger) then
+				-- The data went away; the cache stays as it was.
+				LedgerService.notify(player, "DATA_NOT_LOADED")
+				return
+			end
 			state = newState
-			LedgerService.set(player, newLedger)
 			local relic = Relics.byId[cache.relicId]
 			LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
 
 			setVisible(part, false)
-			local respawn = if relic ~= nil then Tiers.info[relic.tier].cacheRespawnSeconds else 0
-			task.delay(respawn, setVisible, part, true)
+			task.delay(availableAt - now, setVisible, part, true)
 		end)
 	end
 
 	for _, instance in CollectionService:GetTagged("Cache") do
 		connect(instance)
 	end
+
+	LedgerService.onChanged(refreshSealed)
+	DataService.onLoaded(refreshSealed)
+	Players.PlayerRemoving:Connect(function()
+		-- One frame later, once the leaving player's data is gone (held players stay counted).
+		task.defer(refreshSealed)
+	end)
+	refreshSealed()
 end
 
 return SourceService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="21">
+      <Item class="ModuleScript" referent="31">
+        <Properties>
+          <string name="Name">VaultService</string>
+          <string name="Source"><![CDATA[--!strict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
+local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
+local Net = require(ReplicatedStorage.Shared.Net)
+local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
+local LedgerService = require(script.Parent.LedgerService)
+
+local BUCKET_CAPACITY = 10
+local BUCKET_REFILL_PER_SECOND = 5
+
+local VaultService = {}
+
+local buckets: { [Player]: RateLimiter.Bucket } = {}
+
+-- True if the player has a token left in their rate-limit bucket (takes one).
+local function allowed(player: Player): boolean
+	local now = os.clock()
+	local bucket = buckets[player]
+	if bucket == nil then
+		bucket = RateLimiter.new(BUCKET_CAPACITY, now)
+		buckets[player] = bucket
+	end
+	return RateLimiter.allow(bucket, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_SECOND)
+end
+
+-- The server reads the position itself. No character counts as outside the safe zone.
+local function playerInSafeZone(player: Player): boolean
+	local character = player.Character
+	local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+	if root == nil or not root:IsA("BasePart") then
+		return false
+	end
+	local p = root.Position
+	return Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z })
+end
+
+local function handleAction(player: Player, request: any)
+	if player.Parent ~= Players then
+		return
+	end
+	if not allowed(player) then
+		return
+	end
+
+	-- No yielding call from here to setVault(): the reads cannot go stale.
+	local newVault, code, cardId = Vault.apply(
+		LedgerService.getVault(player),
+		LedgerService.get(player),
+		request,
+		playerInSafeZone(player),
+		LedgerService.isLocked(player)
+	)
+	if newVault == nil then
+		LedgerService.notify(player, code)
+		return
+	end
+	if not LedgerService.setVault(player, newVault) then
+		LedgerService.notify(player, "DATA_NOT_LOADED")
+		return
+	end
+	local relic = if cardId ~= nil then Relics.byId[cardId] else nil
+	LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
+end
+
+function VaultService.start()
+	local vaultAction = LedgerService.makeRemote(Net.VaultAction)
+	vaultAction.OnServerEvent:Connect(handleAction)
+	Players.PlayerRemoving:Connect(function(player)
+		buckets[player] = nil
+	end)
+end
+
+return VaultService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Folder" referent="32">
         <Properties>
           <string name="Name">Vendor</string>
         </Properties>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="33">
           <Properties>
             <string name="Name">ProfileStore</string>
             <string name="Source"><![CDATA[--[[
@@ -3183,7 +4833,7 @@ return ProfileStore
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">WorldBuilder</string>
           <string name="Source"><![CDATA[--!strict
@@ -3262,7 +4912,25 @@ local function buildTallyport(island: Folder)
 	spawnPad.Neutral = true
 	spawnPad.Size = Vector3.new(6, 1, 6)
 	spawnPad.CFrame = CFrame.new(World.spawn.x, World.spawn.y, World.spawn.z)
+	-- No default spawn force field: ProtectionService gives the respawn shield instead.
+	spawnPad.Duration = 0
 	spawnPad.Parent = town
+
+	-- Safe-zone marker: a flat disc over the plaza. A Roblox cylinder's axis is X,
+	-- so it is turned a quarter about Z to lie flat. Plaza top is groundY + 0.2.
+	local disc = Instance.new("Part")
+	disc.Name = "SafeZone"
+	disc.Shape = Enum.PartType.Cylinder
+	disc.Anchored = true
+	disc.CanCollide = false
+	disc.CanTouch = false
+	disc.CanQuery = false
+	disc.Size = Vector3.new(0.05, World.townRadius * 2, World.townRadius * 2)
+	disc.CFrame = CFrame.new(0, World.groundY + 0.2 + 0.1, 0) * CFrame.Angles(0, 0, math.rad(90))
+	disc.Color = Color3.fromRGB(255, 225, 140)
+	disc.Material = Enum.Material.Neon
+	disc.Transparency = 0.8
+	disc.Parent = town
 
 	-- Four buildings of different sizes at the plaza corners (width, height, depth).
 	local buildings = {
@@ -3350,19 +5018,359 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="24">
+  <Item class="StarterPlayer" referent="35">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="25">
+    <Item class="StarterPlayerScripts" referent="36">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="26">
+      <Item class="Folder" referent="37">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="27">
+        <Item class="ModuleScript" referent="38">
+          <Properties>
+            <string name="Name">ClaimUI</string>
+            <string name="Source"><![CDATA[--!strict
+-- The blind-claim screen. It shows every numbered slot face down: nothing tells the
+-- killer whether the victim holds a Relic, only what each pick turned out to be.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Tiers = require(Shared:WaitForChild("Catalog"):WaitForChild("Tiers"))
+local Rules = Shared:WaitForChild("Rules")
+local BlindClaim = require(Rules:WaitForChild("BlindClaim"))
+local ClaimView = require(Rules:WaitForChild("ClaimView"))
+local Types = require(Shared:WaitForChild("Types"))
+
+local TICK_SECONDS = 0.25
+
+local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
+local TEXT_DARK = Color3.fromRGB(20, 18, 24)
+local TEXT_DIM = Color3.fromRGB(130, 130, 135)
+local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
+local MISS_COLOR = Color3.fromRGB(40, 40, 45)
+local LOCKED_COLOR = Color3.fromRGB(70, 70, 75)
+local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
+
+local ClaimUI = {}
+
+local panel: Frame? = nil
+local titleLabel: TextLabel? = nil
+local picksLabel: TextLabel? = nil
+local timerLabel: TextLabel? = nil
+local grid: Frame? = nil
+local pickHandler: (slot: number) -> () = function(_slot: number) end
+
+-- What is on screen. The deadline is on the local clock: the server's expiresAt is on the
+-- server's clock and is never compared with local time.
+local victimName = ""
+local currentClaim: BlindClaim.Claim? = nil
+local deadline = 0
+local shownOpen = false
+local ticking = false
+
+local function tierColor(tier: Types.Tier): Color3
+	local color = Tiers.info[tier].color
+	return Color3.fromRGB(color.r, color.g, color.b)
+end
+
+local function addCorner(parent: Instance, radius: number)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = parent
+end
+
+local function limitText(parent: Instance, minSize: number, maxSize: number)
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MinTextSize = minSize
+	constraint.MaxTextSize = maxSize
+	constraint.Parent = parent
+end
+
+local function makeLabel(name: string, size: UDim2, position: UDim2, maxText: number): TextLabel
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.Size = size
+	label.Position = position
+	label.BackgroundTransparency = 1
+	label.TextColor3 = TEXT_LIGHT
+	label.TextScaled = true
+	label.TextWrapped = true
+	label.Font = Enum.Font.GothamMedium
+	label.Text = ""
+	limitText(label, 10, maxText)
+	return label
+end
+
+local function secondsRemaining(): number
+	return math.max(0, deadline - os.clock())
+end
+
+local function buildView(claim: BlindClaim.Claim): ClaimView.View
+	return ClaimView.build(victimName, claim, claim.expiresAt - secondsRemaining())
+end
+
+local function makeCell(slot: ClaimView.SlotView): TextButton
+	local cell = Instance.new("TextButton")
+	cell.Name = "Slot" .. slot.label
+	cell.LayoutOrder = slot.slot
+	cell.Font = Enum.Font.GothamMedium
+	cell.TextScaled = true
+	cell.TextWrapped = true
+	cell.AutoButtonColor = slot.state == "open"
+	addCorner(cell, 8)
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 4)
+	padding.PaddingBottom = UDim.new(0, 4)
+	padding.PaddingLeft = UDim.new(0, 4)
+	padding.PaddingRight = UDim.new(0, 4)
+	padding.Parent = cell
+	limitText(cell, 9, 20)
+
+	local text = slot.label .. "\n" .. slot.name
+	if slot.state == "open" then
+		cell.BackgroundColor3 = tierColor(slot.tier)
+		cell.BackgroundTransparency = 0.35
+		cell.TextColor3 = TEXT_DARK
+	elseif slot.state == "taken" then
+		cell.BackgroundColor3 = tierColor(slot.tier)
+		cell.TextColor3 = TEXT_DARK
+		cell.Font = Enum.Font.GothamBold
+		text ..= "\nTaken!"
+		local stroke = Instance.new("UIStroke")
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Color = Color3.new(1, 1, 1)
+		stroke.Thickness = 3
+		stroke.Parent = cell
+	elseif slot.state == "miss" then
+		cell.BackgroundColor3 = MISS_COLOR
+		cell.TextColor3 = TEXT_DIM
+		text ..= "\nNothing"
+	else
+		cell.BackgroundColor3 = LOCKED_COLOR
+		cell.BackgroundTransparency = 0.4
+		cell.TextColor3 = TEXT_DIM
+		cell.TextTransparency = 0.4
+	end
+	cell.Text = text
+
+	if slot.state == "open" then
+		cell.Activated:Connect(function()
+			pickHandler(slot.slot)
+		end)
+	end
+	return cell
+end
+
+local function render()
+	local claim = currentClaim
+	local cells = grid
+	if claim == nil or cells == nil then
+		return
+	end
+	local view = buildView(claim)
+	shownOpen = view.open
+	if titleLabel ~= nil then
+		titleLabel.Text = view.title
+	end
+	if picksLabel ~= nil then
+		picksLabel.Text = view.picksText
+	end
+	if timerLabel ~= nil then
+		timerLabel.Text = `{view.secondsLeft}s`
+	end
+	for _, child in cells:GetChildren() do
+		if not child:IsA("UIComponent") then
+			child:Destroy()
+		end
+	end
+	for _, slot in view.slots do
+		makeCell(slot).Parent = cells
+	end
+end
+
+-- Counts down locally while the screen is open; redraws the slots when time runs out.
+local function startTicking()
+	if ticking then
+		return
+	end
+	ticking = true
+	task.spawn(function()
+		while ClaimUI.isOpen() do
+			local claim = currentClaim
+			if claim ~= nil then
+				local view = buildView(claim)
+				if view.open ~= shownOpen then
+					render()
+				elseif timerLabel ~= nil then
+					timerLabel.Text = `{view.secondsLeft}s`
+				end
+			end
+			task.wait(TICK_SECONDS)
+		end
+		ticking = false
+	end)
+end
+
+function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
+	pickHandler = onPick
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "ClaimGui"
+	gui.ResetOnSpawn = false
+	-- Above the Ledger book (10), the status HUD (15) and messages (20).
+	gui.DisplayOrder = 30
+
+	local frame = Instance.new("Frame")
+	frame.Name = "Claim"
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.fromScale(0.5, 0.55)
+	frame.Size = UDim2.fromScale(0.7, 0.7)
+	frame.BackgroundColor3 = PANEL_COLOR
+	frame.Visible = false
+	addCorner(frame, 14)
+
+	local title = makeLabel("Title", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.03, 0.03), 30)
+	title.Font = Enum.Font.GothamBold
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = frame
+	titleLabel = title
+
+	local timer = makeLabel("Timer", UDim2.fromScale(0.15, 0.08), UDim2.fromScale(0.82, 0.03), 30)
+	timer.Font = Enum.Font.GothamBold
+	timer.TextXAlignment = Enum.TextXAlignment.Right
+	timer.Parent = frame
+	timerLabel = timer
+
+	local hint = makeLabel("Hint", UDim2.fromScale(0.94, 0.06), UDim2.fromScale(0.03, 0.11), 18)
+	hint.TextXAlignment = Enum.TextXAlignment.Left
+	hint.TextColor3 = TEXT_DIM
+	hint.Text = "Pick the Relics you think they hold. You are not told why a pick misses."
+	hint.Parent = frame
+
+	local picks = makeLabel("Picks", UDim2.fromScale(0.4, 0.05), UDim2.fromScale(0.03, 0.18), 20)
+	picks.TextXAlignment = Enum.TextXAlignment.Left
+	picks.Parent = frame
+	picksLabel = picks
+
+	local cells = Instance.new("Frame")
+	cells.Name = "Slots"
+	cells.BackgroundTransparency = 1
+	cells.Position = UDim2.fromScale(0.03, 0.25)
+	cells.Size = UDim2.fromScale(0.94, 0.6)
+	local layout = Instance.new("UIGridLayout")
+	layout.CellSize = UDim2.fromScale(0.235, 0.3)
+	layout.CellPadding = UDim2.fromScale(0.02, 0.04)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = cells
+	cells.Parent = frame
+	grid = cells
+
+	local done = Instance.new("TextButton")
+	done.Name = "Done"
+	done.AnchorPoint = Vector2.new(0.5, 1)
+	done.Position = UDim2.fromScale(0.5, 0.97)
+	done.Size = UDim2.fromScale(0.2, 0.08)
+	done.BackgroundColor3 = BUTTON_COLOR
+	done.TextColor3 = TEXT_LIGHT
+	done.TextScaled = true
+	done.Font = Enum.Font.GothamBold
+	done.Text = "Done"
+	addCorner(done, 8)
+	limitText(done, 10, 22)
+	-- Hides the screen here only; the server ends the claim on its own timer.
+	done.Activated:Connect(ClaimUI.hide)
+	done.Parent = frame
+
+	frame.Parent = gui
+	panel = frame
+	gui.Parent = playerGui
+end
+
+function ClaimUI.show(name: string, claim: BlindClaim.Claim, secondsLeft: number)
+	local frame = panel
+	if frame == nil then
+		return
+	end
+	victimName = name
+	currentClaim = claim
+	deadline = os.clock() + math.max(0, secondsLeft)
+	frame.Visible = true
+	render()
+	startTicking()
+end
+
+function ClaimUI.hide()
+	currentClaim = nil
+	local frame = panel
+	if frame ~= nil then
+		frame.Visible = false
+	end
+end
+
+function ClaimUI.isOpen(): boolean
+	local frame = panel
+	return frame ~= nil and frame.Visible
+end
+
+return ClaimUI
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="39">
+          <Properties>
+            <string name="Name">CombatController</string>
+            <string name="Source"><![CDATA[--!strict
+-- Strike input and the hit flash. The client only asks to Strike; the server decides the rest.
+local ContextActionService = game:GetService("ContextActionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Combat = require(Shared:WaitForChild("Rules"):WaitForChild("Combat"))
+
+local FLASH_SECONDS = 0.15
+
+local CombatController = {}
+
+function CombatController.start(strike: () -> (), isBlocked: () -> boolean)
+	local lastStrike = -math.huge
+	ContextActionService:BindAction("Strike", function(_name, state, _input)
+		if state == Enum.UserInputState.Begin and not isBlocked() then
+			local now = os.clock()
+			if now - lastStrike >= Combat.STRIKE_COOLDOWN then
+				lastStrike = now
+				strike()
+			end
+		end
+		-- Pass, so clicks still reach the camera and other controls.
+		return Enum.ContextActionResult.Pass
+	end, true, Enum.UserInputType.MouseButton1, Enum.KeyCode.F)
+	ContextActionService:SetTitle("Strike", "Strike")
+end
+
+-- A brief white flash on a character that was hit.
+function CombatController.flash(character: Model)
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "HitFlash"
+	highlight.FillColor = Color3.new(1, 1, 1)
+	highlight.FillTransparency = 0.3
+	highlight.OutlineColor = Color3.new(1, 1, 1)
+	highlight.OutlineTransparency = 0
+	highlight.Adornee = character
+	highlight.Parent = character
+	task.delay(FLASH_SECONDS, function()
+		highlight:Destroy()
+	end)
+end
+
+return CombatController
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="40">
           <Properties>
             <string name="Name">LedgerUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -3383,13 +5391,16 @@ local TEXT_DIM = Color3.fromRGB(130, 130, 135)
 local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local LOCKED_COLOR = Color3.fromRGB(55, 55, 60)
 local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
+local VAULT_GOLD = Color3.fromRGB(255, 200, 40)
 
 local panel: Frame? = nil
 local slotGrid: ScrollingFrame? = nil
 local freeList: ScrollingFrame? = nil
 local progressLabel: TextLabel? = nil
 local freeLabel: TextLabel? = nil
+local vaultLabel: TextLabel? = nil
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
+local vaultHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 
 local function tierColor(tier: Types.Tier): Color3
 	local color = Tiers.info[tier].color
@@ -3484,6 +5495,32 @@ local function makeSlot(slot: LedgerView.SlotView, order: number): TextButton
 			actionHandler({ kind = "unclaim", cardId = slot.cardId })
 		end)
 	end
+	if slot.vaulted then
+		local stroke = Instance.new("UIStroke")
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Color = VAULT_GOLD
+		stroke.Thickness = 3
+		stroke.Parent = button
+	end
+	if slot.vaulted or slot.canVault then
+		-- A button on top of the slot takes the click, so the slot's unclaim does not fire.
+		local vaultButton = makeButton(
+			"Vault",
+			if slot.vaulted then "Vaulted" else "Vault",
+			UDim2.new(0.55, 0, 0, 18)
+		)
+		vaultButton.AnchorPoint = Vector2.new(1, 1)
+		vaultButton.Position = UDim2.fromScale(1, 1)
+		vaultButton.ZIndex = button.ZIndex + 1
+		if slot.vaulted then
+			vaultButton.BackgroundColor3 = VAULT_GOLD
+			vaultButton.TextColor3 = Color3.fromRGB(20, 18, 24)
+		end
+		vaultButton.Activated:Connect(function()
+			vaultHandler({ kind = if slot.vaulted then "remove" else "add", cardId = slot.cardId })
+		end)
+		vaultButton.Parent = button
+	end
 	return button
 end
 
@@ -3522,8 +5559,13 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	return row
 end
 
-function LedgerUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: any }) -> ())
+function LedgerUI.mount(
+	playerGui: PlayerGui,
+	onAction: (request: { [string]: any }) -> (),
+	onVault: (request: { [string]: any }) -> ()
+)
 	actionHandler = onAction
+	vaultHandler = onVault
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "LedgerGui"
@@ -3562,16 +5604,21 @@ function LedgerUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: an
 	closeButton.Parent = book
 
 	local progress =
-		makeLabel("Progress", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.02, 0.11), 20)
+		makeLabel("Progress", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.02, 0.11), 20)
 	progress.TextXAlignment = Enum.TextXAlignment.Left
 	progress.Parent = book
 	progressLabel = progress
 
-	local free =
-		makeLabel("FreeCount", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.52, 0.11), 20)
+	local free = makeLabel("FreeCount", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.35, 0.11), 20)
 	free.TextXAlignment = Enum.TextXAlignment.Left
 	free.Parent = book
 	freeLabel = free
+
+	local vault =
+		makeLabel("VaultCount", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.68, 0.11), 20)
+	vault.TextXAlignment = Enum.TextXAlignment.Left
+	vault.Parent = book
+	vaultLabel = vault
 
 	local grid = Instance.new("ScrollingFrame")
 	grid.Name = "Slots"
@@ -3633,6 +5680,9 @@ function LedgerUI.render(view: View)
 	if freeLabel ~= nil then
 		freeLabel.Text = "Free slots: " .. view.freeText
 	end
+	if vaultLabel ~= nil then
+		vaultLabel.Text = "Vault: " .. view.vaultText
+	end
 
 	clearRows(grid)
 	for index, slot in view.slots do
@@ -3642,6 +5692,11 @@ function LedgerUI.render(view: View)
 	for _, card in view.free do
 		makeFreeRow(card).Parent = list
 	end
+end
+
+function LedgerUI.isOpen(): boolean
+	local book = panel
+	return book ~= nil and book.Visible
 end
 
 function LedgerUI.toggle()
@@ -3655,7 +5710,7 @@ return LedgerUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="28">
+        <Item class="LocalScript" referent="41">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--!strict
@@ -3665,30 +5720,112 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Rules = Shared:WaitForChild("Rules")
 local Net = require(Shared:WaitForChild("Net"))
 local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages"))
-local LedgerView = require(Shared:WaitForChild("Rules"):WaitForChild("LedgerView"))
+local LedgerView = require(Rules:WaitForChild("LedgerView"))
+local Protection = require(Rules:WaitForChild("Protection"))
+local StatusView = require(Rules:WaitForChild("StatusView"))
+local ClaimUI = require(script.Parent.ClaimUI)
+local CombatController = require(script.Parent.CombatController)
 local LedgerUI = require(script.Parent.LedgerUI)
+local StatusHUD = require(script.Parent.StatusHUD)
 local Toast = require(script.Parent.Toast)
+
+local HUD_REFRESH_SECONDS = 0.5
 
 local remotes = ReplicatedStorage:WaitForChild(Net.FOLDER)
 local ledgerSync = remotes:WaitForChild(Net.LedgerSync) :: RemoteEvent
 local ledgerAction = remotes:WaitForChild(Net.LedgerAction) :: RemoteEvent
 local ledgerRequest = remotes:WaitForChild(Net.LedgerRequest) :: RemoteEvent
 local notify = remotes:WaitForChild(Net.Notify) :: RemoteEvent
+local vaultAction = remotes:WaitForChild(Net.VaultAction) :: RemoteEvent
+local statusSync = remotes:WaitForChild(Net.StatusSync) :: RemoteEvent
+local shieldDrop = remotes:WaitForChild(Net.ShieldDrop) :: RemoteEvent
+local strikeRemote = remotes:WaitForChild(Net.Strike) :: RemoteEvent
+local hitFx = remotes:WaitForChild(Net.HitFx) :: RemoteEvent
+local claimUpdate = remotes:WaitForChild(Net.ClaimUpdate) :: RemoteEvent
+local claimPick = remotes:WaitForChild(Net.ClaimPick) :: RemoteEvent
 
-local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 LedgerUI.mount(playerGui, function(request)
 	ledgerAction:FireServer(request)
+end, function(request)
+	vaultAction:FireServer(request)
 end)
 Toast.mount(playerGui)
+StatusHUD.mount(playerGui, function()
+	shieldDrop:FireServer()
+end)
+ClaimUI.mount(playerGui, function(slot)
+	claimPick:FireServer(slot)
+end)
+CombatController.start(function()
+	strikeRemote:FireServer()
+end, function()
+	return LedgerUI.isOpen() or ClaimUI.isOpen()
+end)
 
-ledgerSync.OnClientEvent:Connect(function(ledger)
-	LedgerUI.render(LedgerView.build(ledger))
+ledgerSync.OnClientEvent:Connect(function(ledger, vault)
+	LedgerUI.render(LedgerView.build(ledger, vault))
 end)
 notify.OnClientEvent:Connect(function(code, args)
 	Toast.show(Messages.format(code, args))
+end)
+claimUpdate.OnClientEvent:Connect(function(payload)
+	if payload == nil then
+		ClaimUI.hide()
+	else
+		ClaimUI.show(payload.victimName, payload.claim, payload.secondsLeft)
+	end
+end)
+hitFx.OnClientEvent:Connect(function(victimUserId)
+	local victim = Players:GetPlayerByUserId(victimUserId)
+	local character = if victim ~= nil then victim.Character else nil
+	if character ~= nil then
+		CombatController.flash(character)
+	end
+end)
+
+-- The last status from the server and when it arrived (local clock). Timers count down here.
+local lastStatus: StatusView.Status? = nil
+local statusAt = 0
+statusSync.OnClientEvent:Connect(function(status)
+	lastStatus = status
+	statusAt = os.clock()
+end)
+
+local function localInSafeZone(): boolean
+	local character = localPlayer.Character
+	local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+	if root == nil or not root:IsA("BasePart") then
+		return false
+	end
+	local p = root.Position
+	return Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z })
+end
+
+local function refreshHud()
+	local status = lastStatus
+	local shown: StatusView.Status? = nil
+	if status ~= nil then
+		local elapsed = os.clock() - statusAt
+		shown = {
+			newShield = status.newShield,
+			respawnShieldSeconds = math.max(0, status.respawnShieldSeconds - elapsed),
+			markedSeconds = math.max(0, status.markedSeconds - elapsed),
+		}
+	end
+	StatusHUD.render(StatusView.build(shown, localInSafeZone()), shown ~= nil and shown.newShield)
+end
+
+task.spawn(function()
+	while true do
+		refreshHud()
+		task.wait(HUD_REFRESH_SECONDS)
+	end
 end)
 
 -- The first sync may have fired before this script connected; ask again.
@@ -3696,7 +5833,192 @@ ledgerRequest:FireServer()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="29">
+        <Item class="ModuleScript" referent="42">
+          <Properties>
+            <string name="Name">StatusHUD</string>
+            <string name="Source"><![CDATA[--!strict
+-- Top-left status lines (safe zone, shields, Marked) and the "Drop shield" button.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local StatusView = require(Shared:WaitForChild("Rules"):WaitForChild("StatusView"))
+
+local StatusHUD = {}
+
+local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
+local BACKGROUND = Color3.fromRGB(25, 22, 30)
+local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
+local KIND_COLORS: { [string]: Color3 } = {
+	safe = Color3.fromRGB(90, 200, 110),
+	shield = Color3.fromRGB(110, 170, 255),
+	marked = Color3.fromRGB(235, 70, 70),
+}
+
+local column: Frame? = nil
+local dropButton: TextButton? = nil
+local confirm: Frame? = nil
+-- Text of the lines on screen, so an unchanged render does nothing.
+local shownKey = ""
+
+local function addCorner(parent: Instance, radius: number)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = parent
+end
+
+local function limitText(parent: Instance, minSize: number, maxSize: number)
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MinTextSize = minSize
+	constraint.MaxTextSize = maxSize
+	constraint.Parent = parent
+end
+
+local function makeButton(name: string, text: string, size: UDim2): TextButton
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Size = size
+	button.BackgroundColor3 = BUTTON_COLOR
+	button.TextColor3 = TEXT_LIGHT
+	button.TextScaled = true
+	button.Font = Enum.Font.GothamBold
+	button.Text = text
+	addCorner(button, 8)
+	limitText(button, 10, 20)
+	return button
+end
+
+local function buildConfirm(gui: ScreenGui, onDropShield: () -> ()): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = "ConfirmDrop"
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.fromScale(0.5, 0.5)
+	frame.Size = UDim2.fromScale(0.4, 0.22)
+	frame.BackgroundColor3 = BACKGROUND
+	frame.Visible = false
+	addCorner(frame, 12)
+
+	local question = Instance.new("TextLabel")
+	question.Name = "Question"
+	question.BackgroundTransparency = 1
+	question.Position = UDim2.fromScale(0.05, 0.08)
+	question.Size = UDim2.fromScale(0.9, 0.5)
+	question.TextColor3 = TEXT_LIGHT
+	question.TextScaled = true
+	question.TextWrapped = true
+	question.Font = Enum.Font.GothamMedium
+	question.Text = "Other players will be able to attack you. Drop it?"
+	limitText(question, 10, 24)
+	question.Parent = frame
+
+	local yes = makeButton("Yes", "Yes", UDim2.fromScale(0.35, 0.25))
+	yes.Position = UDim2.fromScale(0.1, 0.65)
+	yes.Activated:Connect(function()
+		frame.Visible = false
+		onDropShield()
+	end)
+	yes.Parent = frame
+
+	local no = makeButton("No", "No", UDim2.fromScale(0.35, 0.25))
+	no.Position = UDim2.fromScale(0.55, 0.65)
+	no.Activated:Connect(function()
+		frame.Visible = false
+	end)
+	no.Parent = frame
+
+	frame.Parent = gui
+	return frame
+end
+
+function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "StatusGui"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 15
+
+	local list = Instance.new("Frame")
+	list.Name = "Lines"
+	list.BackgroundTransparency = 1
+	list.Position = UDim2.new(0, 12, 0, 12)
+	list.Size = UDim2.new(0, 230, 0, 160)
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 4)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = list
+	list.Parent = gui
+	column = list
+
+	local drop = makeButton("DropShield", "Drop shield", UDim2.new(0, 150, 0, 32))
+	drop.Position = UDim2.new(0, 12, 0, 176)
+	drop.Visible = false
+	drop.Parent = gui
+	dropButton = drop
+
+	local dialog = buildConfirm(gui, onDropShield)
+	confirm = dialog
+	drop.Activated:Connect(function()
+		dialog.Visible = true
+	end)
+
+	gui.Parent = playerGui
+end
+
+function StatusHUD.render(lines: { StatusView.Line }, showDropShield: boolean)
+	local drop = dropButton
+	if drop ~= nil then
+		drop.Visible = showDropShield
+	end
+	local dialog = confirm
+	if dialog ~= nil and not showDropShield then
+		dialog.Visible = false
+	end
+
+	local list = column
+	if list == nil then
+		return
+	end
+	local parts: { string } = {}
+	for _, line in lines do
+		table.insert(parts, line.kind .. ":" .. line.text)
+	end
+	local key = table.concat(parts, "|")
+	if key == shownKey then
+		return
+	end
+	shownKey = key
+
+	for _, child in list:GetChildren() do
+		if not child:IsA("UIComponent") then
+			child:Destroy()
+		end
+	end
+	for index, line in lines do
+		local label = Instance.new("TextLabel")
+		label.Name = "Line" .. index
+		label.LayoutOrder = index
+		label.Size = UDim2.new(1, 0, 0, 28)
+		label.BackgroundColor3 = BACKGROUND
+		label.BackgroundTransparency = 0.3
+		label.TextColor3 = KIND_COLORS[line.kind] or TEXT_LIGHT
+		label.TextScaled = true
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Font = Enum.Font.GothamBold
+		label.Text = line.text
+		addCorner(label, 6)
+		local padding = Instance.new("UIPadding")
+		padding.PaddingLeft = UDim.new(0, 8)
+		padding.PaddingTop = UDim.new(0, 4)
+		padding.PaddingBottom = UDim.new(0, 4)
+		padding.Parent = label
+		limitText(label, 10, 20)
+		label.Parent = list
+	end
+end
+
+return StatusHUD
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="43">
           <Properties>
             <string name="Name">Toast</string>
             <string name="Source"><![CDATA[--!strict
@@ -3771,7 +6093,7 @@ return Toast
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="30">
+  <Item class="Workspace" referent="44">
     <Properties>
       <string name="Name">Workspace</string>
       <float name="FallenPartsDestroyHeight">-60</float>

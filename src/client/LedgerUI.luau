@@ -16,13 +16,16 @@ local TEXT_DIM = Color3.fromRGB(130, 130, 135)
 local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
 local LOCKED_COLOR = Color3.fromRGB(55, 55, 60)
 local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
+local VAULT_GOLD = Color3.fromRGB(255, 200, 40)
 
 local panel: Frame? = nil
 local slotGrid: ScrollingFrame? = nil
 local freeList: ScrollingFrame? = nil
 local progressLabel: TextLabel? = nil
 local freeLabel: TextLabel? = nil
+local vaultLabel: TextLabel? = nil
 local actionHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
+local vaultHandler: (request: { [string]: any }) -> () = function(_request: { [string]: any }) end
 
 local function tierColor(tier: Types.Tier): Color3
 	local color = Tiers.info[tier].color
@@ -117,6 +120,32 @@ local function makeSlot(slot: LedgerView.SlotView, order: number): TextButton
 			actionHandler({ kind = "unclaim", cardId = slot.cardId })
 		end)
 	end
+	if slot.vaulted then
+		local stroke = Instance.new("UIStroke")
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Color = VAULT_GOLD
+		stroke.Thickness = 3
+		stroke.Parent = button
+	end
+	if slot.vaulted or slot.canVault then
+		-- A button on top of the slot takes the click, so the slot's unclaim does not fire.
+		local vaultButton = makeButton(
+			"Vault",
+			if slot.vaulted then "Vaulted" else "Vault",
+			UDim2.new(0.55, 0, 0, 18)
+		)
+		vaultButton.AnchorPoint = Vector2.new(1, 1)
+		vaultButton.Position = UDim2.fromScale(1, 1)
+		vaultButton.ZIndex = button.ZIndex + 1
+		if slot.vaulted then
+			vaultButton.BackgroundColor3 = VAULT_GOLD
+			vaultButton.TextColor3 = Color3.fromRGB(20, 18, 24)
+		end
+		vaultButton.Activated:Connect(function()
+			vaultHandler({ kind = if slot.vaulted then "remove" else "add", cardId = slot.cardId })
+		end)
+		vaultButton.Parent = button
+	end
 	return button
 end
 
@@ -155,8 +184,13 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 	return row
 end
 
-function LedgerUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: any }) -> ())
+function LedgerUI.mount(
+	playerGui: PlayerGui,
+	onAction: (request: { [string]: any }) -> (),
+	onVault: (request: { [string]: any }) -> ()
+)
 	actionHandler = onAction
+	vaultHandler = onVault
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "LedgerGui"
@@ -195,16 +229,21 @@ function LedgerUI.mount(playerGui: PlayerGui, onAction: (request: { [string]: an
 	closeButton.Parent = book
 
 	local progress =
-		makeLabel("Progress", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.02, 0.11), 20)
+		makeLabel("Progress", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.02, 0.11), 20)
 	progress.TextXAlignment = Enum.TextXAlignment.Left
 	progress.Parent = book
 	progressLabel = progress
 
-	local free =
-		makeLabel("FreeCount", UDim2.fromScale(0.46, 0.05), UDim2.fromScale(0.52, 0.11), 20)
+	local free = makeLabel("FreeCount", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.35, 0.11), 20)
 	free.TextXAlignment = Enum.TextXAlignment.Left
 	free.Parent = book
 	freeLabel = free
+
+	local vault =
+		makeLabel("VaultCount", UDim2.fromScale(0.3, 0.05), UDim2.fromScale(0.68, 0.11), 20)
+	vault.TextXAlignment = Enum.TextXAlignment.Left
+	vault.Parent = book
+	vaultLabel = vault
 
 	local grid = Instance.new("ScrollingFrame")
 	grid.Name = "Slots"
@@ -266,6 +305,9 @@ function LedgerUI.render(view: View)
 	if freeLabel ~= nil then
 		freeLabel.Text = "Free slots: " .. view.freeText
 	end
+	if vaultLabel ~= nil then
+		vaultLabel.Text = "Vault: " .. view.vaultText
+	end
 
 	clearRows(grid)
 	for index, slot in view.slots do
@@ -275,6 +317,11 @@ function LedgerUI.render(view: View)
 	for _, card in view.free do
 		makeFreeRow(card).Parent = list
 	end
+end
+
+function LedgerUI.isOpen(): boolean
+	local book = panel
+	return book ~= nil and book.Visible
 end
 
 function LedgerUI.toggle()

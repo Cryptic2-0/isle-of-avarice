@@ -5,19 +5,8 @@ the M1 play test.
 
 ## Before or during M2
 
-- Add a test that every message code the server can send has text in
-  `Messages.luau`.
-- `LedgerService`: ignore requests from a player who has already left, so a
-  rate-limit record cannot be recreated after they leave.
-- `LedgerService`: send the "Slow down." message at most once per second.
-- `LedgerService.set` does nothing, silently, when a player's data is not
-  loaded. Make it report that.
-- `SourceService` works out the cache refill time separately from
-  `Sources.tryCollect`. Return it from the rule so the two cannot drift.
-- `DataService`: a leaving player is sent a "loaded elsewhere" kick message.
-  Harmless, but skip it.
-- `DataService`: reject an infinite Coin value on load; check
-  `schemaVersion` when the saved-data format first changes.
+- `DataService`: check `schemaVersion` when the saved-data format first
+  changes.
 
 ## UI polish pass
 

@@ -5,6 +5,13 @@ export type Relic = { id: CardId, slot: number, name: string, tier: Tier, descri
 export type Ledger = { claimed: { [CardId]: boolean }, free: { CardId } }
 export type Vec3 = { x: number, y: number, z: number }
 export type Cache = { id: string, relicId: CardId, position: Vec3 }
-export type PlayerData = { schemaVersion: number, ledger: Ledger, coin: number }
+export type Vault = { [CardId]: boolean }
+export type PlayerData = {
+	schemaVersion: number,
+	ledger: Ledger,
+	coin: number,
+	vault: Vault,
+	shieldEnded: boolean,
+}
 
 return {}
