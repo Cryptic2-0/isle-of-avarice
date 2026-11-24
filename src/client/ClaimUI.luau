@@ -28,6 +28,7 @@ local picksLabel: TextLabel? = nil
 local timerLabel: TextLabel? = nil
 local grid: Frame? = nil
 local pickHandler: (slot: number) -> () = function(_slot: number) end
+local finishHandler: () -> () = function() end
 
 -- What is on screen. The deadline is on the local clock: the server's expiresAt is on the
 -- server's clock and is never compared with local time.
@@ -150,8 +151,9 @@ local function startTicking()
 	end)
 end
 
-function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
+function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> (), onFinish: () -> ())
 	pickHandler = onPick
+	finishHandler = onFinish
 
 	-- Above the Ledger book (10), the status HUD (15) and messages (20).
 	local gui = UiKit.screen("ClaimGui", 30)
@@ -215,8 +217,19 @@ function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
 	local done = UiKit.button("Done", "Done", UDim2.fromScale(0.2, 0.08), { min = 10, max = 22 })
 	done.AnchorPoint = Vector2.new(0.5, 1)
 	done.Position = UDim2.fromScale(0.5, 0.98)
-	-- Hides the screen here only; the server ends the claim on its own timer.
-	UiKit.onPress(done, ClaimUI.hide)
+	-- Asks the server to end the claim now; the screen closes when the server says it ended
+	-- (ClaimUpdate nil), so it never hides while the victim's Ledger is still locked. Once the
+	-- claim has run out here (time or picks), Done just closes the screen.
+	local doneGuard = UiKit.guard(function(inert: boolean)
+		UiKit.setEnabled(done, not inert)
+	end)
+	UiKit.onPress(done, function()
+		if currentClaim == nil or not shownOpen then
+			ClaimUI.hide()
+			return
+		end
+		UiKit.send(doneGuard, finishHandler)
+	end)
 	done.Parent = frame
 
 	frame.Parent = gui

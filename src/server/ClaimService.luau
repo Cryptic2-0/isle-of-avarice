@@ -170,6 +170,12 @@ local function handlePick(player: Player, slot: any)
 	if session == nil or session.closed then
 		return
 	end
+	-- Done on the claim screen: the claim ends now and the picks left go unspent, so the
+	-- victim's Ledger is not kept locked behind a closed screen.
+	if slot == BlindClaim.FINISH then
+		close(session)
+		return
+	end
 
 	-- Read both sides and check both are loaded before writing either.
 	-- No yielding call from here to the two writes.

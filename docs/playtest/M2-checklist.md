@@ -63,7 +63,7 @@ Studio's menus change between versions. If you cannot find these options, look f
     - What should happen: the first gives "You took …!" with the Relic's name, the slot shows "Taken!", and the Relic appears in A's free slots. The second gives "Nothing there." and the slot shows "Nothing". "Picks left" goes down by one each time.
 
 11. **The claim ends**
-    - What to do: use all 5 picks, or wait for the countdown to reach 0.
+    - What to do: use all 5 picks, or wait for the countdown to reach 0, or press "Done" with picks left (that ends the claim at once; the picks left are not used).
     - What should happen: A's claim screen closes and A sees "The claim is over." B sees "Player1 took from you: …" with the names of the Relics taken, or "Player1 took nothing from you." B can now discard cards again.
 
 12. **Respawn shield**
