@@ -38,11 +38,11 @@ If a step fails, see the last line of the checklist.
 You do this once, as the owner of the game. Until you publish, progress resets every time you press Play.
 
 1. Open the game in Studio. Choose File, then Publish to Roblox. Keep it private for now.
-2. Choose Home, then Game Settings, then Security, and turn on "Enable Studio Access to API Services". Click Save. (Live servers save without this; it lets saving and the board work when you press Play in Studio.)
+2. Live servers save without any setting. Only if you want to check saving from Studio: choose Home, then Game Settings, then Security, and turn on "Enable Studio Access to API Services", then Save. While it is on, pressing Play in Studio reads and writes the live game's real saves, your own and those of Studio's test players (-1, -2 and so on), and a live server holding your save at the same time kicks one of you. So turn it on only to check saving, close Studio tests before joining the live game, and turn it off again afterwards.
 3. Create the badge on the Creator Dashboard (create.roblox.com): open your experience, find Badges (under Associated Items or Engagement), choose Create a Badge, name it "Crowned", describe it as "Claimed every Relic of the Hoarder's Ledger.", and upload a square image. Roblox may ask for Robux beyond a small free allowance of badges; read the page before you confirm. Copy the badge's number (its id).
-4. In Studio, open ServerScriptService, then Server, then LaunchConfig, and replace the 0 after `CROWNED_BADGE_ID =` with the id. Publish again. Tell the developer the id so `src/server/LaunchConfig.luau` keeps it in the next build.
+4. The id belongs in `src/server/LaunchConfig.luau`: replace the 0 after `CROWNED_BADGE_ID =` with it (or give it to the developer), rebuild the dist file (see "For developers"), open that file in Studio and publish it. Setting the id only in Studio (ServerScriptService, then Server, then LaunchConfig) works, but the next dist file published over the place resets it to 0 and the badge stops being awarded.
 5. Before making the game public, fill in the experience questionnaire (content maturity) and the description in Game Settings, then set the game to Public.
-6. Check: in a live server, the Tally Stone in Tallyport should say "All time, every server" within a few minutes. "This server only" means the data store cannot be reached (step 2, or a Roblox outage).
+6. Check: in a live server, the Tally Stone in Tallyport should say "All time, every server" within a few minutes. "This server only" means the data store cannot be reached (usually a Roblox outage; in Studio, step 2 is off).
 
 ## For developers
 
@@ -64,4 +64,4 @@ The playable file in `dist/IsleOfAvarice.rbxlx` is a copy of `build/IsleOfAvaric
 
 ## Credits
 
-Saving uses ProfileStore by loleris (Apache-2.0 licence). It is included under `src/server/Vendor/`.
+Saving uses ProfileStore by loleris (Apache-2.0 licence). It is included under `src/server/Vendor/`. That copy is modified: a profile the game holds open for a blind claim is not ended when another server asks for it until the hold ends (each change is marked "Isle of Avarice local change").

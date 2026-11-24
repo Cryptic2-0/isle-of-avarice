@@ -480,7 +480,13 @@ local function handleStrike(player: Player)
 	-- Only what the attacker can see is a candidate, so a target behind a corner never
 	-- swallows the swing, and an unseen taunter forces nothing.
 	local p = attacker.position
-	local others = Sight.filter(Vector3.new(p.x, p.y, p.z), Fighters.list(player.UserId))
+	local inReach: { Combat.Fighter } = {}
+	for _, other in Fighters.list(player.UserId) do
+		if Combat.inStrikeReach(attacker, other) then
+			table.insert(inReach, other)
+		end
+	end
+	local others = Sight.filter(Vector3.new(p.x, p.y, p.z), inReach, Combat.STRIKE_RANGE)
 	local taunter = Effects.tauntedBy(StatusService.get(player.UserId), now)
 	local targetId = Combat.pickTarget(attacker, others, nil, taunter)
 	if targetId == nil then

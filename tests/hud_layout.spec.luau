@@ -169,6 +169,33 @@ T.test("every window kind fits a 640 x 360 phone under a 58-pixel top bar", func
 	end
 end)
 
+T.test("a window's minimum is capped to the area on a 568 x 320 phone under its top bar", function()
+	-- 58-pixel top bar: the area is 568 x 262; a window keeps a 12-pixel margin all round.
+	T.eq(HudLayout.windowMin("big", 568, 262), { width = 544, height = 238 })
+	T.eq(HudLayout.windowMin("small", 568, 262), { width = 300, height = 238 })
+	T.eq(HudLayout.windowMin("dialog", 568, 262), { width = 300, height = 140 })
+	-- A large screen keeps each kind's own minimum.
+	for kind, size in HudLayout.WINDOW_MIN do
+		T.eq(HudLayout.windowMin(kind, 1280, 684), size, kind)
+	end
+end)
+
+T.test("a capped window minimum always fits the area", function()
+	for _, size in SCREENS do
+		for _, inset in INSETS do
+			local area = size[2] - inset
+			for kind in HudLayout.WINDOW_MIN do
+				local least = HudLayout.windowMin(kind, size[1], area)
+				local label = `{kind} on {size[1]}x{size[2]} inset {inset}`
+				T.truthy(least.width <= size[1] - 2 * HudLayout.MARGIN, label .. ": width")
+				T.truthy(least.height <= area - 2 * HudLayout.MARGIN, label .. ": height")
+			end
+		end
+	end
+	-- A screen smaller than two margins gives 0, never a negative size.
+	T.eq(HudLayout.windowMin("big", 10, 0), { width = 0, height = 0 })
+end)
+
 T.test("odd screen sizes do not error", function()
 	for _, size in { { 0, 0 }, { 1, 1 }, { 300, 200 } } do
 		local layout = HudLayout.compute(size[1], size[2], 0, true)

@@ -11,6 +11,7 @@ local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
 local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
 local CreatureBrain = require(ReplicatedStorage.Shared.Rules.CreatureBrain)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
+local Geography = require(ReplicatedStorage.Shared.Rules.Geography)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Party = require(ReplicatedStorage.Shared.Rules.Party)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
@@ -219,10 +220,13 @@ local function applyHits(
 		if destination ~= nil then
 			local humanoid, root = Fighters.body(id)
 			if humanoid ~= nil and root ~= nil then
-				-- No pull or knockback ever lands a creature inside Tallyport.
+				-- No pull or knockback ever lands a creature inside Tallyport or off the land.
 				local entry = Fighters.get(id)
 				if entry ~= nil and entry.kind == "creature" then
 					destination = CreatureBrain.outsideTown(destination)
+					local from = root.Position
+					local x, z = Geography.landPath(from.X, from.Z, destination.x, destination.z)
+					destination = { x = x, y = destination.y, z = z }
 				end
 				Sight.move(humanoid, root, destination)
 			end
@@ -338,10 +342,18 @@ end
 
 -- The fighters a plan may pick from. A single-target melee or shot ability only sees what the
 -- caster has a clear line to, so a target behind a corner never swallows the hit (and an
--- unseen taunter forces nothing). Area abilities keep everyone: applyHits skips unseen hits.
+-- unseen taunter forces nothing). Anyone out of the ability's reach is dropped before any ray.
+-- Area abilities keep everyone: applyHits skips unseen hits.
 local function candidates(ability: Ability, caster: Fighter, others: { Fighter }): { Fighter }
-	if ability.kind == "melee" or ability.kind == "shot" then
-		return Sight.filter(vector(caster.position), others)
+	if ability.kind == "melee" then
+		return Sight.filter(vector(caster.position), others, ability.range or Combat.STRIKE_RANGE)
+	elseif ability.kind == "shot" then
+		-- A shot's reach is its range along the ray, and the ray catches a body this far to the side.
+		return Sight.filter(
+			vector(caster.position),
+			others,
+			(ability.range or 0) + Targeting.SHOT_RADIUS
+		)
 	end
 	return others
 end

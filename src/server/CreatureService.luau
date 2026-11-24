@@ -422,6 +422,21 @@ local function remove(creature: Creature, respawn: boolean)
 	end
 end
 
+-- Gone by drowning or falling out of the world, with no reward: a den creature is back at its den
+-- at once, not after its full timer. A champion is simply gone.
+local function removeLost(creature: Creature)
+	if creature.gone then
+		return
+	end
+	remove(creature, false)
+	local slotIndex = World.creatureIndex(creature.id)
+	if creature.owner == nil and slotIndex ~= nil then
+		-- A pending timer from an earlier defeat must not spawn a second one.
+		generations[creature.id] = (generations[creature.id] or 0) + 1
+		spawnSlot(slotIndex)
+	end
+end
+
 local function playerOf(id: number): Player?
 	local entry = Fighters.get(id)
 	return if entry ~= nil then entry.player else nil
@@ -550,7 +565,7 @@ local function spawn(id: number, kind: CreatureKind, den: Vec3, at: Vec3, owner:
 	-- Removed by anything else (fell out of the world): no rewards; a den creature returns.
 	model.AncestryChanged:Connect(function(_, parent)
 		if parent == nil and not creature.gone then
-			remove(creature, creature.owner == nil)
+			removeLost(creature)
 		end
 	end)
 end
@@ -661,6 +676,10 @@ local function lunge(creature: Creature, targetId: number)
 		y = self.position.y,
 		z = self.position.z + dz * dash.distance,
 	})
+	-- A dash never carries a creature off the land.
+	local landX, landZ =
+		Geography.landPath(self.position.x, self.position.z, destination.x, destination.z)
+	destination = { x = landX, y = destination.y, z = landZ }
 	local travelled = Sight.move(creature.humanoid, creature.root, destination)
 	-- Judged from where the dash began, facing the way it went.
 	local dasher: Combat.Fighter =
@@ -701,7 +720,7 @@ local function think(creature: Creature, players: { Sighted }, now: number)
 	local id, kind, humanoid, root = creature.id, creature.kind, creature.humanoid, creature.root
 	local here = root.Position
 	if here.Y < Geography.DROWN_Y then
-		remove(creature, creature.owner == nil)
+		removeLost(creature)
 		return
 	end
 
@@ -745,6 +764,13 @@ local function think(creature: Creature, players: { Sighted }, now: number)
 		StatusService.update(id, function(current, at)
 			return Effects.applyImmune(current, math.huge, at)
 		end)
+	end
+	if decision.snapHome then
+		-- It could not walk home in time (blocked by water or a wall): put it at its den.
+		local ground = World.groundY + humanoid.HipHeight + root.Size.Y / 2
+		root.CFrame = CFrame.new(creature.den.x, ground, creature.den.z) * root.CFrame.Rotation
+		root.AssemblyLinearVelocity = Vector3.zero
+		here = root.Position
 	end
 	if decision.home then
 		humanoid.Health = humanoid.MaxHealth

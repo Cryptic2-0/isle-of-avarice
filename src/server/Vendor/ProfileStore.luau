@@ -791,10 +791,18 @@ local function SaveProfileAsync(profile, is_ending_session, is_overwriting, last
 			-- If another server is trying to start a session for this profile - end the session:
 
 			if force_load_pending == true and session_owns_profile == true then
-				if is_active == true then
-					SaveProfileAsync(profile, true, false, "External")
+				-- Isle of Avarice local change: a profile the game holds open (profile.HeldOpen, set
+				-- by DataService while a blind claim holds it) is not ended here; the request is
+				-- remembered and the game ends the session when its hold is released. The waiting
+				-- server keeps retrying meanwhile. Unheld profiles behave as upstream.
+				if profile.HeldOpen == true then
+					profile.EndRequestedWhileHeld = true
+				else
+					if is_active == true then
+						SaveProfileAsync(profile, true, false, "External")
+					end
+					break
 				end
-				break
 			end
 
 			-- Clearing processed update list / Detecting new updates:
@@ -1467,7 +1475,11 @@ function ProfileStore:StartSessionAsync(profile_key, params)
 									if os.clock() - last_roblox_message > 6 then
 										last_roblox_message = os.clock()
 										if profile:IsActive() == true then
-											if message.Data.EndSession == true then
+											-- Isle of Avarice local change: a held profile (see
+											-- HeldOpen above) is ended when its hold is released.
+											if message.Data.EndSession == true and profile.HeldOpen == true then
+												profile.EndRequestedWhileHeld = true
+											elseif message.Data.EndSession == true then
 												SaveProfileAsync(profile, true, false, "External")
 											else
 												profile:Save()

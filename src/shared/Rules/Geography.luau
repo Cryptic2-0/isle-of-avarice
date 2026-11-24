@@ -12,6 +12,8 @@ Geography.GRID = 34
 Geography.TOWN_RADIUS = 40
 Geography.FIELDS_RADIUS = 260
 Geography.DROWN_Y = -6
+-- Spacing of the points landPath checks along a move.
+Geography.LAND_STEP = 2
 Geography.ROCK = { x = 0, z = 1240, radius = 80 }
 
 local CELL = Geography.CELL
@@ -134,6 +136,32 @@ function Geography.isLand(x: number, z: number): boolean
 		return false
 	end
 	return Geography.cellIsLand(Geography.cellOf(x, z))
+end
+
+-- Where a move from (fx, fz) towards (tx, tz) ends if it may not leave the land: the target when
+-- every point on the way is land, else the last land point before the first water. A start that
+-- is not land, or a non-finite end, does not move.
+function Geography.landPath(fx: number, fz: number, tx: number, tz: number): (number, number)
+	if not (isFinite(tx) and isFinite(tz) and Geography.isLand(fx, fz)) then
+		return fx, fz
+	end
+	local dx, dz = tx - fx, tz - fz
+	local distance = math.sqrt(dx * dx + dz * dz)
+	local lastX, lastZ = fx, fz
+	local k = 1
+	while k * Geography.LAND_STEP < distance do
+		local px = fx + dx * (k * Geography.LAND_STEP / distance)
+		local pz = fz + dz * (k * Geography.LAND_STEP / distance)
+		if not Geography.isLand(px, pz) then
+			return lastX, lastZ
+		end
+		lastX, lastZ = px, pz
+		k += 1
+	end
+	if Geography.isLand(tx, tz) then
+		return tx, tz
+	end
+	return lastX, lastZ
 end
 
 -- Every land cell exactly once, as horizontal runs of one region: row z = 40j, from x1 to x2.

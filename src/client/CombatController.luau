@@ -7,6 +7,9 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Combat = require(Shared:WaitForChild("Rules"):WaitForChild("Combat"))
 
 local FLASH_SECONDS = 0.15
+-- Swings are let through a little slower than the server's cooldown, so network jitter does not
+-- bring two swings closer than the cooldown on arrival, where the server drops the second.
+local STRIKE_SLACK_SECONDS = 0.05
 
 local CombatController = {}
 
@@ -19,7 +22,7 @@ function CombatController.start(
 	ContextActionService:BindAction("Strike", function(_name, state, _input)
 		if state == Enum.UserInputState.Begin and not isBlocked() then
 			local now = os.clock()
-			if now - lastStrike >= Combat.STRIKE_COOLDOWN then
+			if now - lastStrike >= Combat.STRIKE_COOLDOWN + STRIKE_SLACK_SECONDS then
 				lastStrike = now
 				strike()
 			end

@@ -3,18 +3,21 @@
 --   Sight.rayParams(): RaycastParams
 --       Rays pass through every player's character, workspace.Effects, workspace.Creatures
 --       and anything a character could walk through (non-colliding parts, water).
---   Sight.obstruction(from, to, target?): Vector3?
+--   Sight.obstruction(from, to, target?, params?): Vector3?
 --       Where the straight line from `from` to `to` is first blocked, or nil when clear.
 --       Pass the target's model (Fighters.model): a first hit on it or one of its
 --       descendants is not a block. A NaN or infinite line counts as blocked.
---   Sight.inSight(from, to, target?): boolean
+--       Pass `params` (Sight.rayParams()) to reuse one set across several rays.
+--   Sight.inSight(from, to, target?, params?): boolean
 --       True when nothing solid stands between the two points.
 --   Sight.move(humanoid, root, target): number
 --       Moves a character or creature towards a point (dash, pull, knockback, lunge),
 --       stopping short of walls. Returns the level distance travelled.
---   Sight.filter(from, fighters): { Fighter }
+--   Sight.filter(from, fighters, reach?): { Fighter }
 --       The fighters the point `from` has a clear line to, in order. Used before choosing
---       a nearest target, so one behind a corner never takes the hit.
+--       a nearest target, so one behind a corner never takes the hit. With `reach`, a fighter
+--       further than that (level) is dropped before any ray, and one set of ray parameters
+--       serves every ray.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -53,13 +56,18 @@ function Sight.rayParams(): RaycastParams
 	return params
 end
 
-function Sight.obstruction(from: Vector3, to: Vector3, target: Instance?): Vector3?
+function Sight.obstruction(
+	from: Vector3,
+	to: Vector3,
+	target: Instance?,
+	params: RaycastParams?
+): Vector3?
 	local delta = to - from
 	-- Written so a NaN or infinite line counts as blocked.
 	if not (delta.Magnitude < math.huge) then
 		return from
 	end
-	local result = workspace:Raycast(from, delta, Sight.rayParams())
+	local result = workspace:Raycast(from, delta, params or Sight.rayParams())
 	if result == nil then
 		return nil
 	end
@@ -69,15 +77,31 @@ function Sight.obstruction(from: Vector3, to: Vector3, target: Instance?): Vecto
 	return result.Position
 end
 
-function Sight.inSight(from: Vector3, to: Vector3, target: Instance?): boolean
-	return Sight.obstruction(from, to, target) == nil
+function Sight.inSight(
+	from: Vector3,
+	to: Vector3,
+	target: Instance?,
+	params: RaycastParams?
+): boolean
+	return Sight.obstruction(from, to, target, params) == nil
 end
 
-function Sight.filter(from: Vector3, fighters: { Fighter }): { Fighter }
+function Sight.filter(from: Vector3, fighters: { Fighter }, reach: number?): { Fighter }
 	local kept: { Fighter } = {}
+	local params: RaycastParams? = nil
 	for _, fighter in fighters do
 		local p = fighter.position
-		if Sight.inSight(from, Vector3.new(p.x, p.y, p.z), Fighters.model(fighter.id)) then
+		if reach ~= nil then
+			local dx, dz = p.x - from.X, p.z - from.Z
+			-- Written so a NaN position is dropped.
+			if not (math.sqrt(dx * dx + dz * dz) <= reach) then
+				continue
+			end
+		end
+		if params == nil then
+			params = Sight.rayParams()
+		end
+		if Sight.inSight(from, Vector3.new(p.x, p.y, p.z), Fighters.model(fighter.id), params) then
 			table.insert(kept, fighter)
 		end
 	end

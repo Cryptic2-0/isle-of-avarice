@@ -100,8 +100,9 @@ hands only two ways: **trade**, or **defeating the holder**.
 A Vaulted Relic can never be taken, whether claimed or spare, however
 many copies the player holds. A player can Vault only a Relic they hold,
 and it leaves the Vault when they no longer hold any copy. The Vault can
-be changed only in a safe zone. Crown-tier Relics cannot be Vaulted, so
-the rarest cards always stay in play.
+be changed only in a safe zone, and never while Marked or within 30 seconds
+of dealing or taking player damage (the rule trading and selling use).
+Crown-tier Relics cannot be Vaulted, so the rarest cards always stay in play.
 
 **When one player defeats another outside a safe zone,** the killer makes
 a **blind claim**:
@@ -597,7 +598,7 @@ claim, a Renounce or a holder leaving can always be earned anew.
   300 seconds. The route crosses the Sluices at their bridges and ends across
   the tide causeway, so the tide must be timed. The Crown Warden stands in
   Tallyport. Passage and Homecoming are refused during a trial (3.13).
-- **The Throne** (R050) is a twelve-ledge climb on the dry east bank of the
+- **The Throne** (R050) is a twelve-ledge climb on the dry west bank of the
   Drowned Fen with the Crown cache on top. Opening it takes a 10-second hold,
   checked by the server, while rivals can knock the holder off or defeat them.
 
@@ -807,6 +808,9 @@ with a smallest size that fits a 640 by 360 phone under a 58-pixel top bar:
 | Big | 600 by 280 | the Ledger book, the claim screen, the Edict Hall, the trade window, the Paths panel, the Calling picker, the Summons picker |
 | Small | 300 by 240 | the trial offer, the Renounce window, the Passage picker, the Edict result |
 | Dialog | 300 by 140 | the "Drop shield?" and "Change your Calling?" questions |
+
+On a smaller screen (such as 568 by 320) the smallest size is capped to the screen
+below the top bar, less 12 pixels on each side, so no window runs off an edge.
 
 A window's Close button is at least 40 by 32. The Calling picker's cards are
 220 pixels tall, so a whole card fits a phone.

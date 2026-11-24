@@ -22,6 +22,53 @@ function Combat.canStrike(lastStrikeAt: number?, now: number): boolean
 	return lastStrikeAt == nil or now - lastStrikeAt >= Combat.STRIKE_COOLDOWN
 end
 
+-- Normalised horizontal look, or nil for a zero-length or non-finite one.
+local function unitLook(attacker: Fighter): (number?, number?)
+	local lookLength =
+		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
+	if not (lookLength > 0 and lookLength < math.huge) then
+		return nil, nil
+	end
+	return attacker.look.x / lookLength, attacker.look.z / lookLength
+end
+
+-- The level distance to `other` when it is in reach, height and arc of the attacker's swing, else
+-- nil. Written so NaN fails closed.
+local function strikeDistance(
+	attacker: Fighter,
+	other: Fighter,
+	reach: number,
+	lookX: number,
+	lookZ: number
+): number?
+	if other.id == attacker.id then
+		return nil
+	end
+	if not (math.abs(other.position.y - attacker.position.y) <= Combat.STRIKE_MAX_HEIGHT) then
+		return nil
+	end
+	local dx = other.position.x - attacker.position.x
+	local dz = other.position.z - attacker.position.z
+	local distance = math.sqrt(dx * dx + dz * dz)
+	if not (distance <= reach) then
+		return nil
+	end
+	-- Standing on the attacker counts as in the arc.
+	if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
+		return nil
+	end
+	return distance
+end
+
+-- Whether pickTarget could choose `other`: used to drop the rest before any line-of-sight ray.
+function Combat.inStrikeReach(attacker: Fighter, other: Fighter, range: number?): boolean
+	local lookX, lookZ = unitLook(attacker)
+	if lookX == nil or lookZ == nil then
+		return false
+	end
+	return strikeDistance(attacker, other, range or Combat.STRIKE_RANGE, lookX, lookZ) ~= nil
+end
+
 -- Distance and direction ignore the y axis. Returns the id of the nearest fighter in reach and arc.
 -- range defaults to STRIKE_RANGE. A taunter that passes every check wins over a nearer fighter.
 function Combat.pickTarget(
@@ -30,32 +77,17 @@ function Combat.pickTarget(
 	range: number?,
 	taunter: number?
 ): number?
-	local lookLength =
-		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
-	if not (lookLength > 0 and lookLength < math.huge) then
+	local lookX, lookZ = unitLook(attacker)
+	if lookX == nil or lookZ == nil then
 		return nil
 	end
-	local lookX = attacker.look.x / lookLength
-	local lookZ = attacker.look.z / lookLength
 
 	local reach = range or Combat.STRIKE_RANGE
 	local bestId: number? = nil
 	local bestDistance = math.huge
 	for _, other in others do
-		if other.id == attacker.id then
-			continue
-		end
-		if not (math.abs(other.position.y - attacker.position.y) <= Combat.STRIKE_MAX_HEIGHT) then
-			continue
-		end
-		local dx = other.position.x - attacker.position.x
-		local dz = other.position.z - attacker.position.z
-		local distance = math.sqrt(dx * dx + dz * dz)
-		if not (distance <= reach) then
-			continue
-		end
-		-- Standing on the attacker counts as in the arc.
-		if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
+		local distance = strikeDistance(attacker, other, reach, lookX, lookZ)
+		if distance == nil then
 			continue
 		end
 		if taunter ~= nil and other.id == taunter then

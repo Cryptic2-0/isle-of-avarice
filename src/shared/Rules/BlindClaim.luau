@@ -20,6 +20,8 @@ local BlindClaim = {}
 BlindClaim.PICKS = 5
 BlindClaim.DURATION = 30
 BlindClaim.TIER_LIMIT = { Crown = 1, Platinum = 1, Gold = 2, Silver = 3, Copper = 3 }
+-- Sent through ClaimPick instead of a slot when the killer is done: the claim ends at once.
+BlindClaim.FINISH = "done"
 
 function BlindClaim.start(now: number): Claim
 	return {

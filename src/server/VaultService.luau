@@ -2,12 +2,15 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local EdictRules = require(ReplicatedStorage.Shared.Rules.EdictRules)
 local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
+local CombatService = require(script.Parent.CombatService)
 local LedgerService = require(script.Parent.LedgerService)
+local ProtectionService = require(script.Parent.ProtectionService)
 
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
@@ -38,12 +41,36 @@ local function playerInSafeZone(player: Player): boolean
 	return Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z })
 end
 
+-- Vaulting is dealing: refused while Marked or within 30 seconds of a player fight, the same rule
+-- and codes as trading and selling, so a Relic cannot be Vaulted out of a blind claim's reach (or
+-- un-Vaulted into a trade) mid-fight. No data or a locked Ledger is left to Vault.apply's codes.
+local function canDealNow(player: Player): (boolean, string)
+	local now = os.clock()
+	local status = ProtectionService.status(player, now)
+	if status == nil then
+		return false, "EDICT_NOT_NOW"
+	end
+	local ok, code = EdictRules.canDeal({
+		marked = Protection.isMarked(status, now),
+		lastFightAt = CombatService.lastFightAt(player),
+	}, now)
+	return ok, code or "EDICT_NOT_NOW"
+end
+
 local function handleAction(player: Player, request: any)
 	if player.Parent ~= Players then
 		return
 	end
 	if not allowed(player) then
 		return
+	end
+
+	if LedgerService.get(player) ~= nil and not LedgerService.isLocked(player) then
+		local canDeal, dealCode = canDealNow(player)
+		if not canDeal then
+			LedgerService.notify(player, dealCode)
+			return
+		end
 	end
 
 	-- No yielding call from here to setVault(): the reads cannot go stale.

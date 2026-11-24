@@ -3920,10 +3920,11 @@ function m8.kit(A: Player, B: Player)
 	local mins = ui.windowMins or {}
 	for _, name in m8.windows do
 		local kind = m8.kinds[name]
-		local least = HudLayout.WINDOW_MIN[kind]
+		-- The kind's minimum, capped to this screen below the top bar.
+		local least = HudLayout.windowMin(kind, l.width, l.height - l.insetY)
 		local got = mins[name]
 		check(
-			`M8.2 the {name} window never gets smaller than the {kind} size`,
+			`M8.2 the {name} window never gets smaller than the {kind} size (capped to the screen)`,
 			type(got) == "table" and got.x == least.width and got.y == least.height,
 			if type(got) == "table" then `{got.x} x {got.y}` else tostring(got)
 		)
@@ -5060,6 +5061,31 @@ local function run()
 
 	--------------------------------------------------------------------------- M2.14 the Vault
 	check("M2.14 B respawns", waitAlive(B))
+	-- Vaulting is dealing: refused while Marked or within 30 seconds of a fight, wherever A
+	-- stands (the check comes before the safe-zone one). A attacked B above, so A is Marked.
+	ma = mark(A)
+	send(A, "vault", { kind = "add", cardId = "R001" })
+	expectNote("M2.14 A Marked cannot Vault: EDICT_MARKED", A, ma, "EDICT_MARKED")
+	check("M2.14 A's Vault is still empty", next(LedgerService.getVault(A) or { x = true }) == nil)
+	ProtectionService.endMark(A)
+	local lastFightA = CombatService.lastFightAt(A)
+	if lastFightA ~= nil and os.clock() - lastFightA < 29 then
+		ma = mark(A)
+		send(A, "vault", { kind = "add", cardId = "R001" })
+		expectNote(
+			"M2.14 A just out of a fight cannot Vault: EDICT_IN_COMBAT",
+			A,
+			ma,
+			"EDICT_IN_COMBAT"
+		)
+		check(
+			"M2.14 A's Vault is still empty after the fight refusal",
+			next(LedgerService.getVault(A) or { x = true }) == nil
+		)
+	end
+	ProtectionService.endMark(B)
+	waitNoFight(A)
+	waitNoFight(B)
 	place(B, IN_TOWN, Vector3.zero)
 	task.wait(0.6)
 	mb = mark(B)
@@ -5117,6 +5143,9 @@ local function run()
 	expectNote("M2.11 A: CLAIM_LOST after the timer", A, ma, "CLAIM_LOST", 3)
 	check("RF1 A unlocked after the timer", not LedgerService.isLocked(A))
 	check("RF1 no Relic copied or destroyed (timer path)", sameTotals(before, totals({ A, B })))
+	-- A's Mark was cleared for the Vault refusals above, so B's attack on A Marked B; later
+	-- sections (M3.9) need B unmarked, as before that change.
+	ProtectionService.endMark(B)
 
 	--------------------------------------------------------------------------- M2.16 sealed caches
 	check("M2.16 A respawns", waitAlive(A))

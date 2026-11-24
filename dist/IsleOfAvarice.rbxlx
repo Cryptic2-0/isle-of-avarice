@@ -1559,7 +1559,8 @@ local REGION: Types.RegionId = "DrownedFen"
 local BOARDWALK_TOP = 0.6
 
 -- along from, along to, across from, across to. The two long walks run down the middle with a
--- rotted gap between them; the three short ones lead off to the east.
+-- rotted gap between them; the three short ones lead off to the west (at the Fen's bearing of
+-- 180, positive across is world west).
 local BOARDWALKS = {
 	{ 400, 620, -7, 7 },
 	{ 680, 860, -7, 7 },
@@ -2963,6 +2964,8 @@ local BlindClaim = {}
 BlindClaim.PICKS = 5
 BlindClaim.DURATION = 30
 BlindClaim.TIER_LIMIT = { Crown = 1, Platinum = 1, Gold = 2, Silver = 3, Copper = 3 }
+-- Sent through ClaimPick instead of a slot when the killer is done: the claim ends at once.
+BlindClaim.FINISH = "done"
 
 function BlindClaim.start(now: number): Claim
 	return {
@@ -3338,6 +3341,53 @@ function Combat.canStrike(lastStrikeAt: number?, now: number): boolean
 	return lastStrikeAt == nil or now - lastStrikeAt >= Combat.STRIKE_COOLDOWN
 end
 
+-- Normalised horizontal look, or nil for a zero-length or non-finite one.
+local function unitLook(attacker: Fighter): (number?, number?)
+	local lookLength =
+		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
+	if not (lookLength > 0 and lookLength < math.huge) then
+		return nil, nil
+	end
+	return attacker.look.x / lookLength, attacker.look.z / lookLength
+end
+
+-- The level distance to `other` when it is in reach, height and arc of the attacker's swing, else
+-- nil. Written so NaN fails closed.
+local function strikeDistance(
+	attacker: Fighter,
+	other: Fighter,
+	reach: number,
+	lookX: number,
+	lookZ: number
+): number?
+	if other.id == attacker.id then
+		return nil
+	end
+	if not (math.abs(other.position.y - attacker.position.y) <= Combat.STRIKE_MAX_HEIGHT) then
+		return nil
+	end
+	local dx = other.position.x - attacker.position.x
+	local dz = other.position.z - attacker.position.z
+	local distance = math.sqrt(dx * dx + dz * dz)
+	if not (distance <= reach) then
+		return nil
+	end
+	-- Standing on the attacker counts as in the arc.
+	if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
+		return nil
+	end
+	return distance
+end
+
+-- Whether pickTarget could choose `other`: used to drop the rest before any line-of-sight ray.
+function Combat.inStrikeReach(attacker: Fighter, other: Fighter, range: number?): boolean
+	local lookX, lookZ = unitLook(attacker)
+	if lookX == nil or lookZ == nil then
+		return false
+	end
+	return strikeDistance(attacker, other, range or Combat.STRIKE_RANGE, lookX, lookZ) ~= nil
+end
+
 -- Distance and direction ignore the y axis. Returns the id of the nearest fighter in reach and arc.
 -- range defaults to STRIKE_RANGE. A taunter that passes every check wins over a nearer fighter.
 function Combat.pickTarget(
@@ -3346,32 +3396,17 @@ function Combat.pickTarget(
 	range: number?,
 	taunter: number?
 ): number?
-	local lookLength =
-		math.sqrt(attacker.look.x * attacker.look.x + attacker.look.z * attacker.look.z)
-	if not (lookLength > 0 and lookLength < math.huge) then
+	local lookX, lookZ = unitLook(attacker)
+	if lookX == nil or lookZ == nil then
 		return nil
 	end
-	local lookX = attacker.look.x / lookLength
-	local lookZ = attacker.look.z / lookLength
 
 	local reach = range or Combat.STRIKE_RANGE
 	local bestId: number? = nil
 	local bestDistance = math.huge
 	for _, other in others do
-		if other.id == attacker.id then
-			continue
-		end
-		if not (math.abs(other.position.y - attacker.position.y) <= Combat.STRIKE_MAX_HEIGHT) then
-			continue
-		end
-		local dx = other.position.x - attacker.position.x
-		local dz = other.position.z - attacker.position.z
-		local distance = math.sqrt(dx * dx + dz * dz)
-		if not (distance <= reach) then
-			continue
-		end
-		-- Standing on the attacker counts as in the arc.
-		if not (distance == 0 or (dx * lookX + dz * lookZ) / distance >= Combat.STRIKE_MIN_DOT) then
+		local distance = strikeDistance(attacker, other, reach, lookX, lookZ)
+		if distance == nil then
 			continue
 		end
 		if taunter ~= nil and other.id == taunter then
@@ -3481,6 +3516,9 @@ export type Brain = {
 	nextLungeAt: number,
 	nextWanderAt: number,
 	wanderTo: Vec3?,
+	-- Return mode only: when it last made progress towards the den, and its closest distance so far.
+	returnSince: number?,
+	returnBest: number?,
 }
 -- valid: alive, outside the safe zone, no respawn shield (the server decides).
 -- visible: clear line of sight from the creature.
@@ -3493,6 +3531,8 @@ export type Decision = {
 	faceTo: Vec3?,
 	action: Action?,
 	home: boolean,
+	-- Home because it could not walk there in time: the server moves it to its den.
+	snapHome: boolean,
 }
 
 local CreatureBrain = {}
@@ -3503,6 +3543,10 @@ CreatureBrain.LEASH = 60
 CreatureBrain.HOME_RADIUS = 3
 CreatureBrain.TOWN_MARGIN = 4
 CreatureBrain.STOP_FRACTION = 0.6
+-- A creature returning for this long without getting closer is sent home.
+CreatureBrain.RETURN_TIMEOUT = 8
+-- How much closer to the den counts as progress.
+CreatureBrain.RETURN_PROGRESS = 0.5
 
 local WANDER_MIN_SECONDS = 3
 local WANDER_EXTRA_SECONDS = 3
@@ -3587,14 +3631,50 @@ function CreatureBrain.tick(
 			next.targetId = 0
 			next.nextWanderAt = now
 			next.wanderTo = nil
-			return { brain = next, moveTo = nil, faceTo = nil, action = nil, home = true }
+			next.returnSince = nil
+			next.returnBest = nil
+			return {
+				brain = next,
+				moveTo = nil,
+				faceTo = nil,
+				action = nil,
+				home = true,
+				snapHome = false,
+			}
 		end
+		-- Progress restarts the clock; a creature that cannot get closer is sent home.
+		local distance = flat(position, den)
+		local since = next.returnSince or now
+		local best = next.returnBest
+		if best == nil or distance < best - CreatureBrain.RETURN_PROGRESS then
+			best = distance
+			since = now
+		end
+		if now - since >= CreatureBrain.RETURN_TIMEOUT then
+			next.mode = "wander"
+			next.targetId = 0
+			next.nextWanderAt = now
+			next.wanderTo = nil
+			next.returnSince = nil
+			next.returnBest = nil
+			return {
+				brain = next,
+				moveTo = nil,
+				faceTo = nil,
+				action = nil,
+				home = true,
+				snapHome = true,
+			}
+		end
+		next.returnSince = since
+		next.returnBest = best
 		return {
 			brain = next,
 			moveTo = step(position, den),
 			faceTo = nil,
 			action = nil,
 			home = false,
+			snapHome = false,
 		}
 	end
 
@@ -3611,6 +3691,7 @@ function CreatureBrain.tick(
 				faceTo = nil,
 				action = nil,
 				home = false,
+				snapHome = false,
 			}
 		end
 		-- Only a taunt pulls a chasing creature off its target; a hit from someone else does not.
@@ -3653,6 +3734,7 @@ function CreatureBrain.tick(
 				faceTo = nil,
 				action = nil,
 				home = false,
+				snapHome = false,
 			}
 		end
 		next.mode = "chase"
@@ -3711,6 +3793,7 @@ function CreatureBrain.tick(
 		faceTo = goal,
 		action = action,
 		home = false,
+		snapHome = false,
 	}
 end
 
@@ -4371,6 +4454,8 @@ Geography.GRID = 34
 Geography.TOWN_RADIUS = 40
 Geography.FIELDS_RADIUS = 260
 Geography.DROWN_Y = -6
+-- Spacing of the points landPath checks along a move.
+Geography.LAND_STEP = 2
 Geography.ROCK = { x = 0, z = 1240, radius = 80 }
 
 local CELL = Geography.CELL
@@ -4493,6 +4578,32 @@ function Geography.isLand(x: number, z: number): boolean
 		return false
 	end
 	return Geography.cellIsLand(Geography.cellOf(x, z))
+end
+
+-- Where a move from (fx, fz) towards (tx, tz) ends if it may not leave the land: the target when
+-- every point on the way is land, else the last land point before the first water. A start that
+-- is not land, or a non-finite end, does not move.
+function Geography.landPath(fx: number, fz: number, tx: number, tz: number): (number, number)
+	if not (isFinite(tx) and isFinite(tz) and Geography.isLand(fx, fz)) then
+		return fx, fz
+	end
+	local dx, dz = tx - fx, tz - fz
+	local distance = math.sqrt(dx * dx + dz * dz)
+	local lastX, lastZ = fx, fz
+	local k = 1
+	while k * Geography.LAND_STEP < distance do
+		local px = fx + dx * (k * Geography.LAND_STEP / distance)
+		local pz = fz + dz * (k * Geography.LAND_STEP / distance)
+		if not Geography.isLand(px, pz) then
+			return lastX, lastZ
+		end
+		lastX, lastZ = px, pz
+		k += 1
+	end
+	if Geography.isLand(tx, tz) then
+		return tx, tz
+	end
+	return lastX, lastZ
 end
 
 -- Every land cell exactly once, as horizontal runs of one region: row z = 40j, from x1 to x2.
@@ -4814,6 +4925,22 @@ HudLayout.WINDOW_MIN = {
 	small = { width = 300, height = 240 },
 	dialog = { width = 300, height = 140 },
 }
+
+-- A window kind's smallest size on this screen: its minimum, but never more than the area below
+-- the top bar (areaWidth by areaHeight) less a MARGIN on each side, so a small phone (568 x 320)
+-- still shows the whole window.
+function HudLayout.windowMin(
+	kind: "big" | "small" | "dialog",
+	areaWidth: number,
+	areaHeight: number
+): { width: number, height: number }
+	local least = HudLayout.WINDOW_MIN[kind]
+	local margin = HudLayout.MARGIN
+	return {
+		width = math.max(0, math.min(least.width, areaWidth - 2 * margin)),
+		height = math.max(0, math.min(least.height, areaHeight - 2 * margin)),
+	}
+end
 
 local THUMB_WIDTH_PERCENT = 40
 local THUMB_HEIGHT_PERCENT = 45
@@ -7262,10 +7389,14 @@ local Sources = {}
 Sources.MAX_DISTANCE = 15
 -- Network and frame jitter allowed on a held prompt.
 Sources.HOLD_SLACK = 0.3
+-- How long past its length a hold with no end may still be running.
+Sources.HOLD_RUNNING_SLACK = 2
 
 -- Whether a held cache's prompt was held long enough and the hold was still running at `now` (or
 -- ended within the slack). hold is nil for an ordinary cache; began and ended are the server's
--- own times for the prompt starting and ending. An old, released hold never counts.
+-- own times for the prompt starting and ending. An old, released hold never counts, and a hold
+-- still running (no end seen) counts only up to hold + HOLD_RUNNING_SLACK: a lost HoldEnded must
+-- not leave a stale hold that opens on a tap.
 function Sources.holdOk(hold: number?, began: number?, ended: number?, now: number): boolean
 	if hold == nil then
 		return true
@@ -7274,6 +7405,9 @@ function Sources.holdOk(hold: number?, began: number?, ended: number?, now: numb
 		return false
 	end
 	if ended ~= nil and not (now - ended <= Sources.HOLD_SLACK) then
+		return false
+	end
+	if ended == nil and not (now - began <= hold + Sources.HOLD_RUNNING_SLACK) then
 		return false
 	end
 	return (ended or now) - began >= hold - Sources.HOLD_SLACK
@@ -8582,6 +8716,7 @@ local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
 local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
 local CreatureBrain = require(ReplicatedStorage.Shared.Rules.CreatureBrain)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
+local Geography = require(ReplicatedStorage.Shared.Rules.Geography)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Party = require(ReplicatedStorage.Shared.Rules.Party)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
@@ -8790,10 +8925,13 @@ local function applyHits(
 		if destination ~= nil then
 			local humanoid, root = Fighters.body(id)
 			if humanoid ~= nil and root ~= nil then
-				-- No pull or knockback ever lands a creature inside Tallyport.
+				-- No pull or knockback ever lands a creature inside Tallyport or off the land.
 				local entry = Fighters.get(id)
 				if entry ~= nil and entry.kind == "creature" then
 					destination = CreatureBrain.outsideTown(destination)
+					local from = root.Position
+					local x, z = Geography.landPath(from.X, from.Z, destination.x, destination.z)
+					destination = { x = x, y = destination.y, z = z }
 				end
 				Sight.move(humanoid, root, destination)
 			end
@@ -8909,10 +9047,18 @@ end
 
 -- The fighters a plan may pick from. A single-target melee or shot ability only sees what the
 -- caster has a clear line to, so a target behind a corner never swallows the hit (and an
--- unseen taunter forces nothing). Area abilities keep everyone: applyHits skips unseen hits.
+-- unseen taunter forces nothing). Anyone out of the ability's reach is dropped before any ray.
+-- Area abilities keep everyone: applyHits skips unseen hits.
 local function candidates(ability: Ability, caster: Fighter, others: { Fighter }): { Fighter }
-	if ability.kind == "melee" or ability.kind == "shot" then
-		return Sight.filter(vector(caster.position), others)
+	if ability.kind == "melee" then
+		return Sight.filter(vector(caster.position), others, ability.range or Combat.STRIKE_RANGE)
+	elseif ability.kind == "shot" then
+		-- A shot's reach is its range along the ray, and the ray catches a body this far to the side.
+		return Sight.filter(
+			vector(caster.position),
+			others,
+			(ability.range or 0) + Targeting.SHOT_RADIUS
+		)
 	end
 	return others
 end
@@ -9235,6 +9381,12 @@ local function handlePick(player: Player, slot: any)
 	end
 	local session = sessions[player]
 	if session == nil or session.closed then
+		return
+	end
+	-- Done on the claim screen: the claim ends now and the picks left go unspent, so the
+	-- victim's Ledger is not kept locked behind a closed screen.
+	if slot == BlindClaim.FINISH then
+		close(session)
 		return
 	end
 
@@ -9791,7 +9943,13 @@ local function handleStrike(player: Player)
 	-- Only what the attacker can see is a candidate, so a target behind a corner never
 	-- swallows the swing, and an unseen taunter forces nothing.
 	local p = attacker.position
-	local others = Sight.filter(Vector3.new(p.x, p.y, p.z), Fighters.list(player.UserId))
+	local inReach: { Combat.Fighter } = {}
+	for _, other in Fighters.list(player.UserId) do
+		if Combat.inStrikeReach(attacker, other) then
+			table.insert(inReach, other)
+		end
+	end
+	local others = Sight.filter(Vector3.new(p.x, p.y, p.z), inReach, Combat.STRIKE_RANGE)
 	local taunter = Effects.tauntedBy(StatusService.get(player.UserId), now)
 	local targetId = Combat.pickTarget(attacker, others, nil, taunter)
 	if targetId == nil then
@@ -10303,6 +10461,21 @@ local function remove(creature: Creature, respawn: boolean)
 	end
 end
 
+-- Gone by drowning or falling out of the world, with no reward: a den creature is back at its den
+-- at once, not after its full timer. A champion is simply gone.
+local function removeLost(creature: Creature)
+	if creature.gone then
+		return
+	end
+	remove(creature, false)
+	local slotIndex = World.creatureIndex(creature.id)
+	if creature.owner == nil and slotIndex ~= nil then
+		-- A pending timer from an earlier defeat must not spawn a second one.
+		generations[creature.id] = (generations[creature.id] or 0) + 1
+		spawnSlot(slotIndex)
+	end
+end
+
 local function playerOf(id: number): Player?
 	local entry = Fighters.get(id)
 	return if entry ~= nil then entry.player else nil
@@ -10431,7 +10604,7 @@ local function spawn(id: number, kind: CreatureKind, den: Vec3, at: Vec3, owner:
 	-- Removed by anything else (fell out of the world): no rewards; a den creature returns.
 	model.AncestryChanged:Connect(function(_, parent)
 		if parent == nil and not creature.gone then
-			remove(creature, creature.owner == nil)
+			removeLost(creature)
 		end
 	end)
 end
@@ -10542,6 +10715,10 @@ local function lunge(creature: Creature, targetId: number)
 		y = self.position.y,
 		z = self.position.z + dz * dash.distance,
 	})
+	-- A dash never carries a creature off the land.
+	local landX, landZ =
+		Geography.landPath(self.position.x, self.position.z, destination.x, destination.z)
+	destination = { x = landX, y = destination.y, z = landZ }
 	local travelled = Sight.move(creature.humanoid, creature.root, destination)
 	-- Judged from where the dash began, facing the way it went.
 	local dasher: Combat.Fighter =
@@ -10582,7 +10759,7 @@ local function think(creature: Creature, players: { Sighted }, now: number)
 	local id, kind, humanoid, root = creature.id, creature.kind, creature.humanoid, creature.root
 	local here = root.Position
 	if here.Y < Geography.DROWN_Y then
-		remove(creature, creature.owner == nil)
+		removeLost(creature)
 		return
 	end
 
@@ -10626,6 +10803,13 @@ local function think(creature: Creature, players: { Sighted }, now: number)
 		StatusService.update(id, function(current, at)
 			return Effects.applyImmune(current, math.huge, at)
 		end)
+	end
+	if decision.snapHome then
+		-- It could not walk home in time (blocked by water or a wall): put it at its den.
+		local ground = World.groundY + humanoid.HipHeight + root.Size.Y / 2
+		root.CFrame = CFrame.new(creature.den.x, ground, creature.den.z) * root.CFrame.Rotation
+		root.AssemblyLinearVelocity = Vector3.zero
+		here = root.Position
 	end
 	if decision.home then
 		humanoid.Health = humanoid.MaxHealth
@@ -11324,6 +11508,10 @@ local TEMPLATE = {
 -- Longest a leaving player's profile stays open for holds.
 local MAX_HOLD_SECONDS = 45
 local HOLD_POLL_SECONDS = 0.25
+-- Longest a rejoining player waits for their earlier, still held profile on this server to close.
+-- A hold ends within MAX_HOLD_SECONDS; this only stops a stuck wait.
+local REJOIN_WAIT_SECONDS = 180
+local LOAD_FAILED = "Your data could not be loaded. Please rejoin."
 
 local store = ProfileStore.New("PlayerData_v1", TEMPLATE)
 
@@ -11344,23 +11532,76 @@ local function fireLoaded(player: Player, data: PlayerData)
 	end
 end
 
+-- Tells the vendored ProfileStore whether the player's profile is held (a local change there):
+-- while held, another server's request to end the session is remembered, not answered, so a
+-- blind claim cannot be cut short by leaving and rejoining elsewhere. Once the last hold goes, a
+-- remembered request ends the session, as ProfileStore would have done.
+local function markHeld(player: Player)
+	local profile = profiles[player]
+	if profile == nil then
+		return
+	end
+	if holds[player] ~= nil then
+		profile.HeldOpen = true
+		return
+	end
+	profile.HeldOpen = nil
+	if profile.EndRequestedWhileHeld == true then
+		profile.EndRequestedWhileHeld = nil
+		profile:EndSession()
+	end
+end
+
+-- True while this server still has the same user's profile open under an earlier Player object:
+-- they left and rejoined here while a hold (a combat-log claim) keeps their old profile open.
+local function openUnderEarlierPlayer(player: Player): boolean
+	for other, profile in profiles do
+		if other ~= player and other.UserId == player.UserId and profile:IsActive() then
+			return true
+		end
+	end
+	return false
+end
+
 local function loadProfile(player: Player)
 	if profiles[player] ~= nil or loading[player] then
 		return
 	end
 	loading[player] = true
 
-	local profile = store:StartSessionAsync(tostring(player.UserId), {
-		Cancel = function()
-			return player.Parent ~= Players
-		end,
-	})
+	-- ProfileStore refuses a second session for a key this server already has open, so wait
+	-- for the hold to end; the release save then lands before this load reads.
+	local waitUntil = os.clock() + REJOIN_WAIT_SECONDS
+	while openUnderEarlierPlayer(player) do
+		if player.Parent ~= Players then
+			loading[player] = nil
+			return
+		end
+		if os.clock() >= waitUntil then
+			loading[player] = nil
+			player:Kick(LOAD_FAILED)
+			return
+		end
+		task.wait(HOLD_POLL_SECONDS)
+	end
+
+	local ok, result = pcall(function()
+		return store:StartSessionAsync(tostring(player.UserId), {
+			Cancel = function()
+				return player.Parent ~= Players
+			end,
+		})
+	end)
 	loading[player] = nil
+	if not ok then
+		warn(`[IsleOfAvarice] loading data for {player.UserId} failed: {result}`)
+	end
+	local profile = if ok then result else nil
 
 	if profile == nil then
 		-- Cancelled because the player left (Kick is then a harmless no-op) or the load failed.
 		if player.Parent == Players then
-			player:Kick("Your data could not be loaded. Please rejoin.")
+			player:Kick(LOAD_FAILED)
 		end
 		return
 	end
@@ -11399,6 +11640,7 @@ local function loadProfile(player: Player)
 	end)
 
 	profiles[player] = profile
+	markHeld(player)
 	fireLoaded(player, profile.Data)
 end
 
@@ -11406,6 +11648,7 @@ local function releaseProfile(player: Player)
 	local profile = profiles[player]
 	profiles[player] = nil
 	if profile ~= nil then
+		profile.HeldOpen = nil
 		leaving[player] = true
 		profile:EndSession()
 	end
@@ -11416,10 +11659,11 @@ function DataService.beforeRelease(callback: (player: Player) -> ())
 	table.insert(beforeReleaseCallbacks, callback)
 end
 
--- Keeps the player's profile open (for up to MAX_HOLD_SECONDS after they leave).
--- Returns a function that lets go; it works once only.
+-- Keeps the player's profile open (for up to MAX_HOLD_SECONDS after they leave), also against
+-- another server asking for it. Returns a function that lets go; it works once only.
 function DataService.hold(player: Player): () -> ()
 	holds[player] = (holds[player] or 0) + 1
+	markHeld(player)
 	local released = false
 	return function()
 		if released then
@@ -11430,6 +11674,7 @@ function DataService.hold(player: Player): () -> ()
 		if count ~= nil then
 			holds[player] = if count > 1 then count - 1 else nil
 		end
+		markHeld(player)
 	end
 end
 
@@ -11580,6 +11825,11 @@ local function sync(player: Player)
 		return a.userId < b.userId
 	end)
 	syncRemote:FireClient(player, EdictRules.veilSeconds(veilUntil[player], os.clock()), list)
+end
+
+-- Sends the player their EdictSync again (the client asked for its state).
+function EdictService.resync(player: Player)
+	sync(player)
 end
 
 -- Marks the two as having met. True when it was new for either side.
@@ -11927,6 +12177,7 @@ function EdictService.start()
 	DataService.onLoaded(function(player)
 		sync(player)
 	end)
+	LedgerService.onRequest(EdictService.resync)
 	Players.PlayerRemoving:Connect(onRemoving)
 	RunService.Heartbeat:Connect(onHeartbeat)
 end
@@ -12400,7 +12651,7 @@ return HazardService
 -- Things the owner sets once before the game goes live.
 return {
 	-- The Crowned badge's id from the Creator Dashboard. 0 means no badge: nothing is awarded.
-	CROWNED_BADGE_ID = 0,
+	CROWNED_BADGE_ID = 304968687686565,
 	-- The ordered data store that holds the all-time board. A new name starts an empty board.
 	BOARD_STORE = "CrownedBoard_v1",
 }
@@ -12713,6 +12964,7 @@ local buckets: { [Player]: RateLimiter.Bucket } = {}
 local lastSlowDown: { [Player]: number } = {}
 local locked: { [Player]: boolean } = {}
 local changedCallbacks: { (player: Player, ledger: Ledger) -> () } = {}
+local requestCallbacks: { (player: Player) -> () } = {}
 local remotesFolder: Folder?
 
 -- The player's Ledger, or nil until their data has loaded and after they left.
@@ -12757,6 +13009,12 @@ end
 
 function LedgerService.onChanged(callback: (player: Player, ledger: Ledger) -> ())
 	table.insert(changedCallbacks, callback)
+end
+
+-- Registers a service's own sync, re-sent (each in pcall) when the client asks for its state
+-- again. The first syncs at load may fire before the client script has connected its handlers.
+function LedgerService.onRequest(callback: (player: Player) -> ())
+	table.insert(requestCallbacks, callback)
 end
 
 -- Creates a RemoteEvent in the Remotes folder. Works for services started after LedgerService.start().
@@ -12830,6 +13088,12 @@ local function handleRequest(player: Player)
 	local ledger = LedgerService.get(player)
 	if ledger ~= nil then
 		ledgerSync:FireClient(player, ledger, LedgerService.getVault(player) or {})
+	end
+	for _, callback in requestCallbacks do
+		local ok, err = pcall(callback, player)
+		if not ok then
+			warn(`[IsleOfAvarice] onRequest callback failed: {err}`)
+		end
 	end
 end
 
@@ -13446,6 +13710,14 @@ local function sync(player: Player, data: Types.PlayerData)
 	pathSync:FireClient(player, data.paths, data.coin, os.time())
 end
 
+-- Sends the player their PathSync again (the client asked for its state). Nothing until loaded.
+function PathService.resync(player: Player)
+	local data = DataService.get(player)
+	if data ~= nil then
+		sync(player, data)
+	end
+end
+
 -- The player's saved Path progress, or nil until loaded and after they left.
 function PathService.get(player: Player): PathProgress?
 	local data = DataService.get(player)
@@ -13590,6 +13862,7 @@ function PathService.start()
 	DataService.onLoaded(function(player, data)
 		sync(player, data)
 	end)
+	LedgerService.onRequest(PathService.resync)
 
 	ClaimService.onClaimStarted(function(killer)
 		local progress = PathService.get(killer)
@@ -13922,6 +14195,7 @@ function ProtectionService.start()
 		updateForceField(player)
 		sendStatus(player)
 	end)
+	LedgerService.onRequest(sendStatus)
 
 	Players.PlayerAdded:Connect(watchPlayer)
 	for _, player in Players:GetPlayers() do
@@ -14218,18 +14492,21 @@ return ShopService
 --   Sight.rayParams(): RaycastParams
 --       Rays pass through every player's character, workspace.Effects, workspace.Creatures
 --       and anything a character could walk through (non-colliding parts, water).
---   Sight.obstruction(from, to, target?): Vector3?
+--   Sight.obstruction(from, to, target?, params?): Vector3?
 --       Where the straight line from `from` to `to` is first blocked, or nil when clear.
 --       Pass the target's model (Fighters.model): a first hit on it or one of its
 --       descendants is not a block. A NaN or infinite line counts as blocked.
---   Sight.inSight(from, to, target?): boolean
+--       Pass `params` (Sight.rayParams()) to reuse one set across several rays.
+--   Sight.inSight(from, to, target?, params?): boolean
 --       True when nothing solid stands between the two points.
 --   Sight.move(humanoid, root, target): number
 --       Moves a character or creature towards a point (dash, pull, knockback, lunge),
 --       stopping short of walls. Returns the level distance travelled.
---   Sight.filter(from, fighters): { Fighter }
+--   Sight.filter(from, fighters, reach?): { Fighter }
 --       The fighters the point `from` has a clear line to, in order. Used before choosing
---       a nearest target, so one behind a corner never takes the hit.
+--       a nearest target, so one behind a corner never takes the hit. With `reach`, a fighter
+--       further than that (level) is dropped before any ray, and one set of ray parameters
+--       serves every ray.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -14268,13 +14545,18 @@ function Sight.rayParams(): RaycastParams
 	return params
 end
 
-function Sight.obstruction(from: Vector3, to: Vector3, target: Instance?): Vector3?
+function Sight.obstruction(
+	from: Vector3,
+	to: Vector3,
+	target: Instance?,
+	params: RaycastParams?
+): Vector3?
 	local delta = to - from
 	-- Written so a NaN or infinite line counts as blocked.
 	if not (delta.Magnitude < math.huge) then
 		return from
 	end
-	local result = workspace:Raycast(from, delta, Sight.rayParams())
+	local result = workspace:Raycast(from, delta, params or Sight.rayParams())
 	if result == nil then
 		return nil
 	end
@@ -14284,15 +14566,31 @@ function Sight.obstruction(from: Vector3, to: Vector3, target: Instance?): Vecto
 	return result.Position
 end
 
-function Sight.inSight(from: Vector3, to: Vector3, target: Instance?): boolean
-	return Sight.obstruction(from, to, target) == nil
+function Sight.inSight(
+	from: Vector3,
+	to: Vector3,
+	target: Instance?,
+	params: RaycastParams?
+): boolean
+	return Sight.obstruction(from, to, target, params) == nil
 end
 
-function Sight.filter(from: Vector3, fighters: { Fighter }): { Fighter }
+function Sight.filter(from: Vector3, fighters: { Fighter }, reach: number?): { Fighter }
 	local kept: { Fighter } = {}
+	local params: RaycastParams? = nil
 	for _, fighter in fighters do
 		local p = fighter.position
-		if Sight.inSight(from, Vector3.new(p.x, p.y, p.z), Fighters.model(fighter.id)) then
+		if reach ~= nil then
+			local dx, dz = p.x - from.X, p.z - from.Z
+			-- Written so a NaN position is dropped.
+			if not (math.sqrt(dx * dx + dz * dz) <= reach) then
+				continue
+			end
+		end
+		if params == nil then
+			params = Sight.rayParams()
+		end
+		if Sight.inSight(from, Vector3.new(p.x, p.y, p.z), Fighters.model(fighter.id), params) then
 			table.insert(kept, fighter)
 		end
 	end
@@ -14763,6 +15061,14 @@ local function connect(instance: Instance)
 	end)
 end
 
+-- Sends the player their CoinSync again (the client asked for its state). Nothing until loaded.
+function SourceService.resync(player: Player)
+	local data = DataService.get(player)
+	if data ~= nil and player.Parent == Players then
+		coinSync:FireClient(player, data.coin)
+	end
+end
+
 function SourceService.start()
 	coinSync = LedgerService.makeRemote(Net.CoinSync)
 	DataService.onLoaded(function(player, data)
@@ -14770,6 +15076,7 @@ function SourceService.start()
 			coinSync:FireClient(player, data.coin)
 		end
 	end)
+	LedgerService.onRequest(SourceService.resync)
 
 	for _, instance in CollectionService:GetTagged("Cache") do
 		connect(instance)
@@ -16179,6 +16486,7 @@ function TrialService.start()
 	DataService.onLoaded(function(player)
 		sync(player)
 	end)
+	LedgerService.onRequest(TrialService.resync)
 	-- Leaving fails the trial quietly, so its cooldown is saved before the profile closes.
 	DataService.beforeRelease(function(player)
 		endRun(player, false, nil)
@@ -16200,12 +16508,15 @@ return TrialService
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local EdictRules = require(ReplicatedStorage.Shared.Rules.EdictRules)
 local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
+local CombatService = require(script.Parent.CombatService)
 local LedgerService = require(script.Parent.LedgerService)
+local ProtectionService = require(script.Parent.ProtectionService)
 
 local BUCKET_CAPACITY = 10
 local BUCKET_REFILL_PER_SECOND = 5
@@ -16236,12 +16547,36 @@ local function playerInSafeZone(player: Player): boolean
 	return Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z })
 end
 
+-- Vaulting is dealing: refused while Marked or within 30 seconds of a player fight, the same rule
+-- and codes as trading and selling, so a Relic cannot be Vaulted out of a blind claim's reach (or
+-- un-Vaulted into a trade) mid-fight. No data or a locked Ledger is left to Vault.apply's codes.
+local function canDealNow(player: Player): (boolean, string)
+	local now = os.clock()
+	local status = ProtectionService.status(player, now)
+	if status == nil then
+		return false, "EDICT_NOT_NOW"
+	end
+	local ok, code = EdictRules.canDeal({
+		marked = Protection.isMarked(status, now),
+		lastFightAt = CombatService.lastFightAt(player),
+	}, now)
+	return ok, code or "EDICT_NOT_NOW"
+end
+
 local function handleAction(player: Player, request: any)
 	if player.Parent ~= Players then
 		return
 	end
 	if not allowed(player) then
 		return
+	end
+
+	if LedgerService.get(player) ~= nil and not LedgerService.isLocked(player) then
+		local canDeal, dealCode = canDealNow(player)
+		if not canDeal then
+			LedgerService.notify(player, dealCode)
+			return
+		end
 	end
 
 	-- No yielding call from here to setVault(): the reads cannot go stale.
@@ -17076,10 +17411,18 @@ local function SaveProfileAsync(profile, is_ending_session, is_overwriting, last
 			-- If another server is trying to start a session for this profile - end the session:
 
 			if force_load_pending == true and session_owns_profile == true then
-				if is_active == true then
-					SaveProfileAsync(profile, true, false, "External")
+				-- Isle of Avarice local change: a profile the game holds open (profile.HeldOpen, set
+				-- by DataService while a blind claim holds it) is not ended here; the request is
+				-- remembered and the game ends the session when its hold is released. The waiting
+				-- server keeps retrying meanwhile. Unheld profiles behave as upstream.
+				if profile.HeldOpen == true then
+					profile.EndRequestedWhileHeld = true
+				else
+					if is_active == true then
+						SaveProfileAsync(profile, true, false, "External")
+					end
+					break
 				end
-				break
 			end
 
 			-- Clearing processed update list / Detecting new updates:
@@ -17752,7 +18095,11 @@ function ProfileStore:StartSessionAsync(profile_key, params)
 									if os.clock() - last_roblox_message > 6 then
 										last_roblox_message = os.clock()
 										if profile:IsActive() == true then
-											if message.Data.EndSession == true then
+											-- Isle of Avarice local change: a held profile (see
+											-- HeldOpen above) is ended when its hold is released.
+											if message.Data.EndSession == true and profile.HeldOpen == true then
+												profile.EndRequestedWhileHeld = true
+											elseif message.Data.EndSession == true then
 												SaveProfileAsync(profile, true, false, "External")
 											else
 												profile:Save()
@@ -19285,6 +19632,7 @@ local picksLabel: TextLabel? = nil
 local timerLabel: TextLabel? = nil
 local grid: Frame? = nil
 local pickHandler: (slot: number) -> () = function(_slot: number) end
+local finishHandler: () -> () = function() end
 
 -- What is on screen. The deadline is on the local clock: the server's expiresAt is on the
 -- server's clock and is never compared with local time.
@@ -19407,8 +19755,9 @@ local function startTicking()
 	end)
 end
 
-function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
+function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> (), onFinish: () -> ())
 	pickHandler = onPick
+	finishHandler = onFinish
 
 	-- Above the Ledger book (10), the status HUD (15) and messages (20).
 	local gui = UiKit.screen("ClaimGui", 30)
@@ -19472,8 +19821,19 @@ function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
 	local done = UiKit.button("Done", "Done", UDim2.fromScale(0.2, 0.08), { min = 10, max = 22 })
 	done.AnchorPoint = Vector2.new(0.5, 1)
 	done.Position = UDim2.fromScale(0.5, 0.98)
-	-- Hides the screen here only; the server ends the claim on its own timer.
-	UiKit.onPress(done, ClaimUI.hide)
+	-- Asks the server to end the claim now; the screen closes when the server says it ended
+	-- (ClaimUpdate nil), so it never hides while the victim's Ledger is still locked. Once the
+	-- claim has run out here (time or picks), Done just closes the screen.
+	local doneGuard = UiKit.guard(function(inert: boolean)
+		UiKit.setEnabled(done, not inert)
+	end)
+	UiKit.onPress(done, function()
+		if currentClaim == nil or not shownOpen then
+			ClaimUI.hide()
+			return
+		end
+		UiKit.send(doneGuard, finishHandler)
+	end)
 	done.Parent = frame
 
 	frame.Parent = gui
@@ -19523,6 +19883,9 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Combat = require(Shared:WaitForChild("Rules"):WaitForChild("Combat"))
 
 local FLASH_SECONDS = 0.15
+-- Swings are let through a little slower than the server's cooldown, so network jitter does not
+-- bring two swings closer than the cooldown on arrival, where the server drops the second.
+local STRIKE_SLACK_SECONDS = 0.05
 
 local CombatController = {}
 
@@ -19535,7 +19898,7 @@ function CombatController.start(
 	ContextActionService:BindAction("Strike", function(_name, state, _input)
 		if state == Enum.UserInputState.Begin and not isBlocked() then
 			local now = os.clock()
-			if now - lastStrike >= Combat.STRIKE_COOLDOWN then
+			if now - lastStrike >= Combat.STRIKE_COOLDOWN + STRIKE_SLACK_SECONDS then
 				lastStrike = now
 				strike()
 			end
@@ -20495,6 +20858,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rules = Shared:WaitForChild("Rules")
 local Net = require(Shared:WaitForChild("Net"))
 local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages"))
+local BlindClaim = require(Rules:WaitForChild("BlindClaim"))
 local LedgerView = require(Rules:WaitForChild("LedgerView"))
 local PathView = require(Rules:WaitForChild("PathView"))
 local PlaceView = require(Rules:WaitForChild("PlaceView"))
@@ -20582,6 +20946,8 @@ StatusHUD.mount(playerGui, function()
 end)
 ClaimUI.mount(playerGui, function(slot)
 	claimPick:FireServer(slot)
+end, function()
+	claimPick:FireServer(BlindClaim.FINISH)
 end)
 PathUI.mount(playerGui, {
 	pick = function(path)
@@ -20909,7 +21275,8 @@ task.spawn(function()
 	end
 end)
 
--- The first sync may have fired before this script connected; ask again.
+-- The first syncs may have fired before this script connected; ask again. The server answers
+-- with every per-player sync (Ledger, Paths, Coin, trials, Edicts, status).
 ledgerRequest:FireServer()
 ]]></string>
           </Properties>
@@ -23820,7 +24187,8 @@ function UiKit.screen(name: string, displayOrder: number, ignoreInset: boolean?)
 	return gui
 end
 
--- A hidden, centred, rounded panel that never gets smaller than its kind's minimum.
+-- A hidden, centred, rounded panel that never gets smaller than its kind's minimum, capped to
+-- the screen below the top bar (measured again on every layout change).
 function UiKit.window(name: string, size: UDim2, kind: "big" | "small" | "dialog"): Frame
 	local frame = Instance.new("Frame")
 	frame.Name = name
@@ -23831,13 +24199,12 @@ function UiKit.window(name: string, size: UDim2, kind: "big" | "small" | "dialog
 	frame.BorderSizePixel = 0
 	frame.Visible = false
 	UiKit.corner(frame, 14)
-	local minimum = if kind == "big"
-		then HudLayout.WINDOW_MIN.big
-		elseif kind == "small" then HudLayout.WINDOW_MIN.small
-		else HudLayout.WINDOW_MIN.dialog
 	local constraint = Instance.new("UISizeConstraint")
-	constraint.MinSize = Vector2.new(minimum.width, minimum.height)
 	constraint.Parent = frame
+	UiKit.onLayout(function()
+		local minimum = HudLayout.windowMin(kind, lastWidth, UiKit.areaHeight())
+		constraint.MinSize = Vector2.new(minimum.width, minimum.height)
+	end)
 	return frame
 end
 

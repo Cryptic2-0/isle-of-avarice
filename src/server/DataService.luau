@@ -30,6 +30,10 @@ local TEMPLATE = {
 -- Longest a leaving player's profile stays open for holds.
 local MAX_HOLD_SECONDS = 45
 local HOLD_POLL_SECONDS = 0.25
+-- Longest a rejoining player waits for their earlier, still held profile on this server to close.
+-- A hold ends within MAX_HOLD_SECONDS; this only stops a stuck wait.
+local REJOIN_WAIT_SECONDS = 180
+local LOAD_FAILED = "Your data could not be loaded. Please rejoin."
 
 local store = ProfileStore.New("PlayerData_v1", TEMPLATE)
 
@@ -50,23 +54,76 @@ local function fireLoaded(player: Player, data: PlayerData)
 	end
 end
 
+-- Tells the vendored ProfileStore whether the player's profile is held (a local change there):
+-- while held, another server's request to end the session is remembered, not answered, so a
+-- blind claim cannot be cut short by leaving and rejoining elsewhere. Once the last hold goes, a
+-- remembered request ends the session, as ProfileStore would have done.
+local function markHeld(player: Player)
+	local profile = profiles[player]
+	if profile == nil then
+		return
+	end
+	if holds[player] ~= nil then
+		profile.HeldOpen = true
+		return
+	end
+	profile.HeldOpen = nil
+	if profile.EndRequestedWhileHeld == true then
+		profile.EndRequestedWhileHeld = nil
+		profile:EndSession()
+	end
+end
+
+-- True while this server still has the same user's profile open under an earlier Player object:
+-- they left and rejoined here while a hold (a combat-log claim) keeps their old profile open.
+local function openUnderEarlierPlayer(player: Player): boolean
+	for other, profile in profiles do
+		if other ~= player and other.UserId == player.UserId and profile:IsActive() then
+			return true
+		end
+	end
+	return false
+end
+
 local function loadProfile(player: Player)
 	if profiles[player] ~= nil or loading[player] then
 		return
 	end
 	loading[player] = true
 
-	local profile = store:StartSessionAsync(tostring(player.UserId), {
-		Cancel = function()
-			return player.Parent ~= Players
-		end,
-	})
+	-- ProfileStore refuses a second session for a key this server already has open, so wait
+	-- for the hold to end; the release save then lands before this load reads.
+	local waitUntil = os.clock() + REJOIN_WAIT_SECONDS
+	while openUnderEarlierPlayer(player) do
+		if player.Parent ~= Players then
+			loading[player] = nil
+			return
+		end
+		if os.clock() >= waitUntil then
+			loading[player] = nil
+			player:Kick(LOAD_FAILED)
+			return
+		end
+		task.wait(HOLD_POLL_SECONDS)
+	end
+
+	local ok, result = pcall(function()
+		return store:StartSessionAsync(tostring(player.UserId), {
+			Cancel = function()
+				return player.Parent ~= Players
+			end,
+		})
+	end)
 	loading[player] = nil
+	if not ok then
+		warn(`[IsleOfAvarice] loading data for {player.UserId} failed: {result}`)
+	end
+	local profile = if ok then result else nil
 
 	if profile == nil then
 		-- Cancelled because the player left (Kick is then a harmless no-op) or the load failed.
 		if player.Parent == Players then
-			player:Kick("Your data could not be loaded. Please rejoin.")
+			player:Kick(LOAD_FAILED)
 		end
 		return
 	end
@@ -105,6 +162,7 @@ local function loadProfile(player: Player)
 	end)
 
 	profiles[player] = profile
+	markHeld(player)
 	fireLoaded(player, profile.Data)
 end
 
@@ -112,6 +170,7 @@ local function releaseProfile(player: Player)
 	local profile = profiles[player]
 	profiles[player] = nil
 	if profile ~= nil then
+		profile.HeldOpen = nil
 		leaving[player] = true
 		profile:EndSession()
 	end
@@ -122,10 +181,11 @@ function DataService.beforeRelease(callback: (player: Player) -> ())
 	table.insert(beforeReleaseCallbacks, callback)
 end
 
--- Keeps the player's profile open (for up to MAX_HOLD_SECONDS after they leave).
--- Returns a function that lets go; it works once only.
+-- Keeps the player's profile open (for up to MAX_HOLD_SECONDS after they leave), also against
+-- another server asking for it. Returns a function that lets go; it works once only.
 function DataService.hold(player: Player): () -> ()
 	holds[player] = (holds[player] or 0) + 1
+	markHeld(player)
 	local released = false
 	return function()
 		if released then
@@ -136,6 +196,7 @@ function DataService.hold(player: Player): () -> ()
 		if count ~= nil then
 			holds[player] = if count > 1 then count - 1 else nil
 		end
+		markHeld(player)
 	end
 end
 

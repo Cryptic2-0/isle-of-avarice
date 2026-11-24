@@ -446,6 +446,7 @@ function TrialService.start()
 	DataService.onLoaded(function(player)
 		sync(player)
 	end)
+	LedgerService.onRequest(TrialService.resync)
 	-- Leaving fails the trial quietly, so its cooldown is saved before the profile closes.
 	DataService.beforeRelease(function(player)
 		endRun(player, false, nil)
