@@ -4,7 +4,7 @@ Milestone 8 is launch polish. The game now fits a phone. The Ledger, Paths, Trad
 
 Some steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
-Automated run: not done yet.
+Automated run (2026-11-24, Studio, two players): `[PLAYTEST] DONE passed=785 failed=0`, with no errors from the game's scripts (the only warning is the board's data store, which an unpublished place cannot reach). 79 of those checks are for milestone 8. The run plays in a desktop window, so the phone layout itself is checked by hand below.
 
 The automated run taps the game's own buttons and checks where every control sits, but it runs in a desktop window. It cannot show a phone. The steps below are the hand checks for how things look and feel, and for the phone layout. The last part, "On a real phone", needs the published game.
 
