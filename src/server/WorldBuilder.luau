@@ -6,11 +6,11 @@ local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
 local Tiers = require(ReplicatedStorage.Shared.Catalog.Tiers)
 local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
+local SiteBuilder = require(script.Parent.SiteBuilder)
+local TerrainBuilder = require(script.Parent.TerrainBuilder)
 
 local WorldBuilder = {}
 
-local GRASS = Color3.fromRGB(86, 140, 60)
-local SEA = Color3.fromRGB(40, 100, 170)
 local STONE = Color3.fromRGB(150, 146, 140)
 local ROCK = Color3.fromRGB(110, 110, 112)
 local WOOD = Color3.fromRGB(139, 100, 60)
@@ -33,28 +33,6 @@ local function makePart(
 	part.Material = material
 	part.Parent = parent
 	return part
-end
-
-local function buildTerrain(island: Folder)
-	-- Block centres are half a height below the top face.
-	makePart(
-		island,
-		"Ground",
-		Vector3.new(World.islandHalfSize * 2, 4, World.islandHalfSize * 2),
-		Vector3.new(0, World.groundY - 2, 0),
-		GRASS,
-		Enum.Material.Grass
-	)
-	local sea = makePart(
-		island,
-		"Sea",
-		Vector3.new(2048, 2, 2048),
-		Vector3.new(0, -3 - 1, 0),
-		SEA,
-		Enum.Material.Glass
-	)
-	sea.Transparency = 0.3
-	sea.CanCollide = false
 end
 
 local function buildTallyport(island: Folder)
@@ -116,11 +94,14 @@ local function buildTallyport(island: Folder)
 	town.Parent = island
 end
 
-local function buildCache(island: Folder, index: number, cache: any)
+local function buildCache(island: Folder, index: number, cache: Types.Cache)
 	local relic = Relics.byId[cache.relicId]
 	local c = Tiers.info[relic.tier].color
 	local color = Color3.fromRGB(c.r, c.g, c.b)
 	local p = cache.position
+	-- The cache is 2 tall and its position is its centre, so the floor it stands on is 1 below.
+	-- Most caches stand on the ground; a few stand on a raised floor of their own.
+	local base = p.y - 1
 
 	local part = makePart(
 		island,
@@ -133,12 +114,12 @@ local function buildCache(island: Folder, index: number, cache: any)
 	part:SetAttribute("CacheId", cache.id)
 	CollectionService:AddTag(part, "Cache")
 
-	-- Pillar is 12 tall, standing on the ground 3 studs to the side.
+	-- Pillar is 12 tall, standing on the cache's own floor 3 studs to the side.
 	makePart(
 		part,
 		"Pillar",
 		Vector3.new(1, 12, 1),
-		Vector3.new(p.x + 3, World.groundY + 6, p.z),
+		Vector3.new(p.x + 3, base + 6, p.z),
 		color,
 		Enum.Material.Neon
 	)
@@ -146,23 +127,26 @@ local function buildCache(island: Folder, index: number, cache: any)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Open"
 	prompt.ObjectText = "Cache"
-	prompt.HoldDuration = 0.5
+	prompt.HoldDuration = cache.hold or 0.5
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = part
 
-	-- Landmark rock: size depends only on the index, so every build is identical.
-	local w = 4 + (index % 3) * 2
-	local h = 3 + (index % 4)
-	local d = 4 + (index % 2) * 3
-	makePart(
-		island,
-		"Rock" .. cache.id,
-		Vector3.new(w, h, d),
-		Vector3.new(p.x - 8, World.groundY + h / 2, p.z + 5),
-		ROCK,
-		Enum.Material.Slate
-	)
+	-- Landmark rock: size depends only on the index, so every build is identical. Only a cache
+	-- near the ground has one; a raised cache already stands out.
+	if base < 1 then
+		local w = 4 + (index % 3) * 2
+		local h = 3 + (index % 4)
+		local d = 4 + (index % 2) * 3
+		makePart(
+			island,
+			"Rock" .. cache.id,
+			Vector3.new(w, h, d),
+			Vector3.new(p.x - 8, base + h / 2, p.z + 5),
+			ROCK,
+			Enum.Material.Slate
+		)
+	end
 end
 
 local function buildPost(island: Folder, index: number, position: Types.Vec3)
@@ -198,7 +182,8 @@ end
 function WorldBuilder.build()
 	local island = Instance.new("Folder")
 	island.Name = "Island"
-	buildTerrain(island)
+	TerrainBuilder.build(island)
+	SiteBuilder.build(island)
 	buildTallyport(island)
 	for i, cache in World.caches do
 		buildCache(island, i, cache)

@@ -1,0 +1,130 @@
+--!strict
+local Geography = require("../../Rules/Geography")
+local Types = require("../../Types")
+local Make = require("./Make")
+
+local REGION: Types.RegionId = "CinderFlats"
+local VENT_DAMAGE = 35
+local LAVA_DPS = 30
+local BASALT_TOP = 0.6
+
+-- A vent on the basalt takes the basalt's top as its markerY, or the stone would hide its marker.
+local function vent(
+	id: string,
+	shape: Types.Shape,
+	cycle: Types.Cycle,
+	markerY: number?
+): Types.Hazard
+	return {
+		id = id,
+		region = REGION,
+		name = "Vent",
+		look = "vent",
+		shape = shape,
+		cycle = cycle,
+		damage = VENT_DAMAGE,
+		markerY = markerY,
+	}
+end
+
+local function lava(id: string, shape: Types.Shape, holes: { Types.Shape }?): Types.Hazard
+	return {
+		id = id,
+		region = REGION,
+		name = "Lava",
+		look = "lava",
+		shape = shape,
+		holes = holes,
+		dps = LAVA_DPS,
+	}
+end
+
+local hazards: { Types.Hazard } = {}
+
+-- A five by five grid of vents; vent 5m + n + 1 is row m, column n, and the grid erupts in a
+-- slow diagonal wave. The vents are 20 studs in radius on a 40-stud spacing, so they touch and no
+-- lane between them is always safe.
+for m = 0, 4 do
+	for n = 0, 4 do
+		table.insert(
+			hazards,
+			vent(
+				`CinderVent{5 * m + n + 1}`,
+				Geography.circle(REGION, 440 + 40 * m, -80 + 40 * n, 20),
+				{ period = 6, warn = 1.5, active = 1, offset = ((m + 2 * n) % 5) * 1.2 }
+			)
+		)
+	end
+end
+
+-- Lava along both flanks of the vent field.
+table.insert(hazards, lava("CinderFlank1", Geography.rect(REGION, 440, 620, -190, -100), nil))
+table.insert(hazards, lava("CinderFlank2", Geography.rect(REGION, 440, 620, 100, 190), nil))
+
+local pools = {
+	{ 340, -120, 22 },
+	{ 350, 90, 20 },
+	{ 680, -190, 26 },
+	{ 700, 200, 24 },
+}
+for i, pool in pools do
+	table.insert(
+		hazards,
+		lava(`CinderPool{i}`, Geography.circle(REGION, pool[1], pool[2], pool[3]), nil)
+	)
+end
+
+-- The lake round the prize islet, crossed by a causeway.
+table.insert(
+	hazards,
+	lava("CinderLake", Geography.circle(REGION, 760, 0, 110), {
+		Geography.circle(REGION, 760, 0, 32),
+		Geography.rect(REGION, 650, 730, -10, 10),
+	})
+)
+
+-- Four vents on the causeway, firing one after another toward the islet. A cycle runs on
+-- now + offset, so a larger offset fires earlier: vent 1, at the shore end, is active from 0.4 s
+-- into each 4.8 s cycle, and vents 2, 3 and 4 follow at 1.2 s steps (the last, at the islet end,
+-- from 4.0 s). The wave moves 20 studs per 1.2 s, about as fast as a player walks.
+for i = 1, 4 do
+	table.insert(
+		hazards,
+		vent(
+			`CinderCausewayVent{i}`,
+			Geography.circle(REGION, 640 + 20 * i, 0, 11),
+			{ period = 4.8, warn = 1.2, active = 0.8, offset = (4 - i) * 1.2 },
+			BASALT_TOP
+		)
+	)
+end
+
+table.insert(
+	hazards,
+	vent(
+		"CinderPrizeVent",
+		Geography.circle(REGION, 760, 0, 12),
+		{ period = 5, warn = 1.5, active = 1, offset = 0 },
+		BASALT_TOP
+	)
+)
+
+local features: { Types.Feature } = {
+	Make.block(REGION, 650, 730, -10, 10, 0, BASALT_TOP, "basalt", true),
+	Make.disc(REGION, 760, 0, 32, 0, BASALT_TOP, "basalt", true),
+}
+
+local prizeX, prizeZ = Geography.place(REGION, 760, 0)
+
+local site: Types.Site = {
+	region = REGION,
+	hazards = hazards,
+	features = features,
+	prize = { relicId = "R011", x = prizeX, y = 1.6, z = prizeZ, hold = 3 },
+	keepOut = {
+		Geography.rect(REGION, 420, 640, -200, 200),
+		Geography.circle(REGION, 760, 0, 120),
+	},
+}
+
+return site

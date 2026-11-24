@@ -1,5 +1,5 @@
 --!strict
--- Top-left status lines (safe zone, shields, Marked) and the "Drop shield" button.
+-- Top-left status lines (region, safe zone, shields, Marked, hazards) and the "Drop shield" button.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -11,6 +11,8 @@ local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
 local BACKGROUND = Color3.fromRGB(25, 22, 30)
 local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
 local KIND_COLORS: { [string]: Color3 } = {
+	region = Color3.fromRGB(245, 235, 210),
+	hazard = Color3.fromRGB(255, 170, 60),
 	safe = Color3.fromRGB(90, 200, 110),
 	shield = Color3.fromRGB(110, 170, 255),
 	marked = Color3.fromRGB(235, 70, 70),

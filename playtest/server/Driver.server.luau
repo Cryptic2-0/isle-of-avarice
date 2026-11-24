@@ -1,20 +1,23 @@
 --!nonstrict
 -- Automated two-player play test. Only in the play-test build (playtest.project.json),
 -- never in dist. Start a local server with 2 players; this script walks through the M1,
--- M2 and M3 checklists, driving each player through their Agent, and prints one line per
--- check: "[PLAYTEST] PASS ..." or "[PLAYTEST] FAIL ...", then a DONE summary.
+-- M2 and M3 checklists and the world checks (W.1 to W.7, for the nine-region island),
+-- driving each player through their Agent, and prints one line per check:
+-- "[PLAYTEST] PASS ..." or "[PLAYTEST] FAIL ...", then a DONE summary.
 --
 -- Player moves are teleports, and a few waits are skipped on purpose (the 60-second
 -- respawn shield is ended early with ProtectionService.endRespawnShield, and Relics are
 -- handed out with LedgerService.set where the checklist would walk to caches for minutes).
 -- For M3, Path XP is handed out with PathService.grant (or written into the saved data)
 -- where the checklist would hit training posts for hours, and health is refilled before
--- each measured ability hit.
+-- each measured ability hit. The world checks refill health the same way before each
+-- measurement and stand A in one hazard at a time.
 --
--- Order: M1 and M2, with M3.1 to M3.3 (first join, choosing a Calling) right after M2.1.
--- A can claim B only once an hour and M2 makes that claim (and B's on A), so M2.8, M2.13
--- and M2.14 also check the Calling's defeat XP (M3.10). Then the rest of M3, and M2.15,
--- which ends B's session, last of all.
+-- Order: the world checks (M1.1, then W.1 to W.7; the last of those drowns A, who respawns
+-- in Tallyport), then M1 and M2, with M3.1 to M3.3 (first join, choosing a Calling) right
+-- after M2.1. A can claim B only once an hour and M2 makes that claim (and B's on A), so
+-- M2.8, M2.13 and M2.14 also check the Calling's defeat XP (M3.10). Then the rest of M3,
+-- and M2.15, which ends B's session, last of all.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,11 +31,15 @@ local ProtectionService = require(Server:WaitForChild("ProtectionService"))
 local StatusService = require(Server:WaitForChild("StatusService"))
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rules = Shared:WaitForChild("Rules")
+local Geography = require(Rules:WaitForChild("Geography"))
+local Hazards = require(Rules:WaitForChild("Hazards"))
 local Ledger = require(Rules:WaitForChild("Ledger"))
 local PathProgress = require(Rules:WaitForChild("PathProgress"))
 local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local Relics = require(Shared:WaitForChild("Catalog"):WaitForChild("Relics"))
+local Sites = require(Shared:WaitForChild("Catalog"):WaitForChild("Sites"))
+local World = require(Shared:WaitForChild("Catalog"):WaitForChild("World"))
 
 local folder = Instance.new("Folder")
 folder.Name = "Playtest"
@@ -486,11 +493,131 @@ local function run()
 	--------------------------------------------------------------------------- world
 	local island = workspace:FindFirstChild("Island")
 	check("M1.1 island is built", island ~= nil)
-	check("M1.1 12 caches tagged", #CollectionService:GetTagged("Cache") == 12)
+	local cacheCount = #CollectionService:GetTagged("Cache")
+	check("M1.1 18 caches tagged", cacheCount == 18, tostring(cacheCount))
 	local town = island and island:FindFirstChild("Tallyport")
 	local spawnPad = town and town:FindFirstChild("Spawn")
 	check("M2 spawn gives no default force field", spawnPad ~= nil and spawnPad.Duration == 0)
 	check("M2 safe-zone disc exists", town ~= nil and town:FindFirstChild("SafeZone") ~= nil)
+
+	--------------------------------------------------------------------------- W the wide island
+	-- The ground and the hazard markers, then one hazard at a time on A. Health is refilled
+	-- before each measurement and read with health(), as in the M3 ability checks. Island
+	-- damage sets health directly, so A's new-player and respawn shields do not matter here.
+	do
+		local ground = island and island:FindFirstChild("Ground")
+		local groundCount = if ground ~= nil then #ground:GetChildren() else -1
+		check("W.1 Island.Ground has 144 parts", groundCount == 144, tostring(groundCount))
+
+		local areaHazards = 0
+		for _, hazard in Sites.hazards do
+			if hazard.shape.kind ~= "region" then
+				areaHazards += 1
+			end
+		end
+		local markers = island and island:FindFirstChild("Hazards")
+		local markerList = if markers ~= nil then markers:GetChildren() else {}
+		local unnamed = 0
+		for _, marker in markerList do
+			local hazardId = marker:GetAttribute("HazardId")
+			if type(hazardId) ~= "string" or Sites.hazardById[hazardId] == nil then
+				unnamed += 1
+			end
+		end
+		check(
+			"W.2 Island.Hazards has one marker per area hazard, each naming a hazard",
+			markers ~= nil and #markerList == areaHazards and unnamed == 0,
+			`{#markerList} markers for {areaHazards} area hazards, {unnamed} not naming a hazard`
+		)
+
+		-- A stands 3 studs up (the ground's top is y = 0) looking at the island centre.
+		local function stand(x: number, z: number)
+			place(A, Vector3.new(x, 3, z), Vector3.zero)
+		end
+		local function backToTown()
+			stand(0, 10)
+		end
+
+		-- Lava: 30 damage a second, so 1.5 s in the middle of a pool costs at least 25.
+		local pool = Sites.hazardById.CinderPool1.shape
+		heal(A)
+		local beforeLava = health(A)
+		stand(pool.x, pool.z)
+		task.wait(1.5)
+		check(
+			"W.3 lava: 1.5 s at the centre of CinderPool1 costs at least 25 health",
+			beforeLava - health(A) >= 25,
+			`{fmt(beforeLava)} -> {fmt(health(A))}`
+		)
+
+		-- Spring: heals 15 a second, but its centre also lies in the Hush blight (5 a second).
+		-- From 40, two seconds should leave A above 50.
+		local spring = Sites.hazardById.HushSpring1.shape
+		heal(A)
+		local humanoid = humanoidOf(A)
+		if humanoid ~= nil then
+			humanoid.Health = 40
+		end
+		local beforeSpring = health(A)
+		stand(spring.x, spring.z)
+		task.wait(2)
+		check(
+			"W.4 spring: 2 s at the centre of HushSpring1 lifts 40 health above 50",
+			health(A) > 50,
+			`{fmt(beforeSpring)} -> {fmt(health(A))}`
+		)
+
+		-- Bog: half speed. Along 650 of the Fen is in the rotted gap, off the boardwalk.
+		local bogX, bogZ = Geography.place("DrownedFen", 650, 0)
+		heal(A)
+		stand(bogX, bogZ)
+		local slowest = lowestWalkSpeed(A, 1)
+		check(
+			"W.5 bog: WalkSpeed is below 10 within 1 s in the Fen's rotted gap",
+			slowest < 10,
+			`lowest WalkSpeed {fmt(slowest)}`
+		)
+
+		-- Vent: 35 damage once per eruption, not once per tick. An eruption lasts 1 s of a 6 s
+		-- cycle, and a window of one period plus 0.5 s could hold two of them if it opened
+		-- late in a cycle. So wait in town until the vent has just finished erupting, then
+		-- stand in it.
+		local ventHazard = Sites.hazardById.CinderVent1
+		local vent = ventHazard.shape
+		local period = ventHazard.cycle.period
+		backToTown()
+		waitFor(function()
+			local phase, _, elapsed = Hazards.phase(ventHazard, workspace:GetServerTimeNow())
+			return phase == "idle" and elapsed < 0.15
+		end, period + 1)
+		heal(A)
+		local beforeVent = health(A)
+		stand(vent.x, vent.z)
+		task.wait(period + 0.5)
+		local ventLoss = beforeVent - health(A)
+		check(
+			"W.6 vent: a period at the centre of CinderVent1 costs 30 to 59 health (one hit)",
+			ventLoss >= 30 and ventLoss < 60,
+			`{fmt(beforeVent)} -> {fmt(health(A))}`
+		)
+
+		-- Drowning: (-600, -8, 0) is in the west river, where there is no ground.
+		heal(A)
+		place(A, Vector3.new(-600, -8, 0), Vector3.zero)
+		check(
+			"W.7 drowning: A is defeated within 3 s in the west river",
+			waitFor(function()
+				return health(A) <= 0
+			end, 3),
+			`health {fmt(health(A))}`
+		)
+		check("W.7 A respawns after drowning", waitAlive(A))
+
+		-- Back in town with full health for the checks that follow.
+		heal(A)
+		backToTown()
+		task.wait(0.6)
+	end
 
 	--------------------------------------------------------------------------- M2.1 shields at start
 	local now = os.clock()
@@ -1041,11 +1168,17 @@ local function run()
 		"M2.16 sealed pillar stops glowing",
 		pillar012 ~= nil and pillar012.Material == Enum.Material.SmoothPlastic
 	)
-	place(A, Vector3.new(-40, 3, 366), Vector3.new(-40, 3, 370))
+	-- C012 stands in the Bastion Reach keep. A stands 4 studs short of it on the side facing the
+	-- island centre, 2 studs up, looking at it.
+	local cachePosition = World.cacheById.C012.position
+	local cacheSpot = Vector3.new(cachePosition.x, cachePosition.y, cachePosition.z)
+	local towardCentre = Vector3.new(-cachePosition.x, 0, -cachePosition.z).Unit
+	place(A, cacheSpot + towardCentre * 4 + Vector3.new(0, 2, 0), cacheSpot)
 	task.wait(0.6)
 	ma = mark(A)
 	send(A, "prompt", "C012")
-	expectNote("M2.16 opening a sealed cache: SEALED", A, ma, "SEALED", 5)
+	-- The cache takes 4 s to open and the agent holds its prompt for 4.3 s: wait well past that.
+	expectNote("M2.16 opening a sealed cache: SEALED", A, ma, "SEALED", 10)
 	LedgerService.set(B, { claimed = {}, free = {} })
 	task.wait(0.5)
 	check(

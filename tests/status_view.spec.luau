@@ -48,3 +48,22 @@ T.test("hostile numbers never raise and show nothing", function()
 		{}
 	)
 end)
+
+T.test("place adds the region first and hazards last", function()
+	T.eq(
+		StatusView.build(
+			{ newShield = true, respawnShieldSeconds = 0, markedSeconds = 0 },
+			false,
+			{ name = "Thornwood", hazards = { "Briars" } }
+		),
+		{
+			{ text = "Thornwood", kind = "region" },
+			{ text = "New-player shield", kind = "shield" },
+			{ text = "Briars", kind = "hazard" },
+		}
+	)
+	T.eq(StatusView.build(nil, true, { name = "Tallyport", hazards = {} }), {
+		{ text = "Tallyport", kind = "region" },
+		{ text = "Safe zone", kind = "safe" },
+	})
+end)

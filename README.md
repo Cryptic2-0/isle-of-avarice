@@ -19,6 +19,7 @@ You need Roblox Studio. It is the free program Roblox provides for making and te
 3. Open Roblox Studio. Choose File, then Open from File, and pick the file you saved.
 4. Press the Play button at the top of Studio.
 5. Follow the steps in `docs/playtest/M1-checklist.md` (the Ledger), then `docs/playtest/M2-checklist.md` (combat, which needs two players), then `docs/playtest/M3-checklist.md` (the Six Paths, mostly two players). Each lists what to do and what should happen.
+6. Then follow the steps in `docs/playtest/World-checklist.md` (the nine regions of the wide island and their hazards, partly with two players).
 
 If a step fails, see the last line of the checklist.
 
@@ -40,7 +41,7 @@ The rest of this page is for people who write code.
 - Install the tools: `rokit install`
 - Run all checks (format, lint, build, tests): `bash scripts/check.sh`
 - Live-sync into Studio: `rojo serve`
-- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2 and M3 checklists and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
+- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2 and M3 checklists and the world checks, and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
 
 The playable file in `dist/IsleOfAvarice.rbxlx` is a copy of `build/IsleOfAvarice.rbxlx`. Copy it again after any code change, once the checks pass.
 

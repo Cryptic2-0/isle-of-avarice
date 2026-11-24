@@ -12,6 +12,9 @@ T.test("built place contains the expected scripts", function()
 	T.eq(game:GetService("ServerScriptService").Server.Main.ClassName, "Script")
 	T.eq(game:GetService("ReplicatedStorage").Shared.Types.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.WorldBuilder.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.LookPainter.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.TerrainBuilder.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.SiteBuilder.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.DataService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.LedgerService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.SourceService.ClassName, "ModuleScript")
@@ -22,6 +25,17 @@ T.test("built place contains the expected scripts", function()
 	T.eq(game:GetService("ServerScriptService").Server.PathService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.StatusService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.AbilityService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.HazardService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Geography.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Hazards.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.PlaceView.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.Regions.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.Looks.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Catalog.Sites.ClassName, "ModuleScript")
+	T.eq(
+		game:GetService("ReplicatedStorage").Shared.Catalog.SiteData.Thornwood.ClassName,
+		"ModuleScript"
+	)
 	T.eq(game:GetService("ReplicatedStorage").Shared.Net.ClassName, "ModuleScript")
 	T.eq(
 		game:GetService("ServerScriptService").Server.Vendor.ProfileStore.ClassName,
@@ -57,6 +71,14 @@ T.test("built place contains the expected scripts", function()
 	)
 	T.eq(
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.AbilityBar.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.HazardController.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.Atmosphere.ClassName,
 		"ModuleScript"
 	)
 	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")

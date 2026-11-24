@@ -127,6 +127,19 @@ function Effects.applySlow(s: Status, factor: number, duration: number, now: num
 	return out
 end
 
+-- The slow the ground puts on a player standing in it (bog, briars), refreshed tick after tick.
+-- An immune player is not slowed. A slow already in effect that is at least as strong and lasts at
+-- least as long is left alone, so the ground never cuts an ability's slow short.
+function Effects.applyAmbientSlow(s: Status, factor: number, duration: number, now: number): Status
+	if Effects.isImmune(s, now) then
+		return s
+	end
+	if now < s.slowUntil and s.slowFactor <= factor and s.slowUntil >= now + duration then
+		return s
+	end
+	return Effects.applySlow(s, factor, duration, now)
+end
+
 function Effects.applyRoot(s: Status, duration: number, now: number): Status
 	local out = table.clone(s)
 	out.rootUntil = now + duration

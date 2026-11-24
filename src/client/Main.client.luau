@@ -10,10 +10,13 @@ local Net = require(Shared:WaitForChild("Net"))
 local Messages = require(Shared:WaitForChild("Catalog"):WaitForChild("Messages"))
 local LedgerView = require(Rules:WaitForChild("LedgerView"))
 local PathView = require(Rules:WaitForChild("PathView"))
+local PlaceView = require(Rules:WaitForChild("PlaceView"))
 local Protection = require(Rules:WaitForChild("Protection"))
 local StatusView = require(Rules:WaitForChild("StatusView"))
+local Atmosphere = require(script.Parent.Atmosphere)
 local ClaimUI = require(script.Parent.ClaimUI)
 local CombatController = require(script.Parent.CombatController)
+local HazardController = require(script.Parent.HazardController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
 local PathUI = require(script.Parent.PathUI)
@@ -77,6 +80,7 @@ end, function(slot)
 end, function()
 	return LedgerUI.isOpen() or ClaimUI.isOpen() or PathUI.isOpen()
 end)
+HazardController.start()
 
 ledgerSync.OnClientEvent:Connect(function(ledger, vault)
 	LedgerUI.render(LedgerView.build(ledger, vault))
@@ -137,15 +141,36 @@ statusSync.OnClientEvent:Connect(function(status)
 	statusAt = os.clock()
 end)
 
-local function localInSafeZone(): boolean
+local function localRoot(): BasePart?
 	local character = localPlayer.Character
 	local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
 	if root == nil or not root:IsA("BasePart") then
+		return nil
+	end
+	return root
+end
+
+local function localInSafeZone(): boolean
+	local root = localRoot()
+	if root == nil then
 		return false
 	end
 	local p = root.Position
 	return Protection.inSafeZone({ x = p.X, y = p.Y, z = p.Z })
 end
+
+-- The region and active hazards at the local character, or nil while it has none.
+local function localPlace(): PlaceView.Place?
+	local root = localRoot()
+	if root == nil then
+		return nil
+	end
+	local p = root.Position
+	return PlaceView.at(p.X, p.Z, workspace:GetServerTimeNow())
+end
+
+-- The region last shown. Entering a new one changes the fog and shows its name and hint.
+local lastRegionId: string? = nil
 
 local function refreshHud()
 	local status = lastStatus
@@ -158,7 +183,16 @@ local function refreshHud()
 			markedSeconds = math.max(0, status.markedSeconds - elapsed),
 		}
 	end
-	StatusHUD.render(StatusView.build(shown, localInSafeZone()), shown ~= nil and shown.newShield)
+	local place = localPlace()
+	if place ~= nil and place.regionId ~= lastRegionId then
+		lastRegionId = place.regionId
+		Atmosphere.set(place.regionId)
+		Toast.show(place.name .. ": " .. place.hint)
+	end
+	StatusHUD.render(
+		StatusView.build(shown, localInSafeZone(), place),
+		shown ~= nil and shown.newShield
+	)
 end
 
 task.spawn(function()

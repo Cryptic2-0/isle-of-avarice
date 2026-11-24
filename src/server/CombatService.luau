@@ -289,6 +289,55 @@ function CombatService.damage(
 	return true
 end
 
+-- Damage from the island: no attacker, no protections (shields guard against players only),
+-- no hit-log entry. The victim's own effects still apply: immunity cancels it; damage
+-- reduction and ability shields absorb. Sets Humanoid.Health directly, so a ForceField does
+-- not block it. `flash` also fires the HitFx remote. True when health was removed.
+function CombatService.environmentDamage(victim: Player, amount: number, flash: boolean?): boolean
+	-- Written positively so a NaN amount is refused too.
+	if not (amount > 0) or victim.Parent ~= Players then
+		return false
+	end
+	local humanoid = living(victim)
+	if humanoid == nil then
+		return false
+	end
+
+	-- No yielding call from here to the health change: statuses cannot go stale.
+	local immune, health = false, 0
+	StatusService.update(victim, function(status, at)
+		immune = Effects.isImmune(status, at)
+		-- The reflect amount is dropped: the island has nothing to reflect at.
+		local out, toHealth = Effects.resolveDamage(status, amount, at)
+		health = toHealth
+		return out
+	end)
+	if immune and not (health > 0) then
+		return false
+	end
+
+	-- Not TakeDamage: a ForceField blocks that, and a shielded player is still hurt by the island.
+	-- A defeat here is credited by the Died handler like any other.
+	if health > 0 then
+		humanoid.Health = math.max(0, humanoid.Health - health)
+	end
+	if flash == true then
+		hitFx:FireAllClients(victim.UserId)
+	end
+	return health > 0
+end
+
+-- Defeats the victim outright (drowning). Ignores effects. The Died handler credits it.
+function CombatService.environmentDefeat(victim: Player)
+	if victim.Parent ~= Players then
+		return
+	end
+	local humanoid = living(victim)
+	if humanoid ~= nil then
+		humanoid.Health = 0
+	end
+end
+
 -- The client only says "I swung". Target, reach, damage and timing are all decided here.
 local function handleStrike(player: Player)
 	if player.Parent ~= Players then
