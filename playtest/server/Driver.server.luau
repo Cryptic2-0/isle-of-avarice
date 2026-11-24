@@ -5060,6 +5060,31 @@ local function run()
 
 	--------------------------------------------------------------------------- M2.14 the Vault
 	check("M2.14 B respawns", waitAlive(B))
+	-- Vaulting is dealing: refused while Marked or within 30 seconds of a fight, wherever A
+	-- stands (the check comes before the safe-zone one). A attacked B above, so A is Marked.
+	ma = mark(A)
+	send(A, "vault", { kind = "add", cardId = "R001" })
+	expectNote("M2.14 A Marked cannot Vault: EDICT_MARKED", A, ma, "EDICT_MARKED")
+	check("M2.14 A's Vault is still empty", next(LedgerService.getVault(A) or { x = true }) == nil)
+	ProtectionService.endMark(A)
+	local lastFightA = CombatService.lastFightAt(A)
+	if lastFightA ~= nil and os.clock() - lastFightA < 29 then
+		ma = mark(A)
+		send(A, "vault", { kind = "add", cardId = "R001" })
+		expectNote(
+			"M2.14 A just out of a fight cannot Vault: EDICT_IN_COMBAT",
+			A,
+			ma,
+			"EDICT_IN_COMBAT"
+		)
+		check(
+			"M2.14 A's Vault is still empty after the fight refusal",
+			next(LedgerService.getVault(A) or { x = true }) == nil
+		)
+	end
+	ProtectionService.endMark(B)
+	waitNoFight(A)
+	waitNoFight(B)
 	place(B, IN_TOWN, Vector3.zero)
 	task.wait(0.6)
 	mb = mark(B)

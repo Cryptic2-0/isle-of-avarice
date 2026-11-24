@@ -100,8 +100,9 @@ hands only two ways: **trade**, or **defeating the holder**.
 A Vaulted Relic can never be taken, whether claimed or spare, however
 many copies the player holds. A player can Vault only a Relic they hold,
 and it leaves the Vault when they no longer hold any copy. The Vault can
-be changed only in a safe zone. Crown-tier Relics cannot be Vaulted, so
-the rarest cards always stay in play.
+be changed only in a safe zone, and never while Marked or within 30 seconds
+of dealing or taking player damage (the rule trading and selling use).
+Crown-tier Relics cannot be Vaulted, so the rarest cards always stay in play.
 
 **When one player defeats another outside a safe zone,** the killer makes
 a **blind claim**:
