@@ -794,7 +794,10 @@ the trial HUD at (408, 66), 220 by 100. On a screen without touch the ability
 bar and menu row are centred, as before. The four menu buttons leave the bottom
 left (where they sat on the thumbstick) and live in their own row; B and P
 still open the Ledger and the Paths panel. The HUD sits under the windows: the
-menu row and the ability bar never cover an open window.
+menu row and the ability bar never cover an open window. In screen order (DisplayOrder) the
+menu row is 5, the ability bar 6, the trial HUD lines 7, the Coin and status lines 8 and the
+party panel 9, all under the lowest window (the Ledger, 10). The trial offer (14), the "Drop
+shield" dialog (15) and the party invite banner (16) are windows and keep their own screens above.
 
 **Windows on a phone.** Every window keeps its size as a share of the screen,
 with a smallest size that fits a 640 by 360 phone under a 58-pixel top bar:

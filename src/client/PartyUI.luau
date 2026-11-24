@@ -464,11 +464,14 @@ function PartyUI.mount(playerGui: PlayerGui, given: Handlers)
 	handlers = given
 	selfId = Players.LocalPlayer.UserId
 
-	-- With the other windows; below the messages (20).
-	local gui = UiKit.screen("PartyGui", 16)
+	-- The invite banner is above the windows (16, below the messages at 20); the panel sits under
+	-- every window (the lowest is the Ledger, 10).
+	local inviteGui = UiKit.screen("PartyInviteGui", 16)
+	local gui = UiKit.screen("PartyGui", 9)
 
-	buildInvite(gui)
+	buildInvite(inviteGui)
 	buildPanel(gui)
+	inviteGui.Parent = playerGui
 	gui.Parent = playerGui
 end
 

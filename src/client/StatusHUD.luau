@@ -66,7 +66,10 @@ local function buildConfirm(gui: ScreenGui, onDropShield: () -> ()): Frame
 end
 
 function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
-	local gui = UiKit.screen("StatusGui", 15)
+	-- The lines sit under every window (the lowest is the Ledger, 10); the dialog is a window of
+	-- its own, above them.
+	local gui = UiKit.screen("StatusGui", 8)
+	local dialogGui = UiKit.screen("DropShieldGui", 15)
 
 	local coin = Instance.new("TextLabel")
 	coin.Name = "Coin"
@@ -111,12 +114,13 @@ function StatusHUD.mount(playerGui: PlayerGui, onDropShield: () -> ())
 	drop.Parent = gui
 	dropButton = drop
 
-	local dialog = buildConfirm(gui, onDropShield)
+	local dialog = buildConfirm(dialogGui, onDropShield)
 	confirm = dialog
 	UiKit.onPress(drop, function()
 		dialog.Visible = true
 	end)
 
+	dialogGui.Parent = playerGui
 	gui.Parent = playerGui
 end
 

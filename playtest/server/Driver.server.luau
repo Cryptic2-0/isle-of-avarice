@@ -3889,7 +3889,7 @@ end
 function m8.kit(A: Player, B: Player)
 	--------------------------------------------------------------------------- M8.1 the kit
 	local ui = inspect(A)
-	check("M8.1 14 screens are made with the kit", ui.isleGuis == 14, tostring(ui.isleGuis))
+	check("M8.1 17 screens are made with the kit", ui.isleGuis == 17, tostring(ui.isleGuis))
 	local bordered = ui.bordered or {}
 	check("M8.1 no control has a border", #bordered == 0, table.concat(bordered, ", "))
 	check("M8.1 the four old open buttons are gone", ui.oldButtons == 0, tostring(ui.oldButtons))
@@ -3990,6 +3990,43 @@ function m8.kit(A: Player, B: Player)
 		return partyInvites[B] == false
 	end, 3)
 	task.wait(0.3)
+
+	--------------------------------------------------------------------------- M8.12 the HUD draws under the windows
+	local orders = ui.guiOrders or {}
+	local hudNames = { "AbilityGui", "MenuGui", "TrialGui", "StatusGui", "PartyGui" }
+	local windowNames = {
+		"LedgerGui",
+		"PathGui",
+		"ClaimGui",
+		"ShopGui",
+		"TradeGui",
+		"EdictGui",
+		"TrialOfferGui",
+		"DropShieldGui",
+		"PartyInviteGui",
+		"RenounceGui",
+	}
+	local highestHud, lowestWindow = -1, math.huge
+	local missing = {}
+	for _, name in hudNames do
+		if orders[name] == nil then
+			table.insert(missing, name)
+		else
+			highestHud = math.max(highestHud, orders[name])
+		end
+	end
+	for _, name in windowNames do
+		if orders[name] == nil then
+			table.insert(missing, name)
+		else
+			lowestWindow = math.min(lowestWindow, orders[name])
+		end
+	end
+	check(
+		"M8.12 the HUD draws under the windows",
+		#missing == 0 and highestHud < lowestWindow,
+		`HUD up to {highestHud}, windows from {lowestWindow}, missing: {table.concat(missing, ", ")}`
+	)
 end
 
 -- M8.4 to M8.6: two taps to unclaim or discard, and a refused request's row coming back.

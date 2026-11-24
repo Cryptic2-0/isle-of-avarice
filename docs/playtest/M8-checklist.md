@@ -27,6 +27,7 @@ The automated run taps the game's own buttons and checks where every control sit
 3. **Every window on the phone**
    - What to do: on the same phone, open each of these in turn and close it again: the Ledger book; the claim screen (defeat B, see `docs/playtest/M2-checklist.md`); the Edict Hall (hold E at the clerk, see `docs/playtest/M5-checklist.md`); a trade; the Paths panel and the Calling picker; the Summons picker (use a Summons card from the free slots); a trial offer (talk to a Warden); the Renounce window (see `docs/playtest/M7-checklist.md`); and the window that asks "Other players will be able to attack you. Drop it?" (press "Drop shield" while the new-player shield is on).
    - What should happen: each window fits the screen, its buttons can be tapped with a thumb and its text can be read. The claim screen shows every number and name. No window is cut off at an edge or hidden behind the menu row.
+   - Also: open the Ledger during a trial, in a party. The "X" and every Claim and Discard button are visible and work: the quest lines, the Coin line and the party panel are drawn under the window, not over it.
 
 4. **Two taps to unclaim**
    - What to do: in the Ledger book, tap a claimed slot once, and look at it. Tap it again within 3 seconds. Then tap another claimed slot once and wait 3 seconds.

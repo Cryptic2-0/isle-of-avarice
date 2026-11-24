@@ -44,8 +44,10 @@ end
 function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 	acceptHandler = onAccept
 
-	-- Below the status HUD (15) and messages (20), above the Ledger book (10).
-	local gui = UiKit.screen("TrialGui", 14)
+	-- The offer is a window: above the Ledger book (10) and the other windows, below messages (20).
+	local offerGui = UiKit.screen("TrialOfferGui", 14)
+	-- The HUD lines sit under every window (the lowest is the Ledger, 10).
+	local gui = UiKit.screen("TrialGui", 7)
 
 	local frame = UiKit.window("Offer", UDim2.fromScale(0.46, 0.56), "small")
 
@@ -117,7 +119,7 @@ function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 	UiKit.onPress(dismiss, close)
 	dismiss.Parent = buttons
 
-	frame.Parent = gui
+	frame.Parent = offerGui
 	window = frame
 
 	local lines = Instance.new("Frame")
@@ -136,6 +138,7 @@ function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 		shownKey = nil
 	end)
 
+	offerGui.Parent = playerGui
 	gui.Parent = playerGui
 end
 

@@ -402,7 +402,8 @@ local function inspectUi()
 		end
 	end
 	ui.trialLines = trialLines
-	local offer = trialGui and trialGui:FindFirstChild("Offer")
+	local trialOfferGui = playerGui:FindFirstChild("TrialOfferGui")
+	local offer = trialOfferGui and trialOfferGui:FindFirstChild("Offer")
 	ui.offerVisible = offer ~= nil and offer.Visible
 	local offerBody = offer and offer:FindFirstChild("Body")
 	local function offerText(name: string): string
@@ -514,7 +515,8 @@ local function inspectUi()
 		end
 	end
 	ui.partyRows = partyRowList
-	local partyInvite = partyGui and partyGui:FindFirstChild("Invite")
+	local partyInviteGui = playerGui:FindFirstChild("PartyInviteGui")
+	local partyInvite = partyInviteGui and partyInviteGui:FindFirstChild("Invite")
 	ui.partyInviteVisible = partyInvite ~= nil and partyInvite.Visible
 	local partyInviteText = partyInvite and partyInvite:FindFirstChild("Text")
 	ui.partyInviteText = partyInviteText and partyInviteText.Text or ""
@@ -567,6 +569,13 @@ local function inspectUi()
 		end
 	end
 	ui.isleGuis = isleGuis
+	local guiOrders = {}
+	for _, gui in playerGui:GetChildren() do
+		if gui:IsA("ScreenGui") and gui:GetAttribute("IsleUi") == true then
+			guiOrders[gui.Name] = gui.DisplayOrder
+		end
+	end
+	ui.guiOrders = guiOrders
 	ui.bordered = bordered
 	local oldButtons = 0
 	for _, path in
@@ -611,9 +620,9 @@ local function inspectUi()
 			"EdictGui/RelicPicker",
 			"EdictGui/PlayerPicker",
 			"EdictGui/Result",
-			"TrialGui/Offer",
+			"TrialOfferGui/Offer",
 			"RenounceGui/Renounce",
-			"StatusGui/ConfirmDrop",
+			"DropShieldGui/ConfirmDrop",
 		}
 	do
 		local frame = findByPath(path)
@@ -688,8 +697,8 @@ cmd.OnClientEvent:Connect(function(op, arg)
 		-- Any value, hostile ones included: the server must check it.
 		remotes.TrialAccept:FireServer(arg)
 	elseif op == "closeOffer" then
-		local trialGui = playerGui:FindFirstChild("TrialGui")
-		local offer = trialGui and trialGui:FindFirstChild("Offer")
+		local trialOfferGui = playerGui:FindFirstChild("TrialOfferGui")
+		local offer = trialOfferGui and trialOfferGui:FindFirstChild("Offer")
 		if offer ~= nil then
 			offer.Visible = false
 		end
