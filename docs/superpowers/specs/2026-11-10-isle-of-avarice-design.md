@@ -598,7 +598,7 @@ claim, a Renounce or a holder leaving can always be earned anew.
   300 seconds. The route crosses the Sluices at their bridges and ends across
   the tide causeway, so the tide must be timed. The Crown Warden stands in
   Tallyport. Passage and Homecoming are refused during a trial (3.13).
-- **The Throne** (R050) is a twelve-ledge climb on the dry east bank of the
+- **The Throne** (R050) is a twelve-ledge climb on the dry west bank of the
   Drowned Fen with the Crown cache on top. Opening it takes a 10-second hold,
   checked by the server, while rivals can knock the holder off or defeat them.
 

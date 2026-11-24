@@ -7,7 +7,8 @@ local REGION: Types.RegionId = "DrownedFen"
 local BOARDWALK_TOP = 0.6
 
 -- along from, along to, across from, across to. The two long walks run down the middle with a
--- rotted gap between them; the three short ones lead off to the east.
+-- rotted gap between them; the three short ones lead off to the west (at the Fen's bearing of
+-- 180, positive across is world west).
 local BOARDWALKS = {
 	{ 400, 620, -7, 7 },
 	{ 680, 860, -7, 7 },
