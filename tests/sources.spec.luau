@@ -2,6 +2,7 @@
 local T = require("./harness")
 local Ledger = require("../src/shared/Rules/Ledger")
 local Sources = require("../src/shared/Rules/Sources")
+local World = require("../src/shared/Catalog/World")
 local Types = require("../src/shared/Types")
 
 local cache: Types.Cache = { id = "C007", relicId = "R007", position = { x = 0, y = 0, z = 0 } } -- Silver: 120 s
@@ -150,4 +151,48 @@ T.test("give puts a reward Relic in a free slot, with the same checks as a cache
 	local mine = Ledger.new()
 	Sources.give(mine, "R013", false, false)
 	T.eq(mine, Ledger.new(), "the ledger is not changed in place")
+end)
+
+T.test("held caches: the hold must have lasted", function()
+	T.eq(Sources.HOLD_SLACK, 0.3)
+	T.truthy(Sources.holdOk(nil, nil, nil, 100), "an ordinary cache needs no hold")
+	T.falsy(Sources.holdOk(3, nil, nil, 100), "never began")
+	T.truthy(Sources.holdOk(3, 97, nil, 100))
+	T.truthy(Sources.holdOk(3, 97.3, nil, 100))
+	T.falsy(Sources.holdOk(3, 97.31, nil, 100))
+	T.truthy(Sources.holdOk(3, 97, 99.8, 100), "ended after 2.8 s, just now")
+	T.falsy(Sources.holdOk(3, 97, 99, 100.5), "let go after 2 s")
+	T.falsy(Sources.holdOk(3, 0 / 0, nil, 100))
+	T.falsy(Sources.holdOk(3, 97, nil, 0 / 0))
+	T.falsy(Sources.holdOk(3, 97, 0 / 0, 100))
+end)
+
+T.test("held caches: an old hold does not count", function()
+	T.falsy(Sources.holdOk(3, 90, 98, 140), "(a) released long before the trigger")
+	T.falsy(Sources.holdOk(3, 90, 93.5, 100), "(a) held long enough, released 6.5 s ago")
+	T.truthy(Sources.holdOk(3, 90, 99.8, 100), "(b) ended 0.2 s before the trigger")
+	T.truthy(Sources.holdOk(3, 90, 99.7, 100), "(b) ended exactly the slack before")
+	T.falsy(Sources.holdOk(3, 90, 99.6, 100), "(b) ended just past the slack")
+	T.truthy(Sources.holdOk(3, 90, nil, 100), "(c) still running")
+	T.truthy(Sources.holdOk(10, 90, nil, 100), "(c) a 10 s hold, running 10 s")
+end)
+
+T.test("tryCollect refuses a short hold after the distance check", function()
+	local cache = World.cacheById.C029
+	local state = Sources.new(World.caches)
+	local s1, l1, code1 = Sources.tryCollect(state, Ledger.new(), cache, 0, 5, false, false, false)
+	T.eq({ s1, l1, code1 }, { state, nil, "HOLD_TOO_SHORT" } :: { any })
+	T.eq(
+		select(3, Sources.tryCollect(state, Ledger.new(), cache, 0, 20, false, false, false)),
+		"TOO_FAR"
+	)
+	T.eq(
+		select(3, Sources.tryCollect(state, Ledger.new(), cache, 0, 5, false, false, true)),
+		"GOT_CARD"
+	)
+	T.eq(
+		select(3, Sources.tryCollect(state, Ledger.new(), cache, 0, 5, false, false)),
+		"GOT_CARD",
+		"old callers"
+	)
 end)

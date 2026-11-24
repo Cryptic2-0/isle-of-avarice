@@ -42,6 +42,12 @@ local history: Protection.ClaimHistory = {}
 local buckets: { [Player]: RateLimiter.Bucket } = {}
 local claimUpdate: RemoteEvent
 
+-- True while the player has an open, unclosed claim of their own.
+function ClaimService.isClaiming(player: Player): boolean
+	local s = sessions[player]
+	return s ~= nil and not s.closed
+end
+
 -- True if the player has a token left in their rate-limit bucket (takes one).
 local function allowed(player: Player): boolean
 	local now = os.clock()

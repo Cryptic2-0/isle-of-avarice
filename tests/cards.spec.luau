@@ -68,7 +68,7 @@ end)
 
 T.test("shop prices and stock", function()
 	T.eq({ Shop.PACK_PRICE, Shop.PACK_SIZE, Shop.RELIC_PRICE, Shop.REACH }, { 60, 3, 40, 15 })
-	T.eq(Shop.stock, { "R001", "R002", "R003", "R004", "R005", "R006" })
+	T.eq(Shop.stock, { "R001", "R002", "R003", "R004", "R005", "R006", "R031" })
 	for _, relicId in Shop.stock do
 		T.eq(Relics.byId[relicId].tier, "Copper")
 	end

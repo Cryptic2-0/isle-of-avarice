@@ -169,7 +169,12 @@ T.test("view: what the shop window shows", function()
 	T.eq(view.packText, "Edict pack: 3 Edicts for 60 Coin")
 	T.eq(view.oddsText, "Each card: Summons 25%, Audit 20%, Veil 20%, Passage 15%, Homecoming 20%")
 	T.eq(view.canBuyPack, false)
-	T.eq(#view.stock, 6)
+	T.eq(#view.stock, 7)
+	T.eq(view.stock[7].relicId, "R031")
+	T.eq(
+		select(3, Shop.apply(Ledger.new(), 45, { kind = "relic", relicId = "R031" }, seq())),
+		"SHOP_BOUGHT"
+	)
 	T.eq(
 		view.stock[1],
 		{ relicId = "R001", name = "Tarnished Tally-Coin", priceText = "40 Coin", canBuy = true }

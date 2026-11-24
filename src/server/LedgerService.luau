@@ -2,7 +2,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Ledger = require(ReplicatedStorage.Shared.Rules.Ledger)
 local LedgerActions = require(ReplicatedStorage.Shared.Rules.LedgerActions)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Net = require(ReplicatedStorage.Shared.Net)
@@ -26,7 +25,6 @@ local ledgerRequest: RemoteEvent
 local notifyRemote: RemoteEvent
 
 local buckets: { [Player]: RateLimiter.Bucket } = {}
-local completed: { [Player]: boolean } = {}
 local lastSlowDown: { [Player]: number } = {}
 local locked: { [Player]: boolean } = {}
 local changedCallbacks: { (player: Player, ledger: Ledger) -> () } = {}
@@ -180,11 +178,6 @@ local function handleAction(player: Player, request: any)
 		return
 	end
 	LedgerService.notify(player, code, { name = Cards.name(cardId) })
-
-	if code == "CLAIMED" and Ledger.isComplete(newLedger) and not completed[player] then
-		completed[player] = true
-		notifyRemote:FireAllClients("LEDGER_COMPLETE", { player = player.DisplayName })
-	end
 end
 
 function LedgerService.start()
@@ -202,7 +195,6 @@ function LedgerService.start()
 	ledgerRequest.OnServerEvent:Connect(handleRequest)
 	Players.PlayerRemoving:Connect(function(player)
 		buckets[player] = nil
-		completed[player] = nil
 		lastSlowDown[player] = nil
 		-- A held player's profile is still open; whoever holds it unlocks them.
 		-- Deferred so the holds taken by other PlayerRemoving handlers exist by now.

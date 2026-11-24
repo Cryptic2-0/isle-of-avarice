@@ -13,6 +13,24 @@ export type SourceState = { [string]: number }
 local Sources = {}
 
 Sources.MAX_DISTANCE = 15
+-- Network and frame jitter allowed on a held prompt.
+Sources.HOLD_SLACK = 0.3
+
+-- Whether a held cache's prompt was held long enough and the hold was still running at `now` (or
+-- ended within the slack). hold is nil for an ordinary cache; began and ended are the server's
+-- own times for the prompt starting and ending. An old, released hold never counts.
+function Sources.holdOk(hold: number?, began: number?, ended: number?, now: number): boolean
+	if hold == nil then
+		return true
+	end
+	if began == nil then
+		return false
+	end
+	if ended ~= nil and not (now - ended <= Sources.HOLD_SLACK) then
+		return false
+	end
+	return (ended or now) - began >= hold - Sources.HOLD_SLACK
+end
 
 function Sources.new(caches: { Cache }): SourceState
 	local state: SourceState = {}
@@ -54,7 +72,7 @@ function Sources.give(
 	return result, "GOT_CARD"
 end
 
--- Checks run in order: data, locked ledger, distance, cache, sealed, free slots. A failure returns the
+-- Checks run in order: data, locked ledger, distance, hold, cache, sealed, free slots. A failure returns the
 -- same state untouched, so a refused attempt never consumes the cache.
 -- On success the fourth value is the time the cache becomes available again.
 function Sources.tryCollect(
@@ -64,7 +82,8 @@ function Sources.tryCollect(
 	now: number,
 	distance: number,
 	sealed: boolean,
-	locked: boolean
+	locked: boolean,
+	holdOk: boolean?
 ): (SourceState, Ledger?, string, number?)
 	if ledger == nil then
 		return state, nil, "DATA_NOT_LOADED", nil
@@ -74,6 +93,9 @@ function Sources.tryCollect(
 	end
 	if not (distance <= Sources.MAX_DISTANCE) then
 		return state, nil, "TOO_FAR", nil
+	end
+	if holdOk == false then
+		return state, nil, "HOLD_TOO_SHORT", nil
 	end
 	if not Sources.isAvailable(state, cache.id, now) then
 		return state, nil, "CACHE_EMPTY", nil

@@ -1,6 +1,6 @@
 # Play-test checklist for milestone 4
 
-Milestone 4 adds creatures and trials. Beasts live at dens out in the wild regions, fight back, and pay Coin, Path XP and sometimes a Relic to everyone who helped defeat them. Six Wardens, one at each region's gate, offer timed trials. Three of the trials and one great beast make up a quest, The Unpaid Debt. The Ledger now has 30 slots.
+Milestone 4 adds creatures and trials. Beasts live at dens out in the wild regions, fight back, and pay Coin, Path XP and sometimes a Relic to everyone who helped defeat them. Six Wardens, one at each region's gate, offer timed trials (milestone 7 adds four more Wardens; see `docs/playtest/M7-checklist.md`). Three of the trials and one great beast make up a quest, The Unpaid Debt. The Ledger had 30 slots at this milestone (50 since milestone 7).
 
 Some steps need two players. Start a two-player test the same way as in `docs/playtest/M2-checklist.md`: open the Test tab, set the number of players to 2 and press Start. **A** is Player1 and **B** is Player2.
 
@@ -11,7 +11,7 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 fai
 - **Gate**: where a region's road leaves the Counting Fields, about 300 studs from Tallyport. A signpost names the region. The Warden stands to the right of the road as you walk out; the region's Copper cache is to the left.
 - **Den**: a dark round patch of ground with a label such as "Brinehound den". Its creatures stay near it.
 - **Coin line**: the gold line "Coin: …" at the top left, above the status lines.
-- **Trial HUD**: the lines at the top right. The last one is always the quest line, for example "The Unpaid Debt: 0 / 4, next: Tidewalk".
+- **Trial HUD**: the lines at the top right. The last one is the rounds line ("Warden's Round 0 / 9, Beast Tally 0 / 5") and the one above it is the quest line, for example "The Unpaid Debt: 0 / 4, next: Tidewalk".
 - Messages appear at the top of the screen. When several arrive together they now show one after another instead of replacing each other.
 
 ## Where things are
@@ -27,9 +27,9 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 fai
 
 ## Steps
 
-1. **The Coin line and the 30-slot Ledger**
+1. **The Coin line and the 50-slot Ledger**
    - What to do: start a test. Look at the top left. Open the Ledger book.
-   - What should happen: a gold line reads "Coin: 0" above the status lines. The book shows 30 slots and "Relics: 0 / 30". Slots 13 to 30 have names and tiers like the first twelve.
+   - What should happen: a gold line reads "Coin: 0" above the status lines. The book shows 50 slots and "Relics: 0 / 50". Slots 13 to 30 (added with milestone 4) and slots 31 to 50 (added with milestone 7) have names and tiers like the first twelve.
 
 2. **A Brinehound pack**
    - What to do: as A, press "Drop shield", then "Yes". Walk north along the Thornwood road to the signpost, then go left (west) about 100 steps past the Copper cache until you see a "Brinehound den" label. Stop about 40 steps away and watch. Then walk closer.
@@ -96,6 +96,6 @@ Automated run (2026-11-16, Studio, two players): `[PLAYTEST] DONE passed=343 fai
 
 17. **On a phone**
     - What to do: in Studio, open the Test tab, choose Device and pick a phone. Talk to a Warden, run a trial, and (with two players) open a claim screen.
-    - What should happen: the Warden's window fits the screen and both buttons can be tapped. The trial HUD at the top right does not cover the ability bar. The claim screen shows all 30 slots in six columns and five rows, and the names can be read.
+    - What should happen: the Warden's window fits the screen and both buttons can be tapped. The trial HUD at the top right does not cover the ability bar. The claim screen shows all 50 slots, and the names can be read.
 
 If any step fails, copy the red text from the Output window and send it back.

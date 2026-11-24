@@ -7,6 +7,10 @@
     "ReplicatedStorage": { "Shared": { "$path": "src/shared" } },
     "ServerScriptService": { "Server": { "$path": "src/server" } },
     "StarterPlayer": {
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts",
+        "Health": { "$path": "src/character/Health.server.luau" }
+      },
       "StarterPlayerScripts": { "Client": { "$path": "src/client" } }
     }
   }

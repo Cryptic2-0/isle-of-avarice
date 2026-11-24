@@ -116,10 +116,10 @@ T.test("isComplete needs every relic claimed", function()
 	end
 	T.falsy(
 		Ledger.isComplete({ claimed = claimed, free = { lastId, lastId } }),
-		"29 claimed plus spares"
+		"49 claimed plus spares"
 	)
 	claimed[lastId] = true
-	T.truthy(Ledger.isComplete({ claimed = claimed, free = {} }), "all 30")
+	T.truthy(Ledger.isComplete({ claimed = claimed, free = {} }), "all 50")
 	T.falsy(Ledger.isComplete(Ledger.new()))
 end)
 

@@ -6,7 +6,9 @@
 local CollectionService = game:GetService("CollectionService")
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local playtest = ReplicatedStorage:WaitForChild("Playtest")
 local cmd = playtest:WaitForChild("Cmd")
@@ -59,6 +61,95 @@ end)
 remotes:WaitForChild("PartySync").OnClientEvent:Connect(function(sync)
 	report:FireServer("partySync", sync)
 end)
+-- M7: the Crowning banner and the Renounce offer (nil = closed).
+remotes:WaitForChild("Ceremony").OnClientEvent:Connect(function(payload)
+	report:FireServer("ceremony", payload)
+end)
+remotes:WaitForChild("RenounceOffer").OnClientEvent:Connect(function(offer)
+	report:FireServer("renounceOffer", offer)
+end)
+
+-- Diagnostics for ProximityPrompts. In the first M7 run every prompt hold after the display went
+-- to sleep (Studio logged "onMonitorOff" and "Pushing skip render state") did nothing. So keep
+-- count of rendered and simulated frames, and of the prompts the engine says it shows here: the
+-- prompt traces then tell "this client draws no frames" apart from "the prompt is not shown"
+-- (distance, camera) and from "shown, but the hold did nothing".
+local renderFrames, heartbeatFrames = 0, 0
+RunService.RenderStepped:Connect(function()
+	renderFrames += 1
+end)
+RunService.Heartbeat:Connect(function()
+	heartbeatFrames += 1
+end)
+local shownPrompts: { [ProximityPrompt]: boolean } = {}
+ProximityPromptService.PromptShown:Connect(function(prompt)
+	shownPrompts[prompt] = true
+end)
+ProximityPromptService.PromptHidden:Connect(function(prompt)
+	shownPrompts[prompt] = nil
+end)
+-- Rendered and simulated frames over the last second, sampled once a second.
+local renderRate, heartbeatRate = -1, -1
+task.spawn(function()
+	local rendering = true
+	while true do
+		local r0, h0 = renderFrames, heartbeatFrames
+		task.wait(1)
+		renderRate, heartbeatRate = renderFrames - r0, heartbeatFrames - h0
+		-- Tell the driver once when this client stops (or starts again) drawing frames: with
+		-- no rendered frames the engine shows no prompt, so no prompt check can pass.
+		if rendering and renderRate == 0 then
+			rendering = false
+			report:FireServer("render", false, heartbeatRate)
+		elseif not rendering and renderRate > 0 then
+			rendering = true
+			report:FireServer("render", true, renderRate)
+		end
+	end
+end)
+
+local function promptState(prompt: ProximityPrompt): string
+	local parent = prompt.Parent
+	local character = Players.LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local distance = "?"
+	if parent ~= nil and parent:IsA("BasePart") and root ~= nil and root:IsA("BasePart") then
+		distance = string.format("%.1f", (root.Position - parent.Position).Magnitude)
+	end
+	local camera = workspace.CurrentCamera
+	local onScreen = "?"
+	local cameraAt = "?"
+	if camera ~= nil and parent ~= nil and parent:IsA("BasePart") then
+		local _, visible = camera:WorldToViewportPoint(parent.Position)
+		onScreen = tostring(visible)
+		local c = camera.CFrame.Position
+		cameraAt = string.format("%.0f, %.0f, %.0f", c.X, c.Y, c.Z)
+	end
+	return `enabled {prompt.Enabled}, shown {shownPrompts[prompt] == true}, {distance} studs (max {prompt.MaxActivationDistance}), on screen {onScreen}, camera at ({cameraAt}), frames/s render {renderRate} heartbeat {heartbeatRate}`
+end
+
+-- Holds a prompt the way the E key would and reports what this client saw: the prompt's state
+-- before the hold, and whether the hold began and the prompt fired here.
+local function holdPrompt(prompt: ProximityPrompt, label: string)
+	local before = promptState(prompt)
+	local began, triggered = false, false
+	local beganConnection = prompt.PromptButtonHoldBegan:Connect(function()
+		began = true
+	end)
+	local triggeredConnection = prompt.Triggered:Connect(function()
+		triggered = true
+	end)
+	prompt:InputHoldBegin()
+	task.wait(prompt.HoldDuration + 0.3)
+	prompt:InputHoldEnd()
+	task.wait(0.1)
+	beganConnection:Disconnect()
+	triggeredConnection:Disconnect()
+	report:FireServer(
+		"promptTrace",
+		`{label}: before the hold {before}; here the hold began {began}, triggered {triggered}`
+	)
+end
 
 local function texts(container: Instance?): { string }
 	local result = {}
@@ -72,6 +163,15 @@ local function texts(container: Instance?): { string }
 	end
 	table.sort(result)
 	return result
+end
+
+-- The Tally Stone's Renounce prompt, or nil.
+local function stonePromptOf()
+	local island = workspace:FindFirstChild("Island")
+	local town = island and island:FindFirstChild("Tallyport")
+	local model = town and town:FindFirstChild("TallyStone")
+	local stone = model and model:FindFirstChild("Stone")
+	return stone and stone:FindFirstChild("RenouncePrompt")
 end
 
 -- A snapshot of the game's UI as this player sees it.
@@ -103,6 +203,14 @@ local function inspectUi()
 	end
 	ui.ledgerSlots = slotTexts
 	ui.vaultButtons = vaultButtons
+	-- M7: how many numbered slots the book draws, and its Crown line.
+	local slotCount = 0
+	for _ in slotTexts do
+		slotCount += 1
+	end
+	ui.ledgerSlotCount = slotCount
+	local crownLine = book and book:FindFirstChild("CrownLine")
+	ui.crownLine = crownLine and crownLine.Text or ""
 
 	local statusGui = playerGui:FindFirstChild("StatusGui")
 	ui.statusLines = texts(statusGui and statusGui:FindFirstChild("Lines"))
@@ -203,7 +311,7 @@ local function inspectUi()
 	local trialLines = {}
 	local hud = trialGui and trialGui:FindFirstChild("Hud")
 	if hud ~= nil then
-		for index = 1, 3 do
+		for index = 1, 4 do
 			local line = hud:FindFirstChild("Line" .. index)
 			if line ~= nil then
 				trialLines[index] = line.Text
@@ -311,9 +419,11 @@ local function inspectUi()
 		for _, row in frames do
 			local rowName = row:FindFirstChild("Name")
 			local rowHealth = row:FindFirstChild("Health")
+			local rowTitle = row:FindFirstChild("Title")
 			table.insert(partyRowList, {
 				name = rowName and rowName.Text or "",
 				health = rowHealth and rowHealth.Text or "",
+				title = rowTitle and rowTitle.Text or "",
 				remove = row:FindFirstChild("Remove") ~= nil,
 				lead = row:FindFirstChild("MakeLeader") ~= nil,
 			})
@@ -339,6 +449,21 @@ local function inspectUi()
 	end
 	table.sort(markerNames)
 	ui.allyMarkers = markerNames
+
+	-- M7: the Crowning banner, the Renounce window and the Tally Stone's prompt.
+	local ceremonyGui = playerGui:FindFirstChild("CeremonyGui")
+	local banner = ceremonyGui and ceremonyGui:FindFirstChild("Banner")
+	ui.ceremonyVisible = banner ~= nil and banner.Visible
+	local bannerLine1 = banner and banner:FindFirstChild("Line1")
+	local bannerLine2 = banner and banner:FindFirstChild("Line2")
+	ui.ceremonyText = (bannerLine1 and bannerLine1.Text or "")
+		.. " / "
+		.. (bannerLine2 and bannerLine2.Text or "")
+	local renounceGui = playerGui:FindFirstChild("RenounceGui")
+	local renounceWindow = renounceGui and renounceGui:FindFirstChild("Renounce")
+	ui.renounceVisible = renounceWindow ~= nil and renounceWindow.Visible
+	local stonePrompt = stonePromptOf()
+	ui.stonePromptEnabled = stonePrompt ~= nil and stonePrompt.Enabled
 	return ui
 end
 
@@ -370,9 +495,7 @@ cmd.OnClientEvent:Connect(function(op, arg)
 			report:FireServer("error", "no prompt for " .. tostring(arg))
 			return
 		end
-		prompt:InputHoldBegin()
-		task.wait(prompt.HoldDuration + 0.3)
-		prompt:InputHoldEnd()
+		holdPrompt(prompt, tostring(arg))
 		report:FireServer("prompted", arg)
 	elseif op == "warden" then
 		-- Talk to a Warden the way the E key would.
@@ -384,9 +507,7 @@ cmd.OnClientEvent:Connect(function(op, arg)
 			report:FireServer("error", "no Warden prompt for " .. tostring(arg))
 			return
 		end
-		prompt:InputHoldBegin()
-		task.wait(prompt.HoldDuration + 0.3)
-		prompt:InputHoldEnd()
+		holdPrompt(prompt, "Warden " .. tostring(arg))
 	elseif op == "accept" then
 		-- Any value, hostile ones included: the server must check it.
 		remotes.TrialAccept:FireServer(arg)
@@ -416,9 +537,7 @@ cmd.OnClientEvent:Connect(function(op, arg)
 			report:FireServer("error", "no clerk prompt")
 			return
 		end
-		prompt:InputHoldBegin()
-		task.wait(prompt.HoldDuration + 0.3)
-		prompt:InputHoldEnd()
+		holdPrompt(prompt, "clerk")
 	elseif op == "shop" then
 		remotes.ShopAction:FireServer(arg)
 	elseif op == "tradeRequest" then
@@ -434,6 +553,17 @@ cmd.OnClientEvent:Connect(function(op, arg)
 		remotes.PartyReply:FireServer(arg)
 	elseif op == "party" then
 		remotes.PartyAction:FireServer(arg)
+	elseif op == "renouncePrompt" then
+		-- Hold the Tally Stone's prompt the way the E key would.
+		local prompt = stonePromptOf()
+		if prompt == nil then
+			report:FireServer("error", "no Tally Stone prompt")
+			return
+		end
+		holdPrompt(prompt, "Tally Stone")
+	elseif op == "renounce" then
+		-- Any value, hostile ones included: the server must check it.
+		remotes.RenounceAction:FireServer(arg)
 	elseif op == "inspect" then
 		report:FireServer("ui", inspectUi())
 	end

@@ -73,6 +73,20 @@ local codes = {
 	"HUNT_PROGRESS",
 	"QUEST_STEP",
 	"QUEST_COMPLETE",
+	"CROWNED_YOU",
+	"RENOUNCE_NOT_READY",
+	"RENOUNCE_NOT_IN_TOWN",
+	"RENOUNCE_CLAIMING",
+	"RENOUNCE_TRADING",
+	"RENOUNCE_WORD",
+	"RENOUNCE_EXPIRED",
+	"RENOUNCE_NO_OFFER",
+	"RENOUNCE_CANCELLED",
+	"RENOUNCE_DONE",
+	"RENOUNCED",
+	"HOLD_TOO_SHORT",
+	"ROUND_STEP",
+	"ROUND_COMPLETE",
 }
 
 T.test("every message code has text", function()
@@ -187,4 +201,27 @@ T.test("M6 messages", function()
 	T.eq(Messages.format("PARTY_JOINED", { player = "Ann" }), "You joined Ann's party.")
 	T.eq(Messages.format("PARTY_KICKED", { player = "Ann" }), "Ann removed you from the party.")
 	T.eq(Messages.format("PARTY_DISBANDED"), "Your party broke up.")
+end)
+
+T.test("M7 messages", function()
+	T.eq(
+		Messages.format("LEDGER_COMPLETE", { player = "Ann" }),
+		"Ann has claimed every Relic and is Crowned!"
+	)
+	T.eq(
+		Messages.format("CROWNED_YOU", { title = "Crowned twice ★1" }),
+		"You are Crowned twice ★1! Your name goes on the Tally Stone in Tallyport."
+	)
+	T.eq(
+		Messages.format("ROUND_STEP", { name = "The Warden's Round", n = "3", total = "9" }),
+		"The Warden's Round: 3 of 9 done."
+	)
+	T.eq(
+		Messages.format("ROUND_COMPLETE", { name = "The Beast Tally", coin = "250" }),
+		"The Beast Tally complete! +250 Coin."
+	)
+	T.eq(
+		Messages.format("RENOUNCED", { player = "Ann" }),
+		"Ann has Renounced the Ledger and starts again."
+	)
 end)

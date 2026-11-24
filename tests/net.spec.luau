@@ -42,6 +42,9 @@ T.test("remote names are fixed", function()
 			"PartyReply",
 			"PartyAction",
 			"PartySync",
+			"Ceremony",
+			"RenounceOffer",
+			"RenounceAction",
 		}
 	do
 		T.eq((Net :: any)[name], name)

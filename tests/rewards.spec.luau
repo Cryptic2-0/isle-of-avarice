@@ -67,7 +67,7 @@ T.test("XP goes to the Path that dealt the most; the Strike counts as the Callin
 	T.eq(R.xpPath({}, "Gale"), "Gale")
 end)
 
--- The Brine Colossus (60 Coin, 500 XP, R022 100%, R023 20%) and six players dealing 60 down to 10.
+-- The Brine Colossus (60 Coin, 500 XP, R022 100%, R023 20%, R043 15%) and six players dealing 60 down to 10.
 local col = Creatures.byId.brine_colossus
 local function six(): (R.Tally, { [string]: R.Recipient })
 	local tally: R.Tally, all = {}, {}
@@ -96,7 +96,7 @@ T.test("awards: every contributor gets Coin and XP; drops obey the server cap", 
 		"Gold cap 4"
 	)
 	T.eq(R.awards(col, tally, all, { R022 = 3 }, 1, always(0.5))[2].sealed, { "R022" })
-	T.eq(R.awards(col, tally, all, {}, 1, always(0.1))[1].relics, { "R022", "R023" })
+	T.eq(R.awards(col, tally, all, {}, 1, always(0.1))[1].relics, { "R022", "R023", "R043" })
 end)
 
 T.test("awards: full slots lose the Relic; no Calling means Coin only", function()
@@ -104,7 +104,7 @@ T.test("awards: full slots lose the Relic; no Calling means Coin only", function
 	local tight = table.clone(all)
 	tight["1"] = { calling = "Fang", room = 1 }
 	local t1 = R.awards(col, tally, tight, {}, 1, always(0.1))[1]
-	T.eq({ t1.relics, t1.lost }, { { "R022" }, { "R023" } })
+	T.eq({ t1.relics, t1.lost }, { { "R022" }, { "R023", "R043" } })
 	-- A lost Relic does not count against the cap.
 	local none = table.clone(all)
 	none["1"] = { calling = "Fang", room = 0 }
@@ -123,8 +123,8 @@ T.test("awards: only present, recent contributors; chances are strict", function
 	T.eq(#R.awards(col, tally, all, {}, 31, always(0.5)), 0, "nobody hit in the last 30 s")
 	local hound, one = Creatures.byId.brinehound, R.record({}, 1, "Strike", 20, 0)
 	local me = { ["1"] = { calling = "Fang", room = 20 } }
-	T.eq(R.awards(hound, one, me, {}, 1, always(0.0199))[1].relics, { "R019" })
-	T.eq(R.awards(hound, one, me, {}, 1, always(0.02))[1].relics, {})
+	T.eq(R.awards(hound, one, me, {}, 1, always(0.0199))[1].relics, { "R019", "R035" })
+	T.eq(R.awards(hound, one, me, {}, 1, always(0.02))[1].relics, { "R035" })
 	T.eq(R.awards(hound, one, me, {}, 1, always(0 / 0))[1].relics, {}, "a NaN roll wins nothing")
 end)
 

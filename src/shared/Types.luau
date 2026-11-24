@@ -94,7 +94,23 @@ export type Trial = {
 	creature: string?,
 	count: number?,
 }
+export type Round = {
+	id: string, -- "wardens" | "beasts"
+	name: string, -- shown in messages: "The Warden's Round"
+	short: string, -- shown in the HUD line: "Warden's Round"
+	relicId: CardId,
+	coin: number,
+	xp: number,
+	steps: { string }, -- trial ids or creature kind ids
+}
 export type TrialRecord = { cooldowns: { [string]: number }, questStep: number } -- trial id -> os.time() it may be taken again
+export type CrownRecord = {
+	crowns: number,
+	stars: number,
+	boardCrowns: number,
+	badgeAwarded: boolean,
+}
+export type RoundsRecord = { [string]: { string } } -- round id -> step ids done this round, in order
 export type Den = { kind: string, count: number, position: Vec3 }
 export type Ledge = { x: number, z: number, size: number, top: number }
 export type PlayerData = {
@@ -105,6 +121,8 @@ export type PlayerData = {
 	shieldEnded: boolean,
 	paths: PathProgress,
 	trials: TrialRecord,
+	crown: CrownRecord,
+	rounds: RoundsRecord,
 }
 export type RegionId =
 	"Tallyport"

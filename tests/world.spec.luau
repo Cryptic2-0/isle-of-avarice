@@ -4,13 +4,34 @@ local Geography = require("../src/shared/Rules/Geography")
 local Hazards = require("../src/shared/Rules/Hazards")
 local Regions = require("../src/shared/Catalog/Regions")
 local Relics = require("../src/shared/Catalog/Relics")
+local ShopCatalog = require("../src/shared/Catalog/Shop")
 local Sites = require("../src/shared/Catalog/Sites")
+local Thornwood = require("../src/shared/Catalog/SiteData/Thornwood")
 local Creatures = require("../src/shared/Catalog/Creatures")
 local Trials = require("../src/shared/Catalog/Trials")
 local Types = require("../src/shared/Types")
 local World = require("../src/shared/Catalog/World")
 
-local NEW_RELICS = { "R017", "R018", "R026", "R028", "R029", "R030" }
+local NEW_RELICS = {
+	"R017",
+	"R018",
+	"R026",
+	"R028",
+	"R029",
+	"R030",
+	"R032",
+	"R033",
+	"R034",
+	"R038",
+	"R044",
+	"R039",
+	"R050",
+}
+
+local function at(regionId: string, along: number, across: number, y: number): Types.Vec3
+	local x, z = Geography.place(regionId, along, across)
+	return { x = x, y = y, z = z }
+end
 
 local function flat(a: Types.Vec3, b: Types.Vec3): number
 	return math.sqrt((a.x - b.x) ^ 2 + (a.z - b.z) ^ 2)
@@ -64,8 +85,8 @@ local function quiet(x: number, z: number, radius: number): boolean
 	return true
 end
 
-T.test("twenty-four caches on land, outside Tallyport", function()
-	T.eq(#World.caches, 24)
+T.test("thirty-one caches on land, outside Tallyport", function()
+	T.eq(#World.caches, 31)
 	for i, cache in World.caches do
 		T.eq(cache.id, string.format("C%03d", i))
 		T.eq(World.cacheById[cache.id], cache)
@@ -112,7 +133,15 @@ T.test("Copper caches stay in the Fields; prizes sit in their regions", function
 	end
 end)
 
-T.test("every Relic has a source, as spec 3.11 lists them", function()
+T.test("held caches: the six prizes, the Rock's second prize and the Throne", function()
+	local holds: { [string]: number } =
+		{ C007 = 3, C008 = 3, C009 = 3, C010 = 3, C011 = 3, C012 = 4, C029 = 3, C031 = 10 }
+	for _, cache in World.caches do
+		T.eq(cache.hold, holds[cache.id], cache.id)
+	end
+end)
+
+T.test("every Relic has one kind of source", function()
 	local source: { [string]: string } = {}
 	for _, cache in World.caches do
 		T.truthy(Relics.byId[cache.relicId] ~= nil, cache.id .. " holds a known relic")
@@ -131,6 +160,14 @@ T.test("every Relic has a source, as spec 3.11 lists them", function()
 		end
 	end
 	add(Trials.quest.relicId, "quest")
+	for _, round in Trials.rounds do
+		add(round.relicId, "round")
+	end
+	for _, relicId in ShopCatalog.stock do
+		if source[relicId] == nil then
+			source[relicId] = "shop"
+		end
+	end
 	for _, relic in Relics.list do
 		T.truthy(source[relic.id], relic.id)
 	end
@@ -138,11 +175,41 @@ T.test("every Relic has a source, as spec 3.11 lists them", function()
 		source.R017,
 		source.R026,
 		source.R019,
-		source.R023,
 		source.R024,
 		source.R027,
-		source.R030,
-	}, { "cache", "cache", "creature", "creature", "trial", "quest", "cache" })
+		source.R031,
+		source.R032,
+		source.R035,
+		source.R038,
+		source.R040,
+		source.R041,
+		source.R044,
+		source.R045,
+		source.R046,
+		source.R047,
+		source.R048,
+		source.R049,
+		source.R050,
+	}, {
+		"cache",
+		"cache",
+		"creature",
+		"trial",
+		"quest",
+		"shop",
+		"cache",
+		"creature",
+		"cache",
+		"trial",
+		"creature",
+		"cache",
+		"trial",
+		"round",
+		"round",
+		"creature",
+		"trial",
+		"cache",
+	})
 end)
 
 T.test("climbs can be jumped: low first ledge, small rises and gaps, clear ground", function()
@@ -177,11 +244,11 @@ T.test("climbs can be jumped: low first ledge, small rises and gaps, clear groun
 		end
 	end
 	table.sort(names)
-	T.eq(names, { "C019", "C020", "C021", "gullstep_climb" })
+	T.eq(names, { "C019", "C020", "C021", "C030", "C031", "gullstep_climb" })
 end)
 
 T.test("climb caches sit on their top ledge, out of reach from the ground", function()
-	local tops: { [string]: number } = { C019 = 20, C020 = 24, C021 = 64 }
+	local tops: { [string]: number } = { C019 = 20, C020 = 24, C021 = 64, C030 = 24, C031 = 48 }
 	for id, top in tops do
 		local cache = World.cacheById[id]
 		local ledges = World.climbs[id]
@@ -192,10 +259,31 @@ T.test("climb caches sit on their top ledge, out of reach from the ground", func
 		T.truthy(math.abs(cache.position.z - last.z) <= last.size / 2 - 1, id .. " z")
 		-- The collect distance is 15 studs, measured from the standing root (3 up).
 		T.truthy(cache.position.y - 3 > 15, id .. " not from the ground")
-		T.eq(cache.hold, nil)
+		T.eq(cache.hold, if id == "C031" then 10 else nil, id)
 	end
 	T.eq({ World.cacheById.C019.relicId, World.cacheById.C020.relicId }, { "R017", "R018" })
 	T.eq(World.cacheById.C021.relicId, "R026")
+	T.eq({ World.cacheById.C030.relicId, World.cacheById.C031.relicId }, { "R039", "R050" })
+	local function centre(ledges: { Types.Ledge }): Types.Vec3
+		local sx, sz = 0, 0
+		for _, l in ledges do
+			sx += l.x
+			sz += l.z
+		end
+		return { x = sx / #ledges, y = 0, z = sz / #ledges }
+	end
+	for id, want in { C030 = at("CinderFlats", 520, -270, 0), C031 = at("DrownedFen", 650, 230, 0) } do
+		local c = centre(World.climbs[id])
+		T.truthy(flat(c, want) < 1e-6, id .. " centre")
+	end
+	T.eq(
+		Geography.regionAt(World.cacheById.C030.position.x, World.cacheById.C030.position.z),
+		"CinderFlats"
+	)
+	T.eq(
+		Geography.regionAt(World.cacheById.C031.position.x, World.cacheById.C031.position.z),
+		"DrownedFen"
+	)
 	-- The Lookout's crag is the highest point of the island.
 	local crag = World.climbs.C021
 	local peak = crag[#crag].top
@@ -212,11 +300,13 @@ T.test("climb caches sit on their top ledge, out of reach from the ground", func
 	end
 end)
 
-T.test("the three far Copper caches lie on quiet ground in the wilds", function()
+T.test("the five far Copper caches lie on quiet ground in the wilds", function()
 	local expected: { [string]: { string } } = {
 		C022 = { "R028", "SquallSteps" },
 		C023 = { "R029", "DrownedFen" },
 		C024 = { "R030", "Thornwood" },
+		C025 = { "R032", "CinderFlats" },
+		C026 = { "R033", "BastionReach" },
 	}
 	for id, want in expected do
 		local cache = World.cacheById[id]
@@ -227,6 +317,57 @@ T.test("the three far Copper caches lie on quiet ground in the wilds", function(
 		T.truthy(solidGap(cache.position.x, cache.position.z) >= 6, id)
 		T.truthy(math.sqrt(cache.position.x ^ 2 + cache.position.z ^ 2) >= 400, id)
 	end
+	T.eq(World.cacheById.C025.position, at("CinderFlats", 700, -260, 1))
+	T.eq(World.cacheById.C026.position, at("BastionReach", 650, -260, 1))
+end)
+
+T.test("the M7 caches at the blight's edge, in the maze and on the Rock", function()
+	local band = World.cacheById.C027
+	T.eq(band.relicId, "R034")
+	T.eq(band.position, at("HushGardens", 245, -115, 1))
+	local d = math.sqrt(band.position.x ^ 2 + band.position.z ^ 2)
+	T.truthy(d >= 270 and d <= 322, "inside the blight-free band " .. d)
+	T.truthy(quiet(band.position.x, band.position.z, 8))
+	T.truthy(solidGap(band.position.x, band.position.z) >= 6)
+	for i, marker in World.courses.tidewalk do
+		T.truthy(flat(band.position, marker) >= 30, "tidewalk " .. i)
+	end
+
+	local maze = World.cacheById.C028
+	T.eq(maze.relicId, "R038")
+	local along, across = Thornwood.cellCentre(14, 8)
+	T.eq(maze.position, at("Thornwood", along, across, 1))
+	T.eq(string.sub(Thornwood.MAZE[14], 8, 8), ".")
+	local open = 0
+	for _, dir in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+		local row = Thornwood.MAZE[14 + dir[1]]
+		local c = if row ~= nil then string.sub(row, 8 + dir[2], 8 + dir[2]) else "#"
+		if c == "." or c == "b" or c == "P" then
+			open += 1
+		end
+	end
+	T.eq(open, 1, "a dead end")
+	for i = 0, 8 do
+		local px, pz = maze.position.x, maze.position.z
+		if i > 0 then
+			px += 6 * math.cos(i * math.pi / 4)
+			pz += 6 * math.sin(i * math.pi / 4)
+		end
+		for _, hazard in Sites.hazards do
+			T.falsy(Hazards.affects(hazard, px, pz), "maze " .. hazard.id)
+		end
+	end
+	T.truthy(solidGap(maze.position.x, maze.position.z) >= 6)
+
+	local rock = World.cacheById.C029
+	T.eq(
+		{ rock.relicId, rock.position, rock.hold },
+		{ "R044", { x = 0, y = 1, z = 1290 }, 3 } :: { any }
+	)
+	T.eq(Geography.regionAt(0, 1290), "ReckoningRock")
+	T.truthy(quiet(0, 1290, 8))
+	T.truthy(solidGap(0, 1290) >= 6)
+	T.truthy(flat(rock.position, World.cacheById.C010.position) >= 40)
 end)
 
 T.test("one Warden per trial, each at a region gate on quiet ground", function()
@@ -237,6 +378,10 @@ T.test("one Warden per trial, each at a region gate on quiet ground", function()
 		cull_the_pack = "Thornwood",
 		shellbreaker = "DrownedFen",
 		tallymans_duel = "BastionReach",
+		reed_run = "DrownedFen",
+		bellows_dance = "CinderFlats",
+		spitter_season = "CinderFlats",
+		grand_tally = "Tallyport",
 	}
 	local count = 0
 	for trialId, position in World.wardens do
@@ -247,12 +392,29 @@ T.test("one Warden per trial, each at a region gate on quiet ground", function()
 		T.truthy(quiet(position.x, position.z, 12), trialId)
 		T.truthy(solidGap(position.x, position.z) >= 8, trialId)
 		local d = math.sqrt(position.x ^ 2 + position.z ^ 2)
-		T.truthy(d >= 280 and d <= 330, trialId .. " at the gate")
+		if trialId ~= "bellows_dance" and trialId ~= "grand_tally" then
+			T.truthy(d >= 280 and d <= 330, trialId .. " at the gate")
+		end
 	end
 	T.eq(count, #Trials.list)
 	for _, trial in Trials.list do
 		T.truthy(World.wardens[trial.id] ~= nil, trial.id)
 	end
+	T.eq(World.wardens.reed_run, at("DrownedFen", 300, -45, 0))
+	T.eq(World.wardens.spitter_season, at("CinderFlats", 300, -45, 0))
+	T.eq(World.wardens.bellows_dance, at("CinderFlats", 380, 55, 0))
+	local gt = World.wardens.grand_tally
+	T.eq(gt, { x = -14, y = 0, z = 24 })
+	T.truthy(
+		flat(gt, World.spawn) >= 15
+			and flat(gt, World.clerk) >= 20
+			and flat(gt, World.tallyStone) >= 8
+	)
+	T.eq(World.dens[10].kind, "bogspitter")
+	T.truthy(
+		flat(World.wardens.spitter_season, World.dens[10].position) <= 250,
+		"Spitter Season's quarry is near"
+	)
 	local hx, hz = Geography.place("HushGardens", 285, 80)
 	T.eq(World.harbour, { x = hx, y = 0, z = hz })
 	T.eq(World.wardens.tidewalk, World.harbour)
@@ -301,7 +463,99 @@ T.test("courses: Tidewalk on the ground, Gullstep up its ledges", function()
 		count += 1
 		T.eq(Trials.byId[trialId].kind, "course")
 	end
-	T.eq(count, 2)
+	T.eq(count, 5)
+end)
+
+T.test("courses: Reed Run on the boardwalks, the Bellows Dance on the vents", function()
+	local reed = World.courses.reed_run
+	local alongs = { 420, 510, 600, 700, 780, 850 }
+	T.eq(#reed, 6)
+	for i, marker in reed do
+		T.eq(marker, at("DrownedFen", alongs[i], 0, 3.6), "reed " .. i)
+		T.falsy(
+			Hazards.affects(Sites.hazardById.FenBog, marker.x, marker.z),
+			"reed " .. i .. " on a boardwalk"
+		)
+		T.eq(Geography.regionAt(marker.x, marker.z), "DrownedFen")
+	end
+	local spots = { { 440, -80 }, { 520, -40 }, { 600, 0 }, { 520, 40 }, { 440, 80 } }
+	local bellows = World.courses.bellows_dance
+	T.eq(#bellows, 5)
+	for i, marker in bellows do
+		T.eq(marker, at("CinderFlats", spots[i][1], spots[i][2], 3), "bellows " .. i)
+		local vent, burning = false, false
+		for _, hazard in Sites.hazards do
+			if Hazards.affects(hazard, marker.x, marker.z) then
+				if string.sub(hazard.id, 1, 10) == "CinderVent" then
+					vent = true
+				end
+				if hazard.dps ~= nil then
+					burning = true
+				end
+			end
+		end
+		T.truthy(vent, "bellows " .. i .. " on a vent")
+		T.falsy(burning, "bellows " .. i .. " not in lava")
+	end
+end)
+
+T.test("The Grand Tally: every wild region in order, then the Rock", function()
+	local course = World.courses.grand_tally
+	T.eq(course, {
+		at("HushGardens", 440, 0, 3),
+		at("BastionReach", 470, 30, 3),
+		at("Thornwood", 450, 0, 3),
+		at("SquallSteps", 450, 0, 3),
+		at("CinderFlats", 410, 0, 3),
+		at("DrownedFen", 390, -60, 3),
+		{ x = 40, y = 3, z = 1220 },
+	})
+	local regions = {
+		"HushGardens",
+		"BastionReach",
+		"Thornwood",
+		"SquallSteps",
+		"CinderFlats",
+		"DrownedFen",
+		"ReckoningRock",
+	}
+	local length = flat(World.wardens.grand_tally, course[1])
+	for i, marker in course do
+		T.eq(Geography.regionAt(marker.x, marker.z), regions[i], "tally " .. i)
+		T.truthy(solidGap(marker.x, marker.z) >= 6, "tally " .. i)
+		for k = 0, 8 do
+			local px, pz = marker.x, marker.z
+			if k > 0 then
+				px += 7 * math.cos(k * math.pi / 4)
+				pz += 7 * math.sin(k * math.pi / 4)
+			end
+			T.truthy(Geography.isLand(px, pz), `tally {i} land`)
+			for _, hazard in Sites.hazards do
+				if hazard.id ~= "HushBlight" then
+					T.falsy(Hazards.affects(hazard, px, pz), `tally {i} {hazard.id}`)
+				end
+			end
+			for _, site in Sites.list do
+				for _, shape in site.keepOut do
+					if shape.kind ~= "region" then
+						T.falsy(Hazards.contains(shape, px, pz), `tally {i} keep-out`)
+					end
+				end
+			end
+		end
+		if i <= 6 then
+			local d = math.sqrt(marker.x ^ 2 + marker.z ^ 2)
+			T.truthy(d >= 360 and d <= 560, `tally {i} at {d}`)
+		end
+		for _, cache in World.caches do
+			T.truthy(flat(marker, cache.position) >= 40, `tally {i} from {cache.id}`)
+		end
+		if i > 1 then
+			length += flat(course[i - 1], marker)
+		end
+	end
+	T.truthy(length >= 3000 and length <= 3600, "route " .. length)
+	T.eq(Trials.byId.grand_tally.seconds, 300)
 end)
 
 T.test("dens: the spec's packs, in the wilds, apart from everything else", function()
@@ -323,8 +577,14 @@ T.test("dens: the spec's packs, in the wilds, apart from everything else", funct
 		"bogspitter",
 		"bogspitter",
 		"brine_colossus",
+		"gilded_bailiff",
 	})
-	T.eq(sizes, { 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1 })
+	T.eq(sizes, { 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1 })
+	T.eq(World.dens[12].position, at("CinderFlats", 820, -230, 0))
+	T.truthy(
+		math.sqrt(World.dens[12].position.x ^ 2 + World.dens[12].position.z ^ 2) >= 600,
+		"the Bailiff lives far out"
+	)
 	local spots: { { name: string, at: Types.Vec3 } } = {}
 	for _, cache in World.caches do
 		table.insert(spots, { name = cache.id, at = cache.position })
@@ -372,21 +632,23 @@ end)
 T.test("creature and champion ids", function()
 	T.eq(World.CREATURE_ID_BASE, -2000000)
 	T.eq(World.CHAMPION_ID_BASE, -3000000)
-	T.eq(#World.creatureSlots, 25)
+	T.eq(#World.creatureSlots, 26)
 	T.eq(World.creatureSlots[1], { id = -2000001, den = 1, kind = "brinehound" })
 	T.eq(World.creatureSlots[3], { id = -2000003, den = 1, kind = "brinehound" })
 	T.eq(World.creatureSlots[4], { id = -2000004, den = 2, kind = "brinehound" })
 	T.eq(World.creatureSlots[13], { id = -2000013, den = 5, kind = "shellback" })
 	T.eq(World.creatureSlots[25], { id = -2000025, den = 11, kind = "brine_colossus" })
+	T.eq(World.creatureSlots[26], { id = -2000026, den = 12, kind = "gilded_bailiff" })
 	T.eq({
 		World.creatureIndex(-2000001) or 0,
 		World.creatureIndex(-2000025) or 0,
 		World.creatureIndex(-2000026) or 0,
+		World.creatureIndex(-2000027) or 0,
 		World.creatureIndex(-2000000) or 0,
 		World.creatureIndex(-1) or 0,
 		World.creatureIndex(-2000001.5) or 0,
 		World.creatureIndex(0 / 0) or 0,
-	}, { 1, 25, 0, 0, 0, 0, 0 })
+	}, { 1, 25, 26, 0, 0, 0, 0, 0 })
 	T.eq({
 		World.isChampion(-3000001),
 		World.isChampion(-3000250),
@@ -456,4 +718,11 @@ T.test("the Edict Hall clerk stands in Tallyport, away from the spawn pad", func
 	T.truthy(fromCentre <= World.townRadius - 10, "well inside the safe zone")
 	T.truthy(flat(clerk, World.spawn) >= 15, "clear of the spawn pad")
 	T.eq(Geography.regionAt(clerk.x, clerk.z), "Tallyport")
+end)
+
+T.test("the Tally Stone stands on the south side of the plaza", function()
+	T.eq(World.tallyStone, { x = 0, y = 0, z = 32 })
+	T.eq(Geography.regionAt(0, 32), "Tallyport")
+	T.truthy(flat(World.tallyStone, World.spawn) >= 15)
+	T.truthy(flat(World.tallyStone, World.clerk) >= 30)
 end)

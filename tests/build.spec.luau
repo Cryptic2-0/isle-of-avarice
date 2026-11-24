@@ -80,6 +80,14 @@ T.test("built place contains the expected scripts", function()
 		"ModuleScript"
 	)
 	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.CeremonyUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.RenounceUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.CreatureFx.ClassName,
 		"ModuleScript"
 	)
@@ -127,5 +135,15 @@ T.test("built place contains the expected scripts", function()
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.Atmosphere.ClassName,
 		"ModuleScript"
 	)
+	T.eq(game:GetService("ServerScriptService").Server.LaunchConfig.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.LeaderboardService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.CrownService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Crown.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Renounce.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Rounds.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Leaderboard.ClassName, "ModuleScript")
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.Regen.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.RegenService.ClassName, "ModuleScript")
+	T.eq(game:GetService("StarterPlayer").StarterCharacterScripts.Health.ClassName, "Script")
 	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")
 end)

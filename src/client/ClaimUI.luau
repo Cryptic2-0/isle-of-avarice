@@ -88,13 +88,14 @@ local function makeCell(slot: ClaimView.SlotView): TextButton
 	cell.AutoButtonColor = slot.state == "open"
 	addCorner(cell, 8)
 	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, 4)
-	padding.PaddingBottom = UDim.new(0, 4)
-	padding.PaddingLeft = UDim.new(0, 4)
-	padding.PaddingRight = UDim.new(0, 4)
+	padding.PaddingTop = UDim.new(0, 2)
+	padding.PaddingBottom = UDim.new(0, 2)
+	padding.PaddingLeft = UDim.new(0, 2)
+	padding.PaddingRight = UDim.new(0, 2)
 	padding.Parent = cell
 	limitText(cell, 7, 18)
 
+	-- Two lines so the text fits a small cell: the label, then the status or the Relic name.
 	local text = slot.label .. "\n" .. slot.name
 	if slot.state == "open" then
 		cell.BackgroundColor3 = tierColor(slot.tier)
@@ -104,7 +105,7 @@ local function makeCell(slot: ClaimView.SlotView): TextButton
 		cell.BackgroundColor3 = tierColor(slot.tier)
 		cell.TextColor3 = TEXT_DARK
 		cell.Font = Enum.Font.GothamBold
-		text ..= "\nTaken!"
+		text = slot.label .. "\nTaken!"
 		local stroke = Instance.new("UIStroke")
 		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		stroke.Color = Color3.new(1, 1, 1)
@@ -113,7 +114,7 @@ local function makeCell(slot: ClaimView.SlotView): TextButton
 	elseif slot.state == "miss" then
 		cell.BackgroundColor3 = MISS_COLOR
 		cell.TextColor3 = TEXT_DIM
-		text ..= "\nNothing"
+		text = slot.label .. "\nNothing"
 	else
 		cell.BackgroundColor3 = LOCKED_COLOR
 		cell.BackgroundTransparency = 0.4
@@ -192,31 +193,35 @@ function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
 	local frame = Instance.new("Frame")
 	frame.Name = "Claim"
 	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.55)
-	frame.Size = UDim2.fromScale(0.7, 0.7)
+	frame.Position = UDim2.fromScale(0.5, 0.5)
+	frame.Size = UDim2.fromScale(0.9, 0.9)
 	frame.BackgroundColor3 = PANEL_COLOR
 	frame.Visible = false
 	addCorner(frame, 14)
+	-- A phone (640x360) gets a 576x324 screen; the 50 cells need at least that.
+	local minimum = Instance.new("UISizeConstraint")
+	minimum.MinSize = Vector2.new(560, 320)
+	minimum.Parent = frame
 
-	local title = makeLabel("Title", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.03, 0.03), 30)
+	local title = makeLabel("Title", UDim2.fromScale(0.6, 0.08), UDim2.fromScale(0.03, 0.02), 30)
 	title.Font = Enum.Font.GothamBold
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = frame
 	titleLabel = title
 
-	local timer = makeLabel("Timer", UDim2.fromScale(0.15, 0.08), UDim2.fromScale(0.82, 0.03), 30)
+	local timer = makeLabel("Timer", UDim2.fromScale(0.15, 0.08), UDim2.fromScale(0.82, 0.02), 30)
 	timer.Font = Enum.Font.GothamBold
 	timer.TextXAlignment = Enum.TextXAlignment.Right
 	timer.Parent = frame
 	timerLabel = timer
 
-	local hint = makeLabel("Hint", UDim2.fromScale(0.94, 0.06), UDim2.fromScale(0.03, 0.11), 18)
+	local hint = makeLabel("Hint", UDim2.fromScale(0.94, 0.06), UDim2.fromScale(0.03, 0.1), 18)
 	hint.TextXAlignment = Enum.TextXAlignment.Left
 	hint.TextColor3 = TEXT_DIM
 	hint.Text = "Pick the Relics you think they hold. You are not told why a pick misses."
 	hint.Parent = frame
 
-	local picks = makeLabel("Picks", UDim2.fromScale(0.4, 0.05), UDim2.fromScale(0.03, 0.18), 20)
+	local picks = makeLabel("Picks", UDim2.fromScale(0.4, 0.05), UDim2.fromScale(0.03, 0.16), 20)
 	picks.TextXAlignment = Enum.TextXAlignment.Left
 	picks.Parent = frame
 	picksLabel = picks
@@ -224,12 +229,12 @@ function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
 	local cells = Instance.new("Frame")
 	cells.Name = "Slots"
 	cells.BackgroundTransparency = 1
-	cells.Position = UDim2.fromScale(0.03, 0.25)
-	cells.Size = UDim2.fromScale(0.94, 0.6)
+	cells.Position = UDim2.fromScale(0.03, 0.22)
+	cells.Size = UDim2.fromScale(0.94, 0.68)
 	local layout = Instance.new("UIGridLayout")
-	-- 30 slots: six columns by five rows.
-	layout.CellSize = UDim2.fromScale(0.15, 0.17)
-	layout.CellPadding = UDim2.fromScale(0.02, 0.035)
+	-- 50 slots: ten columns by five rows. Cell text keeps a minimum of 7 so a phone can read it.
+	layout.CellSize = UDim2.fromScale(0.088, 0.17)
+	layout.CellPadding = UDim2.fromScale(0.0133, 0.035)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = cells
 	cells.Parent = frame
@@ -238,7 +243,7 @@ function ClaimUI.mount(playerGui: PlayerGui, onPick: (slot: number) -> ())
 	local done = Instance.new("TextButton")
 	done.Name = "Done"
 	done.AnchorPoint = Vector2.new(0.5, 1)
-	done.Position = UDim2.fromScale(0.5, 0.97)
+	done.Position = UDim2.fromScale(0.5, 0.98)
 	done.Size = UDim2.fromScale(0.2, 0.08)
 	done.BackgroundColor3 = BUTTON_COLOR
 	done.TextColor3 = TEXT_LIGHT

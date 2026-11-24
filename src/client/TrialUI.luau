@@ -168,7 +168,7 @@ function TrialUI.mount(playerGui: PlayerGui, onAccept: (trialId: string) -> ())
 	lines.BackgroundTransparency = 1
 	lines.AnchorPoint = Vector2.new(1, 0)
 	lines.Position = UDim2.new(1, -12, 0.16, 0)
-	lines.Size = UDim2.new(0, 300, 0, 3 * (HUD_LINE_HEIGHT + 4))
+	lines.Size = UDim2.new(0, 300, 0, 4 * (HUD_LINE_HEIGHT + 4))
 	local hudLayout = Instance.new("UIListLayout")
 	hudLayout.Padding = UDim.new(0, 4)
 	hudLayout.SortOrder = Enum.SortOrder.LayoutOrder

@@ -218,7 +218,7 @@ T.test("Audit shows claimed Relics, what is Vaulted, and the free slots", functi
 	T.eq(E.auditResult("Ann", seen, { R007 = true }), {
 		title = "Audit: Ann",
 		lines = {
-			"Claimed: 2 of 30",
+			"Claimed: 2 of 50",
 			"001 Tarnished Tally-Coin (Copper)",
 			"007 Bottled Squall (Silver), Vaulted",
 			"Free slots: 3 of 20",
@@ -228,7 +228,7 @@ T.test("Audit shows claimed Relics, what is Vaulted, and the free slots", functi
 	})
 	T.eq(E.auditResult("Bob", { claimed = {}, free = {} }, {}), {
 		title = "Audit: Bob",
-		lines = { "Claimed: 0 of 30", "Free slots: 0 of 20" },
+		lines = { "Claimed: 0 of 50", "Free slots: 0 of 20" },
 	})
 	T.eq(E.veiledResult("Bob"), { title = "Audit: Bob", lines = { "Their Ledger is veiled." } })
 end)

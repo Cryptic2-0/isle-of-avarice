@@ -10,8 +10,8 @@ local EDICT_SELL = 3
 -- How close to the clerk a player must stand to buy or sell.
 local REACH = 15
 
--- The Copper Relics of the Counting Fields.
-local stock: { string } = { "R001", "R002", "R003", "R004", "R005", "R006" }
+-- The Copper Relics of the Counting Fields, and the clerk's own receipt.
+local stock: { string } = { "R001", "R002", "R003", "R004", "R005", "R006", "R031" }
 
 -- What the clerk pays for a spare Relic. A tier that is missing cannot be sold.
 local sellByTier: { [string]: number } = {
