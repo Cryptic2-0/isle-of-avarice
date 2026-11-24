@@ -12,7 +12,10 @@
 --   Fighters.body(id)             living Humanoid and root of a player or creature
 --   Fighters.fighter(id)          Combat.Fighter at the root (posts: the part, look +z)
 --   Fighters.list(viewer)         every other living fighter the viewer may fight
---   Fighters.mayFight(a, b)       whether `a` may hit `b`
+--   Fighters.mayFight(a, b)       whether `a` may hit `b` (never an ally)
+--   Fighters.setAllies(fn)        PartyService installs who is allied; default: nobody
+--   Fighters.allies(id)           a fresh copy of the ids allied with `id`
+--   Fighters.allied(a, b)         a ~= b and b is allied with a
 -- Requires only Roblox services and shared modules, so every server service may require it.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -43,6 +46,10 @@ local Fighters = {}
 local entries: { [number]: Entry } = {}
 -- Ids in the order they were first added, so lists come out in a stable order.
 local order: { number } = {}
+-- Who counts as an ally of an id. PartyService replaces it; the default has no allies.
+local allyLookup: (id: number) -> { number } = function(_id: number): { number }
+	return {}
+end
 
 function Fighters.add(entry: Entry)
 	if entries[entry.id] == nil then
@@ -146,10 +153,28 @@ function Fighters.fighter(id: number): Combat.Fighter?
 	}
 end
 
--- False for a fighter against itself, for an unknown id, for a post attacker, and when
--- either side has an owner that is not the other.
+-- Installed by PartyService; until then nobody has allies.
+function Fighters.setAllies(alliesOf: (id: number) -> { number })
+	allyLookup = alliesOf
+end
+
+-- A fresh copy of the ids allied with `id` (its party mates), so callers may keep it.
+function Fighters.allies(id: number): { number }
+	return table.clone(allyLookup(id))
+end
+
+-- True when `b` is a party mate of `a`; never true for a fighter and itself.
+function Fighters.allied(a: number, b: number): boolean
+	return a ~= b and table.find(allyLookup(a), b) ~= nil
+end
+
+-- False for a fighter against itself, for allies, for an unknown id, for a post attacker, and
+-- when either side has an owner that is not the other.
 function Fighters.mayFight(a: number, b: number): boolean
 	if a == b then
+		return false
+	end
+	if Fighters.allied(a, b) then
 		return false
 	end
 	local attacker, target = entries[a], entries[b]

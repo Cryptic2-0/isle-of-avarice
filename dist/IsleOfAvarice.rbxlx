@@ -184,7 +184,8 @@ local list: { Ability } = {
 		damage = 14,
 		heal = 14,
 		healOnHit = true,
-		description = "Strike for 14 damage and heal 14 health if it hits.",
+		allyRadius = 15,
+		description = "Strike for 14 damage; if it hits, heal yourself and allies within 15 studs for 14.",
 	},
 	{
 		id = "ward",
@@ -648,6 +649,24 @@ local templates: { [string]: string } = {
 	TRADE_NO_ROOM = "Someone does not have enough free slots.",
 	TRADE_BAD_OFFER = "You cannot offer that.",
 	TRADE_NOT_OPEN = "You are not in a trade.",
+	PARTY_INVITE_SENT = "You invited {player} to your party.",
+	PARTY_DECLINED = "{player} does not want to join your party.",
+	PARTY_EXPIRED = "Your party invite ran out.",
+	PARTY_BUSY = "{player} is busy.",
+	PARTY_NO_INVITE = "There is no party invite to answer.",
+	PARTY_JOINED = "You joined {player}'s party.",
+	PARTY_MEMBER_JOINED = "{player} joined your party.",
+	PARTY_LEFT = "You left the party.",
+	PARTY_MEMBER_LEFT = "{player} left your party.",
+	PARTY_KICKED = "{player} removed you from the party.",
+	PARTY_MEMBER_KICKED = "{player} was removed from your party.",
+	PARTY_NEW_LEADER = "{player} now leads your party.",
+	PARTY_DISBANDED = "Your party broke up.",
+	PARTY_FULL = "Your party is full.",
+	PARTY_NOT_LEADER = "Only the party leader can do that.",
+	PARTY_TARGET_IN_PARTY = "{player} is already in a party.",
+	PARTY_NOT_IN = "You are not in a party.",
+	PARTY_JOIN_FAILED = "You could not join {player}'s party.",
 }
 
 local function format(code: string, args: { [string]: string }?): string
@@ -2568,6 +2587,16 @@ return {
 	TradeAction = "TradeAction",
 	-- server -> one client: (view: Trade.View?) nil closes the window
 	TradeSync = "TradeSync",
+	-- client -> server: () invite the nearest player
+	PartyRequest = "PartyRequest",
+	-- server -> one client: (invite: { from: string, seconds: number }?) nil withdraws it
+	PartyInvite = "PartyInvite",
+	-- client -> server: (accept: boolean)
+	PartyReply = "PartyReply",
+	-- client -> server: (request: { kind: "leave" } | { kind: "kick", userId: number } | { kind: "promote", userId: number })
+	PartyAction = "PartyAction",
+	-- server -> one client: (sync: PartyView.Sync?) nil = not in a party
+	PartySync = "PartySync",
 }
 ]]></string>
         </Properties>
@@ -3031,13 +3060,15 @@ end
 
 -- Who gets the defeat: the last player to hit the victim within the window. With
 -- `creatureLog` (creature hits on players), a creature hit within the window that is at
--- least as recent as the player's makes it a creature defeat: nobody gets it.
+-- least as recent as the player's makes it a creature defeat: nobody gets it. A hitter in
+-- `allies` (the victim's party) never gets it.
 function Combat.creditFor(
 	log: HitLog,
 	victimId: number,
 	now: number,
 	windowSeconds: number,
-	creatureLog: HitLog?
+	creatureLog: HitLog?,
+	allies: { number }?
 ): number?
 	local entry = log[tostring(victimId)]
 	if entry == nil or not (now - entry.at <= windowSeconds) then
@@ -3048,6 +3079,9 @@ function Combat.creditFor(
 		if bite ~= nil and now - bite.at <= windowSeconds and bite.at >= entry.at then
 			return nil
 		end
+	end
+	if allies ~= nil and table.find(allies, entry.attackerId) ~= nil then
+		return nil
 	end
 	return entry.attackerId
 end
@@ -4681,6 +4715,324 @@ return Loadout
         </Item>
         <Item class="ModuleScript" referent="43">
           <Properties>
+            <string name="Name">Party</string>
+            <string name="Source"><![CDATA[--!strict
+-- Parties as plain state (spec 3.14): up to four players who cannot hurt each other and whose
+-- support abilities reach each other. Session state only, nothing is saved. Pure: every
+-- function builds new tables and the server owns the state.
+local Types = require("../Types")
+
+type Vec3 = Types.Vec3
+
+export type Party = { leader: number, members: { number } }
+export type State = { Party }
+export type Helper = { position: Vec3, protected: boolean }
+export type Helped = { id: number, position: Vec3, inFight: boolean, inDuel: boolean }
+
+local Party = {}
+
+Party.MAX_SIZE = 4
+Party.INVITE_SECONDS = 20
+Party.FIGHT_SECONDS = 30
+
+function Party.new(): State
+	return {}
+end
+
+-- The index of the party userId is in. Numbers are compared with ==, so NaN is never a member.
+local function indexOf(state: State, userId: number): number?
+	for i, party in state do
+		for _, member in party.members do
+			if member == userId then
+				return i
+			end
+		end
+	end
+	return nil
+end
+
+local function copyParty(party: Party): Party
+	return { leader = party.leader, members = table.clone(party.members) }
+end
+
+function Party.find(state: State, userId: number): Party?
+	local i = indexOf(state, userId)
+	if i == nil then
+		return nil
+	end
+	return copyParty(state[i])
+end
+
+function Party.allies(state: State, userId: number): { number }
+	local i = indexOf(state, userId)
+	if i == nil then
+		return {}
+	end
+	local out = {}
+	for _, member in state[i].members do
+		if member ~= userId then
+			table.insert(out, member)
+		end
+	end
+	return out
+end
+
+function Party.allied(state: State, a: number, b: number): boolean
+	if a == b then
+		return false
+	end
+	local i = indexOf(state, a)
+	return i ~= nil and i == indexOf(state, b)
+end
+
+function Party.canInvite(state: State, inviterId: number, targetId: number): (boolean, string)
+	if inviterId == targetId then
+		return false, "BAD_REQUEST"
+	end
+	local i = indexOf(state, inviterId)
+	if i ~= nil then
+		local party = state[i]
+		if party.leader ~= inviterId then
+			return false, "PARTY_NOT_LEADER"
+		end
+		if #party.members >= Party.MAX_SIZE then
+			return false, "PARTY_FULL"
+		end
+	end
+	if indexOf(state, targetId) ~= nil then
+		return false, "PARTY_TARGET_IN_PARTY"
+	end
+	return true, "PARTY_INVITE_SENT"
+end
+
+function Party.join(state: State, inviterId: number, targetId: number): (State?, string)
+	local can, code = Party.canInvite(state, inviterId, targetId)
+	if not can then
+		return nil, code
+	end
+	local out = table.clone(state)
+	local i = indexOf(state, inviterId)
+	if i == nil then
+		table.insert(out, { leader = inviterId, members = { inviterId, targetId } })
+	else
+		local party = copyParty(state[i])
+		table.insert(party.members, targetId)
+		out[i] = party
+	end
+	return out, "PARTY_JOINED"
+end
+
+-- Takes userId out of the party at index i. A party left with one member is removed, and a
+-- leader who left is replaced by the first remaining member.
+local function removeMember(state: State, i: number, userId: number): State
+	local out = table.clone(state)
+	local party = copyParty(state[i])
+	local at = table.find(party.members, userId)
+	if at ~= nil then
+		table.remove(party.members, at)
+	end
+	if #party.members <= 1 then
+		table.remove(out, i)
+		return out
+	end
+	if party.leader == userId then
+		party.leader = party.members[1]
+	end
+	out[i] = party
+	return out
+end
+
+function Party.leave(state: State, userId: number): (State?, string)
+	local i = indexOf(state, userId)
+	if i == nil then
+		return nil, "PARTY_NOT_IN"
+	end
+	return removeMember(state, i, userId), "PARTY_LEFT"
+end
+
+-- The shared checks of kick and promote: the leader's party index and the target id, or a code.
+local function leaderTarget(
+	state: State,
+	leaderId: number,
+	rawTargetId: any
+): (number?, number?, string?)
+	local i = indexOf(state, leaderId)
+	if i == nil then
+		return nil, nil, "PARTY_NOT_IN"
+	end
+	local party = state[i]
+	if party.leader ~= leaderId then
+		return nil, nil, "PARTY_NOT_LEADER"
+	end
+	if type(rawTargetId) ~= "number" or rawTargetId == leaderId then
+		return nil, nil, "BAD_REQUEST"
+	end
+	if table.find(party.members, rawTargetId) == nil then
+		return nil, nil, "BAD_REQUEST"
+	end
+	return i, rawTargetId, nil
+end
+
+function Party.kick(state: State, leaderId: number, rawTargetId: any): (State?, string)
+	local i, targetId, code = leaderTarget(state, leaderId, rawTargetId)
+	if i == nil or targetId == nil then
+		return nil, code :: string
+	end
+	return removeMember(state, i, targetId), "PARTY_MEMBER_KICKED"
+end
+
+function Party.promote(state: State, leaderId: number, rawTargetId: any): (State?, string)
+	local i, targetId, code = leaderTarget(state, leaderId, rawTargetId)
+	if i == nil or targetId == nil then
+		return nil, code :: string
+	end
+	local out = table.clone(state)
+	local party = copyParty(state[i])
+	party.leader = targetId
+	out[i] = party
+	return out, "PARTY_NEW_LEADER"
+end
+
+function Party.reach(helper: Helper, allies: { Helped }, radius: number): ({ number }, boolean)
+	local ids = {}
+	local anyFight = false
+	for _, ally in allies do
+		local dx = ally.position.x - helper.position.x
+		local dy = ally.position.y - helper.position.y
+		local dz = ally.position.z - helper.position.z
+		-- Written as <= so a NaN position or radius makes the test false and reaches nobody.
+		local near = math.sqrt(dx * dx + dy * dy + dz * dz) <= radius
+		if near and not ally.inDuel and not (helper.protected and ally.inFight) then
+			table.insert(ids, ally.id)
+			if ally.inFight then
+				anyFight = true
+			end
+		end
+	end
+	return ids, anyFight
+end
+
+function Party.inFight(marked: boolean, lastFightAt: number?, now: number): boolean
+	if marked then
+		return true
+	end
+	-- Written with not (>=) so a NaN time counts as still fighting.
+	return lastFightAt ~= nil and not (now - lastFightAt >= Party.FIGHT_SECONDS)
+end
+
+return Party
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="44">
+          <Properties>
+            <string name="Name">PartyView</string>
+            <string name="Source"><![CDATA[--!strict
+-- What the party panel shows (spec 3.15), from the server's PartySync and the health the client
+-- already knows. Pure: the client draws it, and a missing or odd number never breaks a row.
+local Party = require("./Party")
+
+export type Member = { userId: number, name: string }
+-- Members in join order.
+export type Sync = { leader: number, members: { Member } }
+export type Health = { health: number, max: number }
+export type Row = {
+	userId: number,
+	name: string,
+	isSelf: boolean,
+	healthText: string,
+	share: number,
+	canRemove: boolean,
+	canLead: boolean,
+}
+
+local PartyView = {}
+
+local UNKNOWN = "—"
+
+local function isFinite(n: any): boolean
+	return type(n) == "number" and n == n and n > -math.huge and n < math.huge
+end
+
+local function healthOf(h: Health?): (string, number)
+	if h == nil or not isFinite(h.health) or not isFinite(h.max) or h.max <= 0 then
+		return UNKNOWN, 0
+	end
+	if h.health <= 0 then
+		return "defeated", 0
+	end
+	local text = string.format("%d / %d", math.ceil(math.min(h.health, h.max)), math.floor(h.max))
+	return text, math.clamp(h.health / h.max, 0, 1)
+end
+
+local function rowFor(
+	member: Member,
+	sync: Sync,
+	selfId: number,
+	healths: { [string]: Health }
+): Row
+	local text, share = healthOf(healths[tostring(member.userId)])
+	local isSelf = member.userId == selfId
+	local leads = sync.leader == selfId and not isSelf
+	return {
+		userId = member.userId,
+		name = if member.userId == sync.leader then member.name .. " (leader)" else member.name,
+		isSelf = isSelf,
+		healthText = text,
+		share = share,
+		canRemove = leads,
+		canLead = leads,
+	}
+end
+
+function PartyView.title(sync: Sync?): string
+	if sync == nil then
+		return ""
+	end
+	return string.format("Party %d / %d", #sync.members, Party.MAX_SIZE)
+end
+
+function PartyView.rows(sync: Sync?, selfId: number, healths: { [string]: Health }): { Row }
+	local rows: { Row } = {}
+	if sync == nil then
+		return rows
+	end
+	for _, member in sync.members do
+		if member.userId == selfId then
+			table.insert(rows, rowFor(member, sync, selfId, healths))
+		end
+	end
+	for _, member in sync.members do
+		if member.userId ~= selfId then
+			table.insert(rows, rowFor(member, sync, selfId, healths))
+		end
+	end
+	return rows
+end
+
+function PartyView.allyIds(sync: Sync?, selfId: number): { number }
+	local ids: { number } = {}
+	if sync == nil then
+		return ids
+	end
+	for _, member in sync.members do
+		if member.userId ~= selfId then
+			table.insert(ids, member.userId)
+		end
+	end
+	return ids
+end
+
+function PartyView.inviteText(from: string): string
+	return from .. " invites you to their party"
+end
+
+return PartyView
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="45">
+          <Properties>
             <string name="Name">PathProgress</string>
             <string name="Source"><![CDATA[--!strict
 local Abilities = require("../Catalog/Abilities")
@@ -4922,7 +5274,7 @@ return PathProgress
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">PathView</string>
             <string name="Source"><![CDATA[--!strict
@@ -5060,7 +5412,7 @@ return PathView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">PlaceView</string>
             <string name="Source"><![CDATA[--!strict
@@ -5092,7 +5444,7 @@ return PlaceView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="48">
           <Properties>
             <string name="Name">Protection</string>
             <string name="Source"><![CDATA[--!strict
@@ -5181,13 +5533,15 @@ function Protection.canHitCreature(attacker: Status): (boolean, string?)
 	return true, nil
 end
 
--- True when this hit starts a fight: the victim is not Marked and did not hit the attacker recently.
+-- True when this hit starts a fight: the victim is not Marked and neither the victim nor
+-- anyone in `victimAllies` hit the attacker recently.
 function Protection.isAggressor(
 	log: Combat.HitLog,
 	attackerId: number,
 	victimId: number,
 	victimMarked: boolean,
-	now: number
+	now: number,
+	victimAllies: { number }?
 ): boolean
 	if victimMarked then
 		return false
@@ -5195,7 +5549,10 @@ function Protection.isAggressor(
 	local entry = log[tostring(attackerId)]
 	if
 		entry ~= nil
-		and entry.attackerId == victimId
+		and (entry.attackerId == victimId or (victimAllies ~= nil and table.find(
+			victimAllies,
+			entry.attackerId
+		) ~= nil))
 		and now - entry.at <= Protection.RETALIATE_SECONDS
 	then
 		return false
@@ -5224,11 +5581,25 @@ function Protection.recordClaim(
 	return newHistory
 end
 
+-- A claim for every killer id (the killer's whole party).
+function Protection.recordClaims(
+	history: ClaimHistory,
+	killerIds: { number },
+	victimId: number,
+	now: number
+): ClaimHistory
+	local newHistory = table.clone(history)
+	for _, killerId in killerIds do
+		newHistory[claimKey(killerId, victimId)] = now
+	end
+	return newHistory
+end
+
 return Protection
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="49">
           <Properties>
             <string name="Name">RateLimiter</string>
             <string name="Source"><![CDATA[--!strict
@@ -5263,7 +5634,7 @@ return RateLimiter
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="48">
+        <Item class="ModuleScript" referent="50">
           <Properties>
             <string name="Name">Rewards</string>
             <string name="Source"><![CDATA[--!strict
@@ -5272,8 +5643,17 @@ local Paths = require("../Catalog/Paths")
 local Scarcity = require("./Scarcity")
 local Types = require("../Types")
 
--- Damage dealt to one creature, per attacker. Key: tostring(attacker id).
-export type Tally = { [string]: { lastAt: number, total: number, byPath: { [string]: number } } }
+-- Damage dealt to one creature, per attacker. Key: tostring(attacker id). lastAt is the last hit
+-- or assist; hitAt is the last real hit only (nil for a helper who never hit).
+export type Tally = {
+	[string]: {
+		lastAt: number,
+		hitAt: number?,
+		total: number,
+		byPath: { [string]: number },
+		assist: string?,
+	},
+}
 -- room: free slots the player can still fill (0 when their Ledger is locked).
 export type Recipient = { calling: string, room: number }
 export type Award = {
@@ -5308,8 +5688,54 @@ function Rewards.record(
 	local byPath = if old ~= nil then table.clone(old.byPath) else {}
 	byPath[path] = (byPath[path] or 0) + amount
 	local out = table.clone(tally)
-	out[key] =
-		{ lastAt = now, total = (if old ~= nil then old.total else 0) + amount, byPath = byPath }
+	out[key] = {
+		lastAt = now,
+		hitAt = now,
+		total = (if old ~= nil then old.total else 0) + amount,
+		byPath = byPath,
+	}
+	return out
+end
+
+-- Support that reaches someone who hit the creature in the last 30 seconds makes the helper a
+-- contributor too, with no damage. An assist never sets or changes hitAt. Anything else (self, no contributor reached, not a Path, NaN time) changes nothing.
+function Rewards.assist(
+	tally: Tally,
+	helperId: number,
+	helpedIds: { number },
+	path: string,
+	now: number
+): Tally
+	if not Paths.isPath(path) then
+		return tally
+	end
+	local reached = false
+	for _, id in helpedIds do
+		local entry = tally[tostring(id)]
+		-- Written positively so a NaN time helps nobody.
+		if
+			id ~= helperId
+			and entry ~= nil
+			and entry.hitAt ~= nil
+			and now - entry.hitAt <= Rewards.CONTRIBUTOR_SECONDS
+		then
+			reached = true
+			break
+		end
+	end
+	if not reached then
+		return tally
+	end
+	local key = tostring(helperId)
+	local old = tally[key]
+	local out = table.clone(tally)
+	out[key] = {
+		lastAt = now,
+		hitAt = if old ~= nil then old.hitAt else nil,
+		total = if old ~= nil then old.total else 0,
+		byPath = if old ~= nil then table.clone(old.byPath) else {},
+		assist = path,
+	}
 	return out
 end
 
@@ -5356,10 +5782,11 @@ function Rewards.xpPath(byPath: { [string]: number }, calling: string): string
 	return best
 end
 
--- One Award per contributor found in `recipients`, in contributors() order. Each contributor
--- rolls every drop once, in drop order; a roll below the chance wins. A won Relic is sealed
--- when the server already holds its cap (`held` plus the copies given earlier in this call),
--- else lost when the contributor has no room left, else given.
+-- One Award per contributor found in `recipients`, in contributors() order (by damage, so an
+-- assist-only contributor is served last). Each contributor rolls every drop once, in drop
+-- order; a roll below the chance wins. A won Relic is sealed when the server already holds
+-- its cap (`held` plus the copies given earlier in this call), else lost when the contributor
+-- has no room left, else given.
 function Rewards.awards(
 	reward: Reward,
 	tally: Tally,
@@ -5375,7 +5802,14 @@ function Rewards.awards(
 		if recipient == nil then
 			continue
 		end
-		local xpPath = Rewards.xpPath(tally[tostring(id)].byPath, recipient.calling)
+		local entry = tally[tostring(id)]
+		local xpPath
+		if entry.total == 0 and entry.assist ~= nil then
+			-- Support only: paid in the Path of the support, but never without a Calling.
+			xpPath = if recipient.calling == "" then "" else entry.assist
+		else
+			xpPath = Rewards.xpPath(entry.byPath, recipient.calling)
+		end
 		local award: Award = {
 			userId = id,
 			coin = reward.coin,
@@ -5408,7 +5842,7 @@ return Rewards
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="49">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">Scarcity</string>
             <string name="Source"><![CDATA[--!strict
@@ -5446,7 +5880,7 @@ return Scarcity
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">Shop</string>
             <string name="Source"><![CDATA[--!strict
@@ -5647,7 +6081,7 @@ return Shop
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">Sources</string>
             <string name="Source"><![CDATA[--!strict
@@ -5748,7 +6182,7 @@ return Sources
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">StatusView</string>
             <string name="Source"><![CDATA[--!strict
@@ -5812,7 +6246,7 @@ return StatusView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">Targeting</string>
             <string name="Source"><![CDATA[--!strict
@@ -5943,7 +6377,7 @@ return Targeting
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">Trade</string>
             <string name="Source"><![CDATA[--!strict
@@ -6246,7 +6680,7 @@ return Trade
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">TrialRun</string>
             <string name="Source"><![CDATA[--!strict
@@ -6436,7 +6870,7 @@ return TrialRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">TrialView</string>
             <string name="Source"><![CDATA[--!strict
@@ -6564,7 +6998,7 @@ return TrialView
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">Vault</string>
             <string name="Source"><![CDATA[--!strict
@@ -6690,7 +7124,7 @@ return Vault
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="58">
+      <Item class="ModuleScript" referent="60">
         <Properties>
           <string name="Name">Types</string>
           <string name="Source"><![CDATA[--!strict
@@ -6876,15 +7310,15 @@ return {}
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="59">
+  <Item class="ServerScriptService" referent="61">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="60">
+    <Item class="Folder" referent="62">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="61">
+      <Item class="ModuleScript" referent="63">
         <Properties>
           <string name="Name">AbilityService</string>
           <string name="Source"><![CDATA[--!strict
@@ -6901,18 +7335,24 @@ local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
 local CreatureBrain = require(ReplicatedStorage.Shared.Rules.CreatureBrain)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Party = require(ReplicatedStorage.Shared.Rules.Party)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Targeting = require(ReplicatedStorage.Shared.Rules.Targeting)
+local Trials = require(ReplicatedStorage.Shared.Catalog.Trials)
 local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 local CombatService = require(script.Parent.CombatService)
+local CreatureService = require(script.Parent.CreatureService)
 local Fighters = require(script.Parent.Fighters)
 local Fx = require(script.Parent.Fx)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
+local ProtectionService = require(script.Parent.ProtectionService)
 local Sight = require(script.Parent.Sight)
 local StatusService = require(script.Parent.StatusService)
+local TrialService = require(script.Parent.TrialService)
 
 type Ability = Types.Ability
 type Fighter = Combat.Fighter
@@ -6983,30 +7423,73 @@ local function heal(player: Player, amount: number)
 	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + amount)
 end
 
--- Who a support effect reaches: the caster and the caster's allies (in M3 only the caster;
--- parties come later), each alive and, when the ability has an ally radius, within it.
-local function alliesOf(player: Player, ability: Ability): { Player }
+-- Who a support effect (heal, cleanse, shield) reaches: the caster, and when the ability has an
+-- ally radius, the caster's party members within it. Members in a duel are never reached, and a
+-- protected caster does not reach members who are fighting (Party.reach). Reaching a member
+-- who is fighting ends the caster's respawn shield; reaching one outside Tallyport counts the
+-- caster as an assist on every creature that member hit lately. Writes nothing else.
+local function supportTargets(player: Player, ability: Ability, now: number): { Player }
 	local _, casterRoot = living(player)
 	if casterRoot == nil then
 		return {}
 	end
-	local reach = ability.allyRadius
-	local result: { Player } = {}
-	for _, ally in { player } do
-		local _, allyRoot = living(ally)
-		if allyRoot == nil then
-			continue
-		end
-		if
-			ally ~= player
-			and reach ~= nil
-			and not ((allyRoot.Position - casterRoot.Position).Magnitude <= reach)
-		then
-			continue
-		end
-		table.insert(result, ally)
+	local targets: { Player } = { player }
+	local radius = ability.allyRadius
+	if radius == nil then
+		return targets
 	end
-	return result
+	local status = ProtectionService.status(player, now)
+	if status == nil then
+		return targets
+	end
+	local p = casterRoot.Position
+	local helper: Party.Helper = {
+		position = { x = p.X, y = p.Y, z = p.Z },
+		protected = status.newShield
+			or (status.inSafeZone and not Protection.isMarked(status, now)),
+	}
+	local helped: { Party.Helped } = {}
+	local players: { [number]: Player } = {}
+	for _, id in Fighters.allies(player.UserId) do
+		local entry = Fighters.get(id)
+		local ally = if entry ~= nil then entry.player else nil
+		if ally == nil then
+			continue
+		end
+		local allyStatus = ProtectionService.status(ally, now)
+		local _, allyRoot = living(ally)
+		if allyStatus == nil or allyRoot == nil then
+			continue
+		end
+		local q = allyRoot.Position
+		local run = TrialService.run(ally)
+		local trial = if run ~= nil then Trials.byId[run.trialId] else nil
+		table.insert(helped, {
+			id = id,
+			position = { x = q.X, y = q.Y, z = q.Z },
+			inFight = Party.inFight(
+				Protection.isMarked(allyStatus, now),
+				CombatService.lastFightAt(ally),
+				now
+			),
+			inDuel = trial ~= nil and trial.kind == "duel",
+		})
+		players[id] = ally
+	end
+	local reached, joined = Party.reach(helper, helped, radius)
+	if joined then
+		ProtectionService.endRespawnShield(player)
+	end
+	if #reached > 0 and not status.inSafeZone then
+		CreatureService.assist(player.UserId, reached, ability.path)
+	end
+	for _, id in reached do
+		local member = players[id]
+		if member ~= nil then
+			table.insert(targets, member)
+		end
+	end
+	return targets
 end
 
 local function vector(v: Vec3): Vector3
@@ -7029,7 +7512,8 @@ end
 -- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. Every
 -- hit goes through CombatService.damage (a post trains the ability's Path and ignores every
 -- effect); its statuses and its pull or knockback follow only when that returned true.
--- Heal-on-hit heals the caster and allies when any hit landed.
+-- Heal-on-hit heals the caster when any hit landed, and reaches allies (and counts as an
+-- assist) only when a hit landed on a player or a creature, not on a training post alone.
 local function applyHits(
 	player: Player,
 	ability: Ability,
@@ -7038,6 +7522,7 @@ local function applyHits(
 	others: { Fighter }
 )
 	local connected = false
+	local struckFighter = false
 	for _, hit in plan.hits do
 		local id = hit.targetId
 		if not inSight(caster, others, id) then
@@ -7047,6 +7532,10 @@ local function applyHits(
 			continue
 		end
 		connected = true
+		local struck = Fighters.get(id)
+		if struck ~= nil and struck.kind ~= "post" then
+			struckFighter = true
+		end
 		StatusService.applyHit(player.UserId, id, ability)
 		-- No ability both pulls and knocks back; each point is for the plan's one target.
 		local destination = plan.pullTo or plan.knockbackTo
@@ -7064,43 +7553,25 @@ local function applyHits(
 	end
 	local amount = ability.heal
 	if connected and ability.healOnHit == true and amount ~= nil then
-		for _, ally in alliesOf(player, ability) do
-			heal(ally, amount)
+		if struckFighter then
+			for _, ally in supportTargets(player, ability, os.clock()) do
+				heal(ally, amount)
+			end
+		else
+			heal(player, amount)
 		end
 	end
 end
 
--- Heal (unless it is a heal-on-hit), cleanse, shield, immune, empower, reduction and reflect
--- on the caster and allies.
+-- The caster's own effects (immune, empower, reduction, reflect) land on the caster alone. The
+-- support effects (heal unless it is a heal-on-hit, cleanse, shield) also reach the party
+-- members in range.
 local function applySelfEffects(player: Player, ability: Ability)
-	local amount = if ability.healOnHit == true then nil else ability.heal
-	local cleanse = ability.cleanse == true
-	local shield, immune, empower = ability.shield, ability.immune, ability.empower
+	local immune, empower = ability.immune, ability.empower
 	local reduction, reflect = ability.reduction, ability.reflect
-	local anyStatus = cleanse
-		or shield ~= nil
-		or immune ~= nil
-		or empower ~= nil
-		or reduction ~= nil
-		or reflect ~= nil
-	if amount == nil and not anyStatus then
-		return
-	end
-	for _, ally in alliesOf(player, ability) do
-		if amount ~= nil then
-			heal(ally, amount)
-		end
-		if not anyStatus then
-			continue
-		end
-		StatusService.update(ally.UserId, function(status, now)
+	if immune ~= nil or empower ~= nil or reduction ~= nil or reflect ~= nil then
+		StatusService.update(player.UserId, function(status, now)
 			local out = status
-			if cleanse then
-				out = Effects.cleanse(out)
-			end
-			if shield ~= nil then
-				out = Effects.applyShield(out, shield.amount, shield.duration, now)
-			end
 			if immune ~= nil then
 				out = Effects.applyImmune(out, immune, now)
 			end
@@ -7115,6 +7586,30 @@ local function applySelfEffects(player: Player, ability: Ability)
 			end
 			return out
 		end)
+	end
+
+	local amount = if ability.healOnHit == true then nil else ability.heal
+	local cleanse = ability.cleanse == true
+	local shield = ability.shield
+	if amount == nil and not cleanse and shield == nil then
+		return
+	end
+	for _, ally in supportTargets(player, ability, os.clock()) do
+		if amount ~= nil then
+			heal(ally, amount)
+		end
+		if cleanse or shield ~= nil then
+			StatusService.update(ally.UserId, function(status, now)
+				local out = status
+				if cleanse then
+					out = Effects.cleanse(out)
+				end
+				if shield ~= nil then
+					out = Effects.applyShield(out, shield.amount, shield.duration, now)
+				end
+				return out
+			end)
+		end
 	end
 end
 
@@ -7319,7 +7814,7 @@ return AbilityService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="62">
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">ClaimService</string>
           <string name="Source"><![CDATA[--!strict
@@ -7333,6 +7828,7 @@ local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
+local Fighters = require(script.Parent.Fighters)
 local LedgerService = require(script.Parent.LedgerService)
 
 local BUCKET_CAPACITY = 10
@@ -7424,6 +7920,10 @@ end
 -- Runs in the thread that reported the defeat. For a combat log that is the leaver's
 -- PlayerRemoving, so the hold is taken before their profile can be released.
 local function onDefeat(killer: Player, victim: Player)
+	-- Credit never names an ally; this is the second lock on the same door.
+	if Fighters.allied(killer.UserId, victim.UserId) then
+		return
+	end
 	if sessions[killer] ~= nil or LedgerService.isLocked(victim) then
 		return
 	end
@@ -7438,7 +7938,13 @@ local function onDefeat(killer: Player, victim: Player)
 		return
 	end
 
-	history = Protection.recordClaim(history, killer.UserId, victim.UserId, now)
+	-- Everyone in the killer's party gets the cooldown against this victim, so a party cannot
+	-- take turns claiming the same player.
+	local group: { number } = { killer.UserId }
+	for _, allyId in Fighters.allies(killer.UserId) do
+		table.insert(group, allyId)
+	end
+	history = Protection.recordClaims(history, group, victim.UserId, now)
 	local session: Session = {
 		killer = killer,
 		victim = victim,
@@ -7546,7 +8052,7 @@ return ClaimService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="63">
+      <Item class="ModuleScript" referent="65">
         <Properties>
           <string name="Name">CombatService</string>
           <string name="Source"><![CDATA[--!strict
@@ -7641,7 +8147,8 @@ local function creditDefeat(victim: Player, windowSeconds: number, byCreature: b
 		victim.UserId,
 		now,
 		windowSeconds,
-		if byCreature then creatureLog else nil
+		if byCreature then creatureLog else nil,
+		Fighters.allies(victim.UserId)
 	)
 	hitLog = Combat.clear(hitLog, victim.UserId)
 	creatureLog = Combat.clear(creatureLog, victim.UserId)
@@ -7741,7 +8248,14 @@ local function damagePlayer(
 			ProtectionService.endRespawnShield(attacker)
 			local victimMarked = Protection.isMarked(victimStatus, now)
 			if
-				Protection.isAggressor(hitLog, attacker.UserId, victim.UserId, victimMarked, now)
+				Protection.isAggressor(
+					hitLog,
+					attacker.UserId,
+					victim.UserId,
+					victimMarked,
+					now,
+					Fighters.allies(victim.UserId)
+				)
 			then
 				ProtectionService.mark(attacker, now)
 			end
@@ -8108,7 +8622,7 @@ return CombatService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="64">
+      <Item class="ModuleScript" referent="66">
         <Properties>
           <string name="Name">CreatureService</string>
           <string name="Source"><![CDATA[--!strict
@@ -8921,6 +9435,17 @@ function CreatureService.spawnChampion(owner: Player, at: Vec3): number
 	return id
 end
 
+-- Support that reached allies: every live den creature notes the helper as an assist when one of
+-- `helpedIds` really hit it lately (Rewards.assist). Champions never take assists. Never yields.
+function CreatureService.assist(helperId: number, helpedIds: { number }, path: string)
+	local now = os.clock()
+	for _, creature in creatures do
+		if creature.owner == nil and not creature.gone then
+			creature.tally = Rewards.assist(creature.tally, helperId, helpedIds, path, now)
+		end
+	end
+end
+
 -- Removes a creature: no rewards, no respawn.
 function CreatureService.despawn(id: number)
 	local creature = creatures[id]
@@ -9004,7 +9529,7 @@ return CreatureService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="65">
+      <Item class="ModuleScript" referent="67">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[--!strict
@@ -9202,7 +9727,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="66">
+      <Item class="ModuleScript" referent="68">
         <Properties>
           <string name="Name">EdictService</string>
           <string name="Source"><![CDATA[--!strict
@@ -9644,7 +10169,7 @@ return EdictService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="67">
+      <Item class="ModuleScript" referent="69">
         <Properties>
           <string name="Name">Fighters</string>
           <string name="Source"><![CDATA[--!strict
@@ -9661,7 +10186,10 @@ return EdictService
 --   Fighters.body(id)             living Humanoid and root of a player or creature
 --   Fighters.fighter(id)          Combat.Fighter at the root (posts: the part, look +z)
 --   Fighters.list(viewer)         every other living fighter the viewer may fight
---   Fighters.mayFight(a, b)       whether `a` may hit `b`
+--   Fighters.mayFight(a, b)       whether `a` may hit `b` (never an ally)
+--   Fighters.setAllies(fn)        PartyService installs who is allied; default: nobody
+--   Fighters.allies(id)           a fresh copy of the ids allied with `id`
+--   Fighters.allied(a, b)         a ~= b and b is allied with a
 -- Requires only Roblox services and shared modules, so every server service may require it.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -9692,6 +10220,10 @@ local Fighters = {}
 local entries: { [number]: Entry } = {}
 -- Ids in the order they were first added, so lists come out in a stable order.
 local order: { number } = {}
+-- Who counts as an ally of an id. PartyService replaces it; the default has no allies.
+local allyLookup: (id: number) -> { number } = function(_id: number): { number }
+	return {}
+end
 
 function Fighters.add(entry: Entry)
 	if entries[entry.id] == nil then
@@ -9795,10 +10327,28 @@ function Fighters.fighter(id: number): Combat.Fighter?
 	}
 end
 
--- False for a fighter against itself, for an unknown id, for a post attacker, and when
--- either side has an owner that is not the other.
+-- Installed by PartyService; until then nobody has allies.
+function Fighters.setAllies(alliesOf: (id: number) -> { number })
+	allyLookup = alliesOf
+end
+
+-- A fresh copy of the ids allied with `id` (its party mates), so callers may keep it.
+function Fighters.allies(id: number): { number }
+	return table.clone(allyLookup(id))
+end
+
+-- True when `b` is a party mate of `a`; never true for a fighter and itself.
+function Fighters.allied(a: number, b: number): boolean
+	return a ~= b and table.find(allyLookup(a), b) ~= nil
+end
+
+-- False for a fighter against itself, for allies, for an unknown id, for a post attacker, and
+-- when either side has an owner that is not the other.
 function Fighters.mayFight(a: number, b: number): boolean
 	if a == b then
+		return false
+	end
+	if Fighters.allied(a, b) then
 		return false
 	end
 	local attacker, target = entries[a], entries[b]
@@ -9891,7 +10441,7 @@ return Fighters
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="68">
+      <Item class="ModuleScript" referent="70">
         <Properties>
           <string name="Name">Fx</string>
           <string name="Source"><![CDATA[--!strict
@@ -9970,7 +10520,7 @@ return Fx
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="69">
+      <Item class="ModuleScript" referent="71">
         <Properties>
           <string name="Name">HazardService</string>
           <string name="Source"><![CDATA[--!strict
@@ -10098,7 +10648,7 @@ return HazardService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="70">
+      <Item class="ModuleScript" referent="72">
         <Properties>
           <string name="Name">LedgerService</string>
           <string name="Source"><![CDATA[--!strict
@@ -10328,7 +10878,7 @@ return LedgerService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="71">
+      <Item class="ModuleScript" referent="73">
         <Properties>
           <string name="Name">LookPainter</string>
           <string name="Source"><![CDATA[--!strict
@@ -10377,7 +10927,7 @@ return LookPainter
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="72">
+      <Item class="Script" referent="74">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -10391,6 +10941,7 @@ local EdictService = require(script.Parent.EdictService)
 local Fighters = require(script.Parent.Fighters)
 local HazardService = require(script.Parent.HazardService)
 local LedgerService = require(script.Parent.LedgerService)
+local PartyService = require(script.Parent.PartyService)
 local PathService = require(script.Parent.PathService)
 local ProtectionService = require(script.Parent.ProtectionService)
 local ShopService = require(script.Parent.ShopService)
@@ -10433,6 +10984,8 @@ runStep("TrialService.start", TrialService.start)
 runStep("EdictService.start", EdictService.start)
 runStep("ShopService.start", ShopService.start)
 runStep("TradeService.start", TradeService.start)
+-- After CombatService: a leaver's combat-log credit runs before they leave their party.
+runStep("PartyService.start", PartyService.start)
 -- Data last, so no player loads before the remotes and callbacks exist.
 runStep("DataService.start", DataService.start)
 
@@ -10440,7 +10993,369 @@ print("[IsleOfAvarice] server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="73">
+      <Item class="ModuleScript" referent="75">
+        <Properties>
+          <string name="Name">PartyService</string>
+          <string name="Source"><![CDATA[--!strict
+-- Parties (spec 3.14): asking the nearest player, the invite, joining, leaving, removing a
+-- member and handing over the lead. Party holds every rule; this service owns the one live
+-- state, tells the players what changed and installs who counts as an ally. Every handler
+-- reads the state and stores the new one with no yielding call in between.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Net = require(ReplicatedStorage.Shared.Net)
+local Party = require(ReplicatedStorage.Shared.Rules.Party)
+local PartyView = require(ReplicatedStorage.Shared.Rules.PartyView)
+local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
+local Trade = require(ReplicatedStorage.Shared.Rules.Trade)
+local Types = require(ReplicatedStorage.Shared.Types)
+local DataService = require(script.Parent.DataService)
+local Fighters = require(script.Parent.Fighters)
+local LedgerService = require(script.Parent.LedgerService)
+
+type Invite = { from: Player, expiresAt: number }
+
+local BUCKET_CAPACITY = 10
+local BUCKET_REFILL_PER_SECOND = 5
+
+local PartyService = {}
+
+local state: Party.State = Party.new()
+-- Every present player by UserId, so a member id can be turned back into a Player.
+local players: { [number]: Player } = {}
+-- Pending invites, keyed by the invited player.
+local invites: { [Player]: Invite } = {}
+-- Who each asker has asked.
+local asked: { [Player]: Player } = {}
+local buckets: { [Player]: RateLimiter.Bucket } = {}
+local inviteRemote: RemoteEvent
+local syncRemote: RemoteEvent
+
+local function allowed(player: Player): boolean
+	local now = os.clock()
+	local bucket = buckets[player]
+	if bucket == nil then
+		bucket = RateLimiter.new(BUCKET_CAPACITY, now)
+		buckets[player] = bucket
+	end
+	return RateLimiter.allow(bucket, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_SECOND)
+end
+
+-- A message to someone who may already have left.
+local function tell(player: Player, code: string, args: { [string]: string }?)
+	if player.Parent == Players then
+		LedgerService.notify(player, code, args)
+	end
+end
+
+-- A message to a member by id, when they are still here.
+local function tellId(userId: number, code: string, args: { [string]: string }?)
+	local player = players[userId]
+	if player ~= nil then
+		tell(player, code, args)
+	end
+end
+
+local function nameOf(userId: number): string
+	local player = players[userId]
+	return if player ~= nil then player.DisplayName else "A player"
+end
+
+local function vec(position: Vector3): Types.Vec3
+	return { x = position.X, y = position.Y, z = position.Z }
+end
+
+-- Each present member gets the whole party, in join order.
+local function sync(party: Party.Party)
+	local members: { PartyView.Member } = {}
+	for _, userId in party.members do
+		table.insert(members, { userId = userId, name = nameOf(userId) })
+	end
+	local view: PartyView.Sync = { leader = party.leader, members = members }
+	for _, userId in party.members do
+		local player = players[userId]
+		if player ~= nil and player.Parent == Players then
+			syncRemote:FireClient(player, view)
+		end
+	end
+end
+
+local function unsync(player: Player)
+	if player.Parent == Players then
+		syncRemote:FireClient(player, nil)
+	end
+end
+
+-- Removes an invite to `target`, from either table.
+local function clearInvite(target: Player)
+	local invite = invites[target]
+	if invite == nil then
+		return
+	end
+	invites[target] = nil
+	if asked[invite.from] == target then
+		asked[invite.from] = nil
+	end
+end
+
+-- Tells whoever is left what happened when `removedId` went out of `before` (by their own
+-- leave, an exit or a kick): the party broke up, or the rest hear `code` and any new leader.
+local function announceRemoval(before: Party.Party, removedId: number, code: string)
+	local remaining: { number } = {}
+	for _, userId in before.members do
+		if userId ~= removedId then
+			table.insert(remaining, userId)
+		end
+	end
+	local after = Party.find(state, remaining[1])
+	if after == nil then
+		for _, userId in remaining do
+			tellId(userId, "PARTY_DISBANDED")
+			local player = players[userId]
+			if player ~= nil then
+				unsync(player)
+			end
+		end
+		return
+	end
+	local removedName = nameOf(removedId)
+	for _, userId in remaining do
+		tellId(userId, code, { player = removedName })
+		if after.leader ~= before.leader then
+			tellId(userId, "PARTY_NEW_LEADER", { player = nameOf(after.leader) })
+		end
+	end
+	sync(after)
+end
+
+-- Takes a player out of their party. Returns the refusal code, or nil when it worked.
+local function removeMember(userId: number, why: string): string?
+	local before = Party.find(state, userId)
+	local after, code = Party.leave(state, userId)
+	if before == nil or after == nil then
+		return code
+	end
+	state = after
+	local leaver = players[userId]
+	if why == "left" and leaver ~= nil then
+		tell(leaver, "PARTY_LEFT")
+		unsync(leaver)
+	end
+	announceRemoval(before, userId, "PARTY_MEMBER_LEFT")
+	return nil
+end
+
+local function handleRequest(player: Player)
+	if player.Parent ~= Players or not allowed(player) then
+		return
+	end
+	local _, root = Fighters.body(player.UserId)
+	-- A member who cannot invite hears why even when nobody else is in range.
+	local own = Party.find(state, player.UserId)
+	if own ~= nil and own.leader ~= player.UserId then
+		LedgerService.notify(player, "PARTY_NOT_LEADER")
+		return
+	end
+	if own ~= nil and #own.members >= Party.MAX_SIZE then
+		LedgerService.notify(player, "PARTY_FULL")
+		return
+	end
+	if
+		DataService.get(player) == nil
+		or root == nil
+		or asked[player] ~= nil
+		or invites[player] ~= nil
+	then
+		LedgerService.notify(player, "EDICT_NOT_NOW")
+		return
+	end
+	-- The asker's own party mates are left out so one standing closest cannot hide a new player.
+	local mates = Party.allies(state, player.UserId)
+	local others: { Trade.Body } = {}
+	for userId, other in players do
+		if other ~= player and other.Parent == Players and table.find(mates, userId) == nil then
+			local _, otherRoot = Fighters.body(userId)
+			if otherRoot ~= nil then
+				table.insert(others, { userId = userId, position = vec(otherRoot.Position) })
+			end
+		end
+	end
+	local targetId =
+		Trade.nearest({ userId = player.UserId, position = vec(root.Position) }, others)
+	local target = if targetId ~= nil then players[targetId] else nil
+	if target == nil then
+		LedgerService.notify(player, "EDICT_NO_TARGET")
+		return
+	end
+	local can, code = Party.canInvite(state, player.UserId, target.UserId)
+	if not can then
+		LedgerService.notify(player, code, { player = target.DisplayName })
+		return
+	end
+	if DataService.get(target) == nil or invites[target] ~= nil or asked[target] ~= nil then
+		LedgerService.notify(player, "PARTY_BUSY", { player = target.DisplayName })
+		return
+	end
+
+	local invite: Invite = { from = player, expiresAt = os.clock() + Party.INVITE_SECONDS }
+	invites[target] = invite
+	asked[player] = target
+	inviteRemote:FireClient(target, { from = player.DisplayName, seconds = Party.INVITE_SECONDS })
+	LedgerService.notify(player, "PARTY_INVITE_SENT", { player = target.DisplayName })
+	task.delay(Party.INVITE_SECONDS, function()
+		if invites[target] ~= invite then
+			return
+		end
+		clearInvite(target)
+		if target.Parent == Players then
+			inviteRemote:FireClient(target, nil)
+		end
+		tell(player, "PARTY_EXPIRED")
+	end)
+end
+
+local function handleReply(player: Player, accept: any)
+	if player.Parent ~= Players or not allowed(player) then
+		return
+	end
+	local invite = invites[player]
+	if invite == nil then
+		LedgerService.notify(player, "PARTY_NO_INVITE")
+		return
+	end
+	clearInvite(player)
+	local asker = invite.from
+	if accept ~= true then
+		tell(asker, "PARTY_DECLINED", { player = player.DisplayName })
+		return
+	end
+	if asker.Parent ~= Players then
+		LedgerService.notify(player, "PARTY_NO_INVITE")
+		return
+	end
+	local joined = Party.join(state, asker.UserId, player.UserId)
+	if joined == nil then
+		-- The invitee hears it in their own words, naming the asker.
+		LedgerService.notify(player, "PARTY_JOIN_FAILED", { player = asker.DisplayName })
+		return
+	end
+	state = joined
+	local party = Party.find(state, player.UserId)
+	if party == nil then
+		return
+	end
+	tell(player, "PARTY_JOINED", { player = nameOf(party.leader) })
+	for _, userId in party.members do
+		if userId ~= player.UserId then
+			tellId(userId, "PARTY_MEMBER_JOINED", { player = player.DisplayName })
+		end
+	end
+	sync(party)
+end
+
+local function handleAction(player: Player, raw: any)
+	if player.Parent ~= Players or not allowed(player) then
+		return
+	end
+	if type(raw) ~= "table" or type(raw.kind) ~= "string" then
+		LedgerService.notify(player, "BAD_REQUEST")
+		return
+	end
+	local kind = raw.kind
+	if kind == "leave" then
+		local code = removeMember(player.UserId, "left")
+		if code ~= nil then
+			LedgerService.notify(player, code)
+		end
+	elseif kind == "kick" then
+		local before = Party.find(state, player.UserId)
+		local after, code = Party.kick(state, player.UserId, raw.userId)
+		if after == nil or before == nil then
+			LedgerService.notify(player, code)
+			return
+		end
+		state = after
+		local removed = players[raw.userId]
+		if removed ~= nil then
+			tell(removed, "PARTY_KICKED", { player = player.DisplayName })
+			unsync(removed)
+		end
+		announceRemoval(before, raw.userId, "PARTY_MEMBER_KICKED")
+	elseif kind == "promote" then
+		local after, code = Party.promote(state, player.UserId, raw.userId)
+		if after == nil then
+			LedgerService.notify(player, code)
+			return
+		end
+		state = after
+		local party = Party.find(state, player.UserId)
+		if party == nil then
+			return
+		end
+		for _, userId in party.members do
+			tellId(userId, "PARTY_NEW_LEADER", { player = nameOf(party.leader) })
+		end
+		sync(party)
+	else
+		LedgerService.notify(player, "BAD_REQUEST")
+	end
+end
+
+-- Runs through DataService.beforeRelease, after CombatService's combat-log credit.
+local function onExit(player: Player)
+	removeMember(player.UserId, "exit")
+	-- An invite to them is dropped; an invite from them is withdrawn from whoever was shown it.
+	clearInvite(player)
+	local target = asked[player]
+	if target ~= nil then
+		asked[player] = nil
+		local sent = invites[target]
+		if sent ~= nil and sent.from == player then
+			invites[target] = nil
+			if target.Parent == Players then
+				inviteRemote:FireClient(target, nil)
+			end
+		end
+	end
+	buckets[player] = nil
+	-- Leave a rejoin under the same UserId alone.
+	if players[player.UserId] == player then
+		players[player.UserId] = nil
+	end
+end
+
+-- Play-test seam: a copy of the player's party (user ids), if any.
+function PartyService.party(player: Player): Party.Party?
+	return Party.find(state, player.UserId)
+end
+
+function PartyService.start()
+	inviteRemote = LedgerService.makeRemote(Net.PartyInvite)
+	syncRemote = LedgerService.makeRemote(Net.PartySync)
+	LedgerService.makeRemote(Net.PartyRequest).OnServerEvent:Connect(handleRequest)
+	LedgerService.makeRemote(Net.PartyReply).OnServerEvent:Connect(handleReply)
+	LedgerService.makeRemote(Net.PartyAction).OnServerEvent:Connect(handleAction)
+
+	-- Reads the live `state`, so every replacement is seen.
+	Fighters.setAllies(function(id: number): { number }
+		return Party.allies(state, id)
+	end)
+
+	for _, player in Players:GetPlayers() do
+		players[player.UserId] = player
+	end
+	Players.PlayerAdded:Connect(function(player: Player)
+		players[player.UserId] = player
+	end)
+	DataService.beforeRelease(onExit)
+end
+
+return PartyService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="76">
         <Properties>
           <string name="Name">PathService</string>
           <string name="Source"><![CDATA[--!strict
@@ -10662,7 +11577,7 @@ return PathService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="74">
+      <Item class="ModuleScript" referent="77">
         <Properties>
           <string name="Name">Payout</string>
           <string name="Source"><![CDATA[--!strict
@@ -10708,7 +11623,7 @@ return Payout
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="75">
+      <Item class="ModuleScript" referent="78">
         <Properties>
           <string name="Name">ProtectionService</string>
           <string name="Source"><![CDATA[--!strict
@@ -11001,7 +11916,7 @@ return ProtectionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="76">
+      <Item class="ModuleScript" referent="79">
         <Properties>
           <string name="Name">ShopService</string>
           <string name="Source"><![CDATA[--!strict
@@ -11151,7 +12066,7 @@ return ShopService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="77">
+      <Item class="ModuleScript" referent="80">
         <Properties>
           <string name="Name">Sight</string>
           <string name="Source"><![CDATA[--!strict
@@ -11285,7 +12200,7 @@ return Sight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="78">
+      <Item class="ModuleScript" referent="81">
         <Properties>
           <string name="Name">SiteBuilder</string>
           <string name="Source"><![CDATA[--!strict
@@ -11412,7 +12327,7 @@ return SiteBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="79">
+      <Item class="ModuleScript" referent="82">
         <Properties>
           <string name="Name">SourceService</string>
           <string name="Source"><![CDATA[--!strict
@@ -11615,7 +12530,7 @@ return SourceService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="80">
+      <Item class="ModuleScript" referent="83">
         <Properties>
           <string name="Name">StatusService</string>
           <string name="Source"><![CDATA[--!strict
@@ -11948,8 +12863,14 @@ function StatusService.addZone(ownerId: number, zone: Casting.Zone, path: string
 	if not (math.abs(zone.center.y) < math.huge) then
 		return
 	end
-	for _, other in Fighters.list(ownerId) do
-		if zoneContains(entry, other.position) then
+	-- Every fighter standing in it counts, allies included: an ally removed from the party
+	-- later must not turn into a passive target.
+	for _, other in Fighters.all() do
+		if other.id == ownerId then
+			continue
+		end
+		local fighter = Fighters.fighter(other.id)
+		if fighter ~= nil and zoneContains(entry, fighter.position) then
 			entry.inside[other.id] = true
 		end
 	end
@@ -11987,7 +12908,7 @@ return StatusService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="81">
+      <Item class="ModuleScript" referent="84">
         <Properties>
           <string name="Name">TerrainBuilder</string>
           <string name="Source"><![CDATA[--!strict
@@ -12060,7 +12981,7 @@ return TerrainBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="82">
+      <Item class="ModuleScript" referent="85">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[--!strict
@@ -12516,7 +13437,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="83">
+      <Item class="ModuleScript" referent="86">
         <Properties>
           <string name="Name">TrialService</string>
           <string name="Source"><![CDATA[--!strict
@@ -12944,7 +13865,7 @@ return TrialService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="84">
+      <Item class="ModuleScript" referent="87">
         <Properties>
           <string name="Name">VaultService</string>
           <string name="Source"><![CDATA[--!strict
@@ -13027,11 +13948,11 @@ return VaultService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="85">
+      <Item class="Folder" referent="88">
         <Properties>
           <string name="Name">Vendor</string>
         </Properties>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">ProfileStore</string>
             <string name="Source"><![CDATA[--[[
@@ -15152,7 +16073,7 @@ return ProfileStore
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="87">
+      <Item class="ModuleScript" referent="90">
         <Properties>
           <string name="Name">WorldBuilder</string>
           <string name="Source"><![CDATA[--!strict
@@ -15592,19 +16513,19 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="88">
+  <Item class="StarterPlayer" referent="91">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="89">
+    <Item class="StarterPlayerScripts" referent="92">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="90">
+      <Item class="Folder" referent="93">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="91">
+        <Item class="ModuleScript" referent="94">
           <Properties>
             <string name="Name">AbilityBar</string>
             <string name="Source"><![CDATA[--!strict
@@ -15803,7 +16724,7 @@ return AbilityBar
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="92">
+        <Item class="ModuleScript" referent="95">
           <Properties>
             <string name="Name">Atmosphere</string>
             <string name="Source"><![CDATA[--!strict
@@ -15846,7 +16767,7 @@ return Atmosphere
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="93">
+        <Item class="ModuleScript" referent="96">
           <Properties>
             <string name="Name">ClaimUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -16137,7 +17058,7 @@ return ClaimUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="94">
+        <Item class="ModuleScript" referent="97">
           <Properties>
             <string name="Name">CombatController</string>
             <string name="Source"><![CDATA[--!strict
@@ -16202,7 +17123,7 @@ return CombatController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="95">
+        <Item class="ModuleScript" referent="98">
           <Properties>
             <string name="Name">CreatureFx</string>
             <string name="Source"><![CDATA[--!strict
@@ -16286,7 +17207,7 @@ return CreatureFx
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="96">
+        <Item class="ModuleScript" referent="99">
           <Properties>
             <string name="Name">EdictUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -16606,7 +17527,7 @@ return EdictUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="97">
+        <Item class="ModuleScript" referent="100">
           <Properties>
             <string name="Name">HazardController</string>
             <string name="Source"><![CDATA[--!strict
@@ -16729,7 +17650,7 @@ return HazardController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="98">
+        <Item class="ModuleScript" referent="101">
           <Properties>
             <string name="Name">LedgerUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -17120,7 +18041,7 @@ return LedgerUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="99">
+        <Item class="LocalScript" referent="102">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--!strict
@@ -17148,6 +18069,7 @@ local EdictUI = require(script.Parent.EdictUI)
 local HazardController = require(script.Parent.HazardController)
 local LedgerUI = require(script.Parent.LedgerUI)
 local AbilityBar = require(script.Parent.AbilityBar)
+local PartyUI = require(script.Parent.PartyUI)
 local PathUI = require(script.Parent.PathUI)
 local ShopUI = require(script.Parent.ShopUI)
 local StatusHUD = require(script.Parent.StatusHUD)
@@ -17189,6 +18111,11 @@ local tradeInvite = remotes:WaitForChild(Net.TradeInvite) :: RemoteEvent
 local tradeReply = remotes:WaitForChild(Net.TradeReply) :: RemoteEvent
 local tradeAction = remotes:WaitForChild(Net.TradeAction) :: RemoteEvent
 local tradeSync = remotes:WaitForChild(Net.TradeSync) :: RemoteEvent
+local partyRequest = remotes:WaitForChild(Net.PartyRequest) :: RemoteEvent
+local partyInvite = remotes:WaitForChild(Net.PartyInvite) :: RemoteEvent
+local partyReply = remotes:WaitForChild(Net.PartyReply) :: RemoteEvent
+local partyAction = remotes:WaitForChild(Net.PartyAction) :: RemoteEvent
+local partySync = remotes:WaitForChild(Net.PartySync) :: RemoteEvent
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -17238,6 +18165,17 @@ TradeUI.mount(playerGui, {
 	end,
 	action = function(request)
 		tradeAction:FireServer(request)
+	end,
+})
+PartyUI.mount(playerGui, {
+	request = function()
+		partyRequest:FireServer()
+	end,
+	reply = function(accept)
+		partyReply:FireServer(accept)
+	end,
+	action = function(request)
+		partyAction:FireServer(request)
 	end,
 })
 CombatController.start(function()
@@ -17295,6 +18233,12 @@ tradeInvite.OnClientEvent:Connect(function(invite)
 end)
 tradeSync.OnClientEvent:Connect(function(view)
 	TradeUI.render(view)
+end)
+partyInvite.OnClientEvent:Connect(function(invite)
+	PartyUI.showInvite(invite)
+end)
+partySync.OnClientEvent:Connect(function(view)
+	PartyUI.setParty(view)
 end)
 
 -- The Veil's seconds left when the last sync arrived (local clock); it counts down here.
@@ -17444,6 +18388,7 @@ task.spawn(function()
 	while true do
 		refreshHud()
 		renderTrial()
+		PartyUI.refresh(localPlayer)
 		task.wait(HUD_REFRESH_SECONDS)
 	end
 end)
@@ -17453,7 +18398,595 @@ ledgerRequest:FireServer()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="100">
+        <Item class="ModuleScript" referent="103">
+          <Properties>
+            <string name="Name">PartyUI</string>
+            <string name="Source"><![CDATA[--!strict
+-- Parties: the "Party" button, the invite banner, the party panel and the ally markers. It shows
+-- what the server sent and names things in its requests; the server checks every one.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local PartyView = require(Shared:WaitForChild("Rules"):WaitForChild("PartyView"))
+
+local TEXT_LIGHT = Color3.fromRGB(245, 235, 210)
+local PANEL_COLOR = Color3.fromRGB(32, 28, 38)
+local ROW_COLOR = Color3.fromRGB(42, 37, 50)
+local BUTTON_COLOR = Color3.fromRGB(70, 60, 90)
+local ACCEPT_COLOR = Color3.fromRGB(60, 130, 80)
+local BAR_BACK_COLOR = Color3.fromRGB(20, 18, 24)
+local BAR_COLOR = Color3.fromRGB(80, 190, 110)
+local ALLY_COLOR = Color3.fromRGB(110, 220, 140)
+
+local PANEL_WIDTH = 280
+local PANEL_PAD = 8
+local TITLE_HEIGHT = 26
+local ROW_HEIGHT = 34
+local ROW_GAP = 4
+local LEAVE_WIDTH = 64
+-- Kept free below the panel so it never reaches the bottom edge of the screen.
+local PANEL_BOTTOM_MARGIN = 12
+-- The trial HUD at the top right is three 32-pixel lines with 4 between (108); stay under it.
+local PANEL_TOP_OFFSET = 114
+-- A refused request sends only a message, not a sync; buttons come back after this long.
+local REARM_SECONDS = 1
+
+local PartyUI = {}
+
+type Handlers = {
+	request: () -> (),
+	reply: (accept: boolean) -> (),
+	action: (request: { [string]: any }) -> (),
+}
+
+local handlers: Handlers = {
+	request = function() end,
+	reply = function(_accept: boolean) end,
+	action = function(_request: { [string]: any }) end,
+}
+local inviteBanner: Frame? = nil
+local inviteLabel: TextLabel? = nil
+local panel: Frame? = nil
+local titleLabel: TextLabel? = nil
+local rowsFrame: ScrollingFrame? = nil
+local leaveButton: TextButton? = nil
+local screenGui: ScreenGui? = nil
+-- The drawn rows by member id, so health updates in place.
+local rowFrames: { [number]: Frame } = {}
+-- Bumped on every invite change, so an old invite's timer cannot hide a newer one.
+local inviteToken = 0
+
+local current: PartyView.Sync? = nil
+local selfId = 0
+-- Who is drawn, in what order, with which buttons, as one string: rows are rebuilt only when
+-- it changes; health changes update the rows in place.
+local drawnKey = ""
+-- One request per render: set on a click, cleared by the next sync or the re-arm timer.
+local pending = false
+local pendingToken = 0
+local markers: { [number]: BillboardGui } = {}
+
+local function addCorner(parent: Instance, radius: number)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius)
+	corner.Parent = parent
+end
+
+local function limitText(parent: Instance, minSize: number, maxSize: number)
+	local constraint = Instance.new("UITextSizeConstraint")
+	constraint.MinTextSize = minSize
+	constraint.MaxTextSize = maxSize
+	constraint.Parent = parent
+end
+
+local function makeLabel(
+	name: string,
+	text: string,
+	size: UDim2,
+	position: UDim2,
+	maxText: number
+): TextLabel
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.Size = size
+	label.Position = position
+	label.BackgroundTransparency = 1
+	label.TextColor3 = TEXT_LIGHT
+	label.TextScaled = true
+	label.TextWrapped = true
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Font = Enum.Font.GothamMedium
+	label.Text = text
+	limitText(label, 9, maxText)
+	return label
+end
+
+local function makeButton(name: string, text: string, color: Color3): TextButton
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.BackgroundColor3 = color
+	button.TextColor3 = TEXT_LIGHT
+	button.TextScaled = true
+	button.Font = Enum.Font.GothamBold
+	button.Text = text
+	addCorner(button, 8)
+	limitText(button, 9, 20)
+	return button
+end
+
+-- Dimmed and inert unless `enabled`, as in the trade window.
+local function setEnabled(button: TextButton, enabled: boolean)
+	button.Active = enabled
+	button.AutoButtonColor = enabled
+	button.BackgroundTransparency = if enabled then 0 else 0.6
+	button.TextTransparency = if enabled then 0 else 0.5
+end
+
+-- Destroys the children of the given class (the rows, not the list layout).
+local function clearChildren(container: Instance, className: string)
+	for _, child in container:GetChildren() do
+		if child:IsA(className) then
+			child:Destroy()
+		end
+	end
+end
+
+-- Every panel button, so one click can make them all inert.
+local function setPanelEnabled(enabled: boolean)
+	local rows = rowsFrame
+	if rows ~= nil then
+		for _, row in rows:GetChildren() do
+			for _, child in row:GetChildren() do
+				if child:IsA("TextButton") then
+					setEnabled(child, enabled)
+				end
+			end
+		end
+	end
+	if leaveButton ~= nil then
+		setEnabled(leaveButton, enabled)
+	end
+end
+
+-- Sends one request, then waits for the next sync (or one second) before another.
+local function send(request: { [string]: any })
+	if pending then
+		return
+	end
+	pending = true
+	pendingToken += 1
+	local token = pendingToken
+	setPanelEnabled(false)
+	handlers.action(request)
+	task.delay(REARM_SECONDS, function()
+		if pendingToken == token and pending then
+			pending = false
+			setPanelEnabled(true)
+		end
+	end)
+end
+
+local function hideInvite()
+	inviteToken += 1
+	local banner = inviteBanner
+	if banner ~= nil then
+		banner.Visible = false
+	end
+end
+
+local function buildInvite(gui: ScreenGui)
+	local banner = Instance.new("Frame")
+	banner.Name = "Invite"
+	banner.AnchorPoint = Vector2.new(0.5, 0)
+	-- Below the trade banner (12% to 21%) so both can show.
+	banner.Position = UDim2.fromScale(0.5, 0.22)
+	banner.Size = UDim2.fromScale(0.5, 0.09)
+	banner.BackgroundColor3 = PANEL_COLOR
+	banner.Visible = false
+	addCorner(banner, 10)
+	local minimum = Instance.new("UISizeConstraint")
+	minimum.MinSize = Vector2.new(300, 44)
+	minimum.Parent = banner
+
+	local label = makeLabel("Text", "", UDim2.fromScale(0.44, 0.8), UDim2.fromScale(0.03, 0.1), 20)
+	label.Parent = banner
+	inviteLabel = label
+
+	local accept = makeButton("Accept", "Accept", ACCEPT_COLOR)
+	accept.Position = UDim2.fromScale(0.49, 0.12)
+	accept.Size = UDim2.fromScale(0.24, 0.76)
+	accept.Activated:Connect(function()
+		hideInvite()
+		handlers.reply(true)
+	end)
+	accept.Parent = banner
+
+	local decline = makeButton("Decline", "Decline", BUTTON_COLOR)
+	decline.Position = UDim2.fromScale(0.74, 0.12)
+	decline.Size = UDim2.fromScale(0.24, 0.76)
+	decline.Activated:Connect(function()
+		hideInvite()
+		handlers.reply(false)
+	end)
+	decline.Parent = banner
+
+	banner.Parent = gui
+	inviteBanner = banner
+end
+
+local function buildPanel(gui: ScreenGui)
+	local frame = Instance.new("Frame")
+	frame.Name = "Panel"
+	-- Under the trial HUD (anchor top right, 16% down, 108 pixels tall).
+	frame.AnchorPoint = Vector2.new(1, 0)
+	frame.Position = UDim2.new(1, -12, 0.16, PANEL_TOP_OFFSET)
+	frame.Size = UDim2.fromOffset(PANEL_WIDTH, 100)
+	frame.BackgroundColor3 = PANEL_COLOR
+	frame.BackgroundTransparency = 0.15
+	frame.Visible = false
+	addCorner(frame, 10)
+	local minimum = Instance.new("UISizeConstraint")
+	minimum.MinSize = Vector2.new(PANEL_WIDTH, 0)
+	minimum.Parent = frame
+
+	local title = makeLabel(
+		"Title",
+		"",
+		UDim2.new(1, -(3 * PANEL_PAD + LEAVE_WIDTH), 0, TITLE_HEIGHT),
+		UDim2.fromOffset(PANEL_PAD, PANEL_PAD),
+		20
+	)
+	title.Font = Enum.Font.GothamBold
+	title.Parent = frame
+	titleLabel = title
+
+	-- In the title row, so it shows whenever the panel does.
+	local leave = makeButton("Leave", "Leave", BUTTON_COLOR)
+	leave.AnchorPoint = Vector2.new(1, 0)
+	leave.Position = UDim2.new(1, -PANEL_PAD, 0, PANEL_PAD)
+	leave.Size = UDim2.fromOffset(LEAVE_WIDTH, TITLE_HEIGHT)
+	leave.Activated:Connect(function()
+		send({ kind = "leave" })
+	end)
+	leave.Parent = frame
+	leaveButton = leave
+
+	local rows = Instance.new("ScrollingFrame")
+	rows.Name = "Rows"
+	rows.BackgroundTransparency = 1
+	rows.BorderSizePixel = 0
+	rows.Position = UDim2.fromOffset(PANEL_PAD, PANEL_PAD + TITLE_HEIGHT + ROW_GAP)
+	rows.Size = UDim2.new(1, -2 * PANEL_PAD, 0, 0)
+	rows.CanvasSize = UDim2.new()
+	rows.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	rows.ScrollingDirection = Enum.ScrollingDirection.Y
+	rows.ScrollBarThickness = 4
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, ROW_GAP)
+	layout.Parent = rows
+	rows.Parent = frame
+	rowsFrame = rows
+
+	frame.Parent = gui
+	panel = frame
+end
+
+local function buildRow(row: PartyView.Row, index: number, parent: Instance)
+	local frame = Instance.new("Frame")
+	frame.Name = "Row" .. row.userId
+	frame.LayoutOrder = index
+	-- Leaves room for the scroll bar.
+	frame.Size = UDim2.new(1, -6, 0, ROW_HEIGHT)
+	frame.BackgroundColor3 = ROW_COLOR
+	addCorner(frame, 8)
+
+	local name = makeLabel("Name", row.name, UDim2.fromOffset(98, 18), UDim2.fromOffset(6, 3), 14)
+	name.Parent = frame
+
+	local health =
+		makeLabel("Health", row.healthText, UDim2.fromOffset(60, 18), UDim2.fromOffset(104, 3), 14)
+	health.TextXAlignment = Enum.TextXAlignment.Right
+	health.Parent = frame
+
+	local bar = Instance.new("Frame")
+	bar.Name = "Bar"
+	bar.Position = UDim2.fromOffset(6, 24)
+	bar.Size = UDim2.new(1, -12, 0, 6)
+	bar.BackgroundColor3 = BAR_BACK_COLOR
+	addCorner(bar, 3)
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.Size = UDim2.fromScale(row.share, 1)
+	fill.BackgroundColor3 = BAR_COLOR
+	addCorner(fill, 3)
+	fill.Parent = bar
+	bar.Parent = frame
+
+	if row.canRemove then
+		local remove = makeButton("Remove", "Remove", BUTTON_COLOR)
+		remove.AnchorPoint = Vector2.new(1, 0)
+		remove.Position = UDim2.new(1, -4, 0, 3)
+		remove.Size = UDim2.fromOffset(46, 18)
+		setEnabled(remove, not pending)
+		remove.Activated:Connect(function()
+			send({ kind = "kick", userId = row.userId })
+		end)
+		remove.Parent = frame
+	end
+	if row.canLead then
+		local lead = makeButton("MakeLeader", "Lead", BUTTON_COLOR)
+		lead.AnchorPoint = Vector2.new(1, 0)
+		lead.Position = UDim2.new(1, -54, 0, 3)
+		lead.Size = UDim2.fromOffset(40, 18)
+		setEnabled(lead, not pending)
+		lead.Activated:Connect(function()
+			send({ kind = "promote", userId = row.userId })
+		end)
+		lead.Parent = frame
+	end
+	frame.Parent = parent
+	rowFrames[row.userId] = frame
+end
+
+local function removeMarker(userId: number)
+	local marker = markers[userId]
+	if marker ~= nil then
+		marker:Destroy()
+		markers[userId] = nil
+	end
+end
+
+local function clearMarkers()
+	for userId in markers do
+		removeMarker(userId)
+	end
+end
+
+local function makeMarker(userId: number, name: string, head: BasePart, character: Model)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "AllyMarker_" .. userId
+	gui.Adornee = head
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 250
+	-- Above the MARKED tag.
+	gui.StudsOffset = Vector3.new(0, 4, 0)
+	gui.Size = UDim2.fromOffset(140, 26)
+	local label = makeLabel("Label", name, UDim2.fromScale(1, 1), UDim2.new(), 20)
+	label.TextColor3 = ALLY_COLOR
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.Font = Enum.Font.GothamBold
+	label.TextStrokeTransparency = 0.4
+	label.Parent = gui
+	gui.Parent = character
+	markers[userId] = gui
+end
+
+-- One marker per ally whose character has a Head; re-pointed after a respawn, dropped when the
+-- ally leaves the party. The name is the plain one from the last sync.
+local function updateMarkers(sync: PartyView.Sync)
+	local wanted: { [number]: boolean } = {}
+	for _, userId in PartyView.allyIds(sync, selfId) do
+		local name = ""
+		for _, member in sync.members do
+			if member.userId == userId then
+				name = member.name
+			end
+		end
+		local player = Players:GetPlayerByUserId(userId)
+		local character = if player ~= nil then player.Character else nil
+		local head = if character ~= nil then character:FindFirstChild("Head") else nil
+		if character ~= nil and head ~= nil and head:IsA("BasePart") then
+			wanted[userId] = true
+			local marker = markers[userId]
+			if marker ~= nil and (marker.Adornee ~= head or marker.Parent ~= character) then
+				removeMarker(userId)
+				marker = nil
+			end
+			if marker == nil then
+				makeMarker(userId, name, head, character)
+			else
+				local label = marker:FindFirstChild("Label")
+				if label ~= nil and label:IsA("TextLabel") and label.Text ~= name then
+					label.Text = name
+				end
+			end
+		end
+	end
+	for userId in markers do
+		if not wanted[userId] then
+			removeMarker(userId)
+		end
+	end
+end
+
+-- Each member's health from their character, if it has one; a missing entry shows as unknown.
+local function readHealths(sync: PartyView.Sync): { [string]: PartyView.Health }
+	local healths: { [string]: PartyView.Health } = {}
+	for _, member in sync.members do
+		local player = Players:GetPlayerByUserId(member.userId)
+		local character = if player ~= nil then player.Character else nil
+		local humanoid = if character ~= nil
+			then character:FindFirstChildOfClass("Humanoid")
+			else nil
+		if humanoid ~= nil then
+			healths[tostring(member.userId)] =
+				{ health = humanoid.Health, max = humanoid.MaxHealth }
+		end
+	end
+	return healths
+end
+
+-- What decides the rows' shape: who, in what order, the leader mark and the buttons. Health is
+-- not part of it.
+local function rowsKey(rows: { PartyView.Row }): string
+	local parts: { string } = {}
+	for _, row in rows do
+		table.insert(
+			parts,
+			string.format(
+				"%d|%s|%s|%s",
+				row.userId,
+				row.name,
+				tostring(row.canRemove),
+				tostring(row.canLead)
+			)
+		)
+	end
+	return table.concat(parts, ";")
+end
+
+-- Sets the panel's height: all the rows, but no lower than the screen allows (the rows then
+-- scroll, and the title row with Leave stays on screen).
+local function sizePanel(frame: Frame, rowsHolder: ScrollingFrame, count: number)
+	local wanted = count * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
+	local fixed = PANEL_PAD + TITLE_HEIGHT + ROW_GAP + PANEL_PAD
+	local gui = screenGui
+	local height = if gui ~= nil then gui.AbsoluteSize.Y else 0
+	local rowsHeight = wanted
+	if height > 0 then
+		local top = 0.16 * height + PANEL_TOP_OFFSET
+		local room = height - top - PANEL_BOTTOM_MARGIN - fixed
+		rowsHeight = math.min(wanted, math.max(room, ROW_HEIGHT))
+	end
+	rowsHolder.Size = UDim2.new(1, -2 * PANEL_PAD, 0, rowsHeight)
+	frame.Size = UDim2.fromOffset(PANEL_WIDTH, fixed + rowsHeight)
+end
+
+-- Redraws the panel and markers from the current party. Rows are rebuilt only when who is in
+-- the party, the order, the leader or the viewer's buttons changed; otherwise each row's health
+-- text and bar are updated where they stand, so a tap on a button is never lost to a rebuild.
+local function redraw()
+	local frame = panel
+	local rowsHolder = rowsFrame
+	local sync = current
+	if frame == nil or rowsHolder == nil or sync == nil then
+		return
+	end
+	local rows = PartyView.rows(sync, selfId, readHealths(sync))
+	local key = rowsKey(rows)
+	if titleLabel ~= nil then
+		local title = PartyView.title(sync)
+		if titleLabel.Text ~= title then
+			titleLabel.Text = title
+		end
+	end
+	if key ~= drawnKey then
+		drawnKey = key
+		clearChildren(rowsHolder, "Frame")
+		table.clear(rowFrames)
+		for index, row in rows do
+			buildRow(row, index, rowsHolder)
+		end
+	else
+		for _, row in rows do
+			local frameOfRow = rowFrames[row.userId]
+			if frameOfRow == nil then
+				continue
+			end
+			local health = frameOfRow:FindFirstChild("Health")
+			if health ~= nil and health:IsA("TextLabel") and health.Text ~= row.healthText then
+				health.Text = row.healthText
+			end
+			local bar = frameOfRow:FindFirstChild("Bar")
+			local fill = if bar ~= nil then bar:FindFirstChild("Fill") else nil
+			if fill ~= nil and fill:IsA("Frame") then
+				fill.Size = UDim2.fromScale(row.share, 1)
+			end
+		end
+	end
+	sizePanel(frame, rowsHolder, #rows)
+	frame.Visible = true
+	updateMarkers(sync)
+end
+
+function PartyUI.mount(playerGui: PlayerGui, given: Handlers)
+	handlers = given
+	selfId = Players.LocalPlayer.UserId
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "PartyGui"
+	gui.ResetOnSpawn = false
+	-- With the other windows; below the messages (20).
+	gui.DisplayOrder = 16
+	screenGui = gui
+
+	-- Above the Trade button: the Ledger button fills 90% to 97% (bottom left), Paths 82% to 89%,
+	-- Trade 74% to 81%, and this one 66% to 73%.
+	local button = makeButton("PartyButton", "Party", BUTTON_COLOR)
+	button.AnchorPoint = Vector2.new(0, 1)
+	button.Position = UDim2.fromScale(0.02, 0.73)
+	button.Size = UDim2.fromScale(0.14, 0.07)
+	local limit = button:FindFirstChildOfClass("UITextSizeConstraint")
+	if limit ~= nil then
+		limit.MinTextSize = 12
+	end
+	button.Activated:Connect(function()
+		handlers.request()
+	end)
+	button.Parent = gui
+
+	buildInvite(gui)
+	buildPanel(gui)
+	gui.Parent = playerGui
+end
+
+-- A banner asking to join a party; it goes away by itself after `seconds`. nil hides it.
+function PartyUI.showInvite(invite: { from: string, seconds: number }?)
+	local banner = inviteBanner
+	local label = inviteLabel
+	if banner == nil or label == nil then
+		return
+	end
+	hideInvite()
+	if invite == nil then
+		return
+	end
+	label.Text = PartyView.inviteText(invite.from)
+	banner.Visible = true
+	local token = inviteToken
+	task.delay(invite.seconds, function()
+		if inviteToken == token then
+			hideInvite()
+		end
+	end)
+end
+
+-- The party as the server sees it. nil hides the panel and removes every marker.
+function PartyUI.setParty(sync: PartyView.Sync?)
+	current = sync
+	-- A new sync answers whatever was sent: the buttons come back.
+	pending = false
+	pendingToken += 1
+	-- Rows are no longer rebuilt on every sync, so the buttons are re-enabled explicitly.
+	setPanelEnabled(true)
+	if sync == nil then
+		drawnKey = ""
+		if panel ~= nil then
+			panel.Visible = false
+		end
+		if rowsFrame ~= nil then
+			clearChildren(rowsFrame, "Frame")
+		end
+		table.clear(rowFrames)
+		clearMarkers()
+		return
+	end
+	redraw()
+end
+
+-- Called a few times a second: re-reads ally health, updates the rows in place, keeps markers right.
+function PartyUI.refresh(localPlayer: Player)
+	selfId = localPlayer.UserId
+	redraw()
+end
+
+return PartyUI
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="104">
           <Properties>
             <string name="Name">PathUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -18061,7 +19594,7 @@ return PathUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="101">
+        <Item class="ModuleScript" referent="105">
           <Properties>
             <string name="Name">ShopUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -18417,7 +19950,7 @@ return ShopUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="102">
+        <Item class="ModuleScript" referent="106">
           <Properties>
             <string name="Name">StatusHUD</string>
             <string name="Source"><![CDATA[--!strict
@@ -18639,7 +20172,7 @@ return StatusHUD
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="103">
+        <Item class="ModuleScript" referent="107">
           <Properties>
             <string name="Name">Toast</string>
             <string name="Source"><![CDATA[--!strict
@@ -18741,7 +20274,7 @@ return Toast
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="104">
+        <Item class="ModuleScript" referent="108">
           <Properties>
             <string name="Name">TradeUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -19240,7 +20773,7 @@ return TradeUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="105">
+        <Item class="ModuleScript" referent="109">
           <Properties>
             <string name="Name">TrialUI</string>
             <string name="Source"><![CDATA[--!strict
@@ -19533,7 +21066,7 @@ return TrialUI
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="106">
+  <Item class="Workspace" referent="110">
     <Properties>
       <string name="Name">Workspace</string>
       <float name="FallenPartsDestroyHeight">-60</float>

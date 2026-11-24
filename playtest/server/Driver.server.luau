@@ -1,7 +1,7 @@
 --!nonstrict
 -- Automated two-player play test. Only in the play-test build (playtest.project.json),
 -- never in dist. Start a local server with 2 players; this script walks through the M1,
--- M2, M3, M4 and M5 checklists and the world checks (W.1 to W.7, for the nine-region island),
+-- M2, M3, M4, M5 and M6 checklists and the world checks (W.1 to W.7, for the nine-region island),
 -- driving each player through their Agent, and prints one line per check:
 -- "[PLAYTEST] PASS ..." or "[PLAYTEST] FAIL ...", then a DONE summary.
 --
@@ -17,7 +17,7 @@
 -- in Tallyport), then M1 and M2, with M3.1 to M3.3 (first join, choosing a Calling) right
 -- after M2.1. A can claim B only once an hour and M2 makes that claim (and B's on A), so
 -- M2.8, M2.13 and M2.14 also check the Calling's defeat XP (M3.10). Then the rest of M3,
--- then M4 (creatures, trials and the quest), then M5 (Edicts, the shop and trading), and M2.15, which ends B's session, last of all.
+-- then M4 (creatures, trials and the quest), then M5 (Edicts, the shop and trading), then M6 (parties), and M2.15, which ends B's session, last of all.
 -- Creatures are put to sleep for the whole run (CreatureService.setActive) and M4 wakes one
 -- at a time; it sets their health directly, fixes the drop rolls and skips trial time.
 local CollectionService = game:GetService("CollectionService")
@@ -32,6 +32,7 @@ local DataService = require(Server:WaitForChild("DataService"))
 local EdictService = require(Server:WaitForChild("EdictService"))
 local Fighters = require(Server:WaitForChild("Fighters"))
 local LedgerService = require(Server:WaitForChild("LedgerService"))
+local PartyService = require(Server:WaitForChild("PartyService"))
 local PathService = require(Server:WaitForChild("PathService"))
 local ProtectionService = require(Server:WaitForChild("ProtectionService"))
 local ShopService = require(Server:WaitForChild("ShopService"))
@@ -45,6 +46,7 @@ local Rules = Shared:WaitForChild("Rules")
 local Geography = require(Rules:WaitForChild("Geography"))
 local Hazards = require(Rules:WaitForChild("Hazards"))
 local Ledger = require(Rules:WaitForChild("Ledger"))
+local Party = require(Rules:WaitForChild("Party"))
 local PathProgress = require(Rules:WaitForChild("PathProgress"))
 local PathView = require(Rules:WaitForChild("PathView"))
 local Protection = require(Rules:WaitForChild("Protection"))
@@ -95,6 +97,8 @@ local edictSyncs = {} -- player -> { veilSeconds, met } of the last EdictSync
 local shopViews = {} -- player -> last ShopOpen view
 local tradeInvites = {} -- player -> last TradeInvite (false = closed, nil = never seen)
 local tradeViews = {} -- player -> last TradeSync view (false = closed, nil = never seen)
+local partyInvites = {} -- player -> last PartyInvite (false = closed, nil = never seen)
+local partySyncs = {} -- player -> last PartySync (false = none, nil = never seen)
 local agentErrors = {}
 
 report.OnServerEvent:Connect(function(player, kind, a, b)
@@ -122,6 +126,10 @@ report.OnServerEvent:Connect(function(player, kind, a, b)
 		tradeInvites[player] = if a == nil then false else a
 	elseif kind == "tradeSync" then
 		tradeViews[player] = if a == nil then false else a
+	elseif kind == "partyInvite" then
+		partyInvites[player] = if a == nil then false else a
+	elseif kind == "partySync" then
+		partySyncs[player] = if a == nil then false else a
 	elseif kind == "ui" then
 		uiReport[player] = a
 	elseif kind == "error" then
@@ -545,7 +553,7 @@ end
 -- island can take a moment to settle, so a Strike that changed nothing is tried once more.
 -- `once`: for checks that expect the Strike to change nothing.
 local function strikeCreature(player: Player, id: number, once: boolean?)
-	for _ = 1, if once then 1 else 2 do
+	for _ = 1, if once then 1 else 3 do
 		local _, root = creatureBody(id)
 		if root == nil then
 			return
@@ -799,6 +807,9 @@ local function runM4(A: Player, B: Player)
 	check("M4.5 setup: a Brinehound at 15 health", freshCreature(HOUND_2, 15))
 	ma = mark(A)
 	strikeCreature(A, HOUND_2)
+	if creatureBody(HOUND_2) ~= nil then
+		strikeCreature(A, HOUND_2)
+	end
 	local got = expectNote("M4.5 a winning roll gives the drop: GOT_CARD", A, ma, "GOT_CARD", 4)
 	check(
 		"M4.5 it is the Brine-Fang Charm, in A's free slots",
@@ -1889,6 +1900,842 @@ local function runM5(A: Player, B: Player)
 	check(
 		"M5 ends with no trade open",
 		TradeService.session(A) == nil and TradeService.session(B) == nil
+	)
+end
+
+------------------------------------------------------------------------------- M6 parties
+-- B's new-player-shield flag as M6 found it, so run() can put it back if M6 stops half way.
+local m6ShieldEnded: boolean? = nil
+
+-- Parties: invites, the panel and markers, no friendly fire, support reaching allies and the
+-- creature share, handing over the lead, removing, and fighting again after leaving.
+local function runM6(A: Player, B: Player)
+	TrialService.setClocks(function()
+		return os.clock() + clockSkip
+	end, function()
+		return os.time() + realSkip
+	end)
+	waitAlive(A)
+	waitAlive(B)
+	ProtectionService.endRespawnShield(A)
+	ProtectionService.endRespawnShield(B)
+	ProtectionService.endMark(A)
+	ProtectionService.endMark(B)
+	waitNoFight(A)
+	waitNoFight(B)
+	heal(A)
+	heal(B)
+	local dataA, dataB = DataService.get(A), DataService.get(B)
+	dataA.trials = { cooldowns = {}, questStep = 0 }
+	dataB.trials = { cooldowns = {}, questStep = 0 }
+	m6ShieldEnded = dataB.shieldEnded
+	setFree(A, {})
+	setFree(B, {})
+	CreatureService.setActive({})
+	CreatureService.setRng(function()
+		return 0.99
+	end)
+
+	-- Local helpers.
+	local blankRow = { name = "", health = "", remove = false, lead = false }
+
+	local function raiseTo(player: Player, path: string, level: number)
+		local tries = 0
+		while levelOf(player, path) < level and tries < 60 do
+			PathService.grant(player, path, 2000)
+			tries += 1
+		end
+	end
+
+	-- True when the player's party has this leader and exactly these members, in this order.
+	local function partyIs(player: Player, leader: number, members: { number }): boolean
+		local party = PartyService.party(player)
+		if party == nil or party.leader ~= leader or #party.members ~= #members then
+			return false
+		end
+		for i, id in members do
+			if party.members[i] ~= id then
+				return false
+			end
+		end
+		return true
+	end
+
+	local function partyText(player: Player): string
+		local party = PartyService.party(player)
+		if party == nil then
+			return "no party"
+		end
+		local ids = {}
+		for _, id in party.members do
+			table.insert(ids, tostring(id))
+		end
+		return `leader {party.leader}, members {table.concat(ids, ",")}`
+	end
+
+	local function pairIs(): boolean
+		return partyIs(A, A.UserId, { A.UserId, B.UserId })
+	end
+
+	local function syncIs(player: Player, leader: number, count: number): boolean
+		local view = partySyncs[player]
+		return type(view) == "table" and view.leader == leader and #view.members == count
+	end
+
+	local function noParty(): boolean
+		return PartyService.party(A) == nil and PartyService.party(B) == nil
+	end
+
+	-- Does the note's {player} argument name this player?
+	local function names(note, player: Player): boolean
+		return note ~= nil and note.args ~= nil and note.args.player == player.DisplayName
+	end
+
+	local function setHealth(player: Player, amount: number)
+		local humanoid = humanoidOf(player)
+		if humanoid ~= nil then
+			humanoid.Health = amount
+		end
+	end
+
+	local function statusOf(player: Player)
+		return StatusService.get(player.UserId)
+	end
+
+	local function creatureAt(id: number): Vector3
+		local _, root = creatureBody(id)
+		return if root ~= nil then Vector3.new(root.Position.X, 3, root.Position.Z) else OUTSIDE
+	end
+
+	-- A asks and B has the invite on screen. False when it never came.
+	local function inviteB(): boolean
+		partyInvites[B] = nil
+		send(A, "partyRequest")
+		return waitFor(function()
+			return type(partyInvites[B]) == "table"
+		end, 3)
+	end
+
+	-- A invites B and B accepts. True once the party exists.
+	local function joinB(): boolean
+		if not inviteB() then
+			return false
+		end
+		task.wait(0.3)
+		send(B, "partyReply", true)
+		return waitFor(pairIs, 3)
+	end
+
+	-- B at OUTSIDE and A `distance` studs from B, each facing the other.
+	local function standApart(distance: number)
+		local spot = clearSpot(OUTSIDE, distance)
+		put(B, OUTSIDE, spot)
+		put(A, spot, OUTSIDE)
+	end
+
+	local function shieldsDown()
+		ProtectionService.endRespawnShield(A)
+		ProtectionService.endRespawnShield(B)
+	end
+
+	-- Setup: Paths, then the loadouts in Tallyport.
+	raiseTo(B, "Mend", 18)
+	raiseTo(B, "Mire", 10)
+	raiseTo(B, "Bulwark", 10)
+	raiseTo(A, "Gale", 10)
+	raiseTo(A, "Ember", 3)
+	check(
+		"M6 setup: B at Mend 18, Mire 10, Bulwark 10; A at Gale 10, Ember 3",
+		levelOf(B, "Mend") >= 18
+			and levelOf(B, "Mire") >= 10
+			and levelOf(B, "Bulwark") >= 10
+			and levelOf(A, "Gale") >= 10
+			and levelOf(A, "Ember") >= 3,
+		`B Mend {levelOf(B, "Mend")}, Mire {levelOf(B, "Mire")}, Bulwark {levelOf(B, "Bulwark")}; A Gale {levelOf(
+			A,
+			"Gale"
+		)}, Ember {levelOf(A, "Ember")}`
+	)
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+	equip(A, 3, "gust_blade")
+	equip(A, 4, "cinder_bolt")
+	equip(B, 1, "siphon")
+	equip(B, 2, "sinking_field")
+	equip(B, 3, "ward")
+	equip(B, 4, "renewal")
+
+	--------------------------------------------------------------------------- M6.1 invites
+	partyInvites[A], partyInvites[B] = nil, nil
+	partySyncs[A], partySyncs[B] = nil, nil
+	local mA = mark(A)
+	fire(A, "partyRequest")
+	expectNote("M6.1 a request with nobody close: EDICT_NO_TARGET", A, mA, "EDICT_NO_TARGET")
+
+	put(B, TRADE_B, IN_TOWN)
+	partyInvites[B] = nil
+	mA = mark(A)
+	send(A, "partyRequest")
+	local sent = expectNote("M6.1 A's request: PARTY_INVITE_SENT", A, mA, "PARTY_INVITE_SENT")
+	check("M6.1 the message names B", names(sent, B))
+	waitFor(function()
+		return type(partyInvites[B]) == "table"
+	end, 3)
+	local invite = partyInvites[B]
+	check(
+		"M6.1 B's invite names A and runs 20 seconds",
+		type(invite) == "table" and invite.from == A.DisplayName and invite.seconds == 20,
+		if type(invite) == "table"
+			then `{tostring(invite.from)}, {tostring(invite.seconds)}`
+			else "no invite"
+	)
+	local banner = inspectUntil(B, function(ui)
+		return ui.partyInviteVisible == true
+	end)
+	check(
+		'M6.1 B\'s banner reads "<A> invites you to their party"',
+		banner.partyInviteVisible == true
+			and banner.partyInviteText == `{A.DisplayName} invites you to their party`,
+		`{tostring(banner.partyInviteVisible)}, "{tostring(banner.partyInviteText)}"`
+	)
+	mA = mark(A)
+	fire(A, "partyRequest")
+	expectNote("M6.1 a second request while one is pending: EDICT_NOT_NOW", A, mA, "EDICT_NOT_NOW")
+
+	-- Declined. (A reply does not close the banner by itself: only the Accept and Decline
+	-- buttons do, and the agent fires the remote directly. So the check is that the server
+	-- forgot the invite.)
+	mA = mark(A)
+	send(B, "partyReply", false)
+	expectNote("M6.1 B declines: A gets PARTY_DECLINED", A, mA, "PARTY_DECLINED")
+	check("M6.1 a declined invite makes no party", PartyService.party(A) == nil)
+	local mB = mark(B)
+	fire(B, "partyReply", true)
+	expectNote("M6.1 the declined invite is gone: PARTY_NO_INVITE", B, mB, "PARTY_NO_INVITE")
+	check("M6.1 and a late reply makes no party", noParty())
+
+	-- A reply that is not the boolean true counts as a decline.
+	check("M6.1 setup: a fresh invite reaches B", inviteB())
+	task.wait(0.3)
+	mA = mark(A)
+	send(B, "partyReply", "true")
+	expectNote('M6.1 a reply of the string "true": PARTY_DECLINED', A, mA, "PARTY_DECLINED")
+	check("M6.1 and no party", noParty())
+
+	-- An invite left alone runs out.
+	check("M6.1 setup: another fresh invite reaches B", inviteB())
+	mA = mark(A)
+	expectNote(
+		"M6.1 an invite left alone for 21.5 s: PARTY_EXPIRED",
+		A,
+		mA,
+		"PARTY_EXPIRED",
+		Party.INVITE_SECONDS + 1.5
+	)
+	check(
+		"M6.1 B's invite stream closes",
+		waitFor(function()
+			return partyInvites[B] == false
+		end, 3),
+		tostring(partyInvites[B])
+	)
+	mB = mark(B)
+	fire(B, "partyReply", true)
+	expectNote("M6.1 B's late reply: PARTY_NO_INVITE", B, mB, "PARTY_NO_INVITE")
+	check("M6.1 and no party", noParty())
+
+	-- Accepted.
+	check("M6.1 setup: a last fresh invite reaches B", inviteB())
+	task.wait(0.3)
+	partySyncs[A], partySyncs[B] = nil, nil
+	mA, mB = mark(A), mark(B)
+	send(B, "partyReply", true)
+	local joinedNote = expectNote("M6.1 B accepts: PARTY_JOINED", B, mB, "PARTY_JOINED")
+	check("M6.1 PARTY_JOINED names A", names(joinedNote, A))
+	local memberNote = expectNote("M6.1 A hears PARTY_MEMBER_JOINED", A, mA, "PARTY_MEMBER_JOINED")
+	check("M6.1 PARTY_MEMBER_JOINED names B", names(memberNote, B))
+	waitFor(function()
+		return syncIs(A, A.UserId, 2) and syncIs(B, A.UserId, 2)
+	end, 3)
+	check("M6.1 the party is led by A with A and B", pairIs(), partyText(A))
+	check(
+		"M6.1 A and B are allied, both ways",
+		Fighters.allied(A.UserId, B.UserId) and Fighters.allied(B.UserId, A.UserId)
+	)
+	check(
+		"M6.1 both sync streams list two members led by A",
+		syncIs(A, A.UserId, 2) and syncIs(B, A.UserId, 2)
+	)
+
+	--------------------------------------------------------------------------- M6.2 panel and markers
+	heal(A)
+	heal(B)
+	local panelA = inspectUntil(A, function(ui)
+		local rows = ui.partyRows or {}
+		return ui.partyVisible == true
+			and #rows == 2
+			and rows[1].health == "100 / 100"
+			and rows[2].health == "100 / 100"
+	end)
+	local rowsA = panelA.partyRows or {}
+	local firstA, secondA = rowsA[1] or blankRow, rowsA[2] or blankRow
+	check(
+		"M6.2 A's panel is visible and titled Party 2 / 4",
+		panelA.partyVisible == true and panelA.partyTitle == "Party 2 / 4",
+		`{tostring(panelA.partyVisible)}, "{tostring(panelA.partyTitle)}"`
+	)
+	check(
+		"M6.2 A's first row is A (leader) at 100 / 100",
+		firstA.name == `{A.DisplayName} (leader)` and firstA.health == "100 / 100",
+		`"{firstA.name}", "{firstA.health}"`
+	)
+	check(
+		"M6.2 A's second row is B at 100 / 100 with Remove and Lead",
+		secondA.name == B.DisplayName
+			and secondA.health == "100 / 100"
+			and secondA.remove
+			and secondA.lead,
+		`"{secondA.name}", "{secondA.health}", remove={tostring(secondA.remove)}, lead={tostring(
+			secondA.lead
+		)}`
+	)
+	local panelB = inspectUntil(B, function(ui)
+		return ui.partyVisible == true and #(ui.partyRows or {}) == 2
+	end)
+	local rowsB = panelB.partyRows or {}
+	local firstB, secondB = rowsB[1] or blankRow, rowsB[2] or blankRow
+	check(
+		"M6.2 B's rows have no Remove and no Lead",
+		#rowsB == 2 and not (firstB.remove or firstB.lead or secondB.remove or secondB.lead),
+		`{#rowsB} rows`
+	)
+	local markersA = inspectUntil(A, function(ui)
+		return #(ui.allyMarkers or {}) >= 1
+	end)
+	local markersB = inspectUntil(B, function(ui)
+		return #(ui.allyMarkers or {}) >= 1
+	end)
+	check(
+		"M6.2 A's markers are just B's name",
+		table.concat(markersA.allyMarkers or {}, "|") == B.DisplayName,
+		table.concat(markersA.allyMarkers or {}, "|")
+	)
+	check(
+		"M6.2 B's markers are just A's name",
+		table.concat(markersB.allyMarkers or {}, "|") == A.DisplayName,
+		table.concat(markersB.allyMarkers or {}, "|")
+	)
+	setHealth(B, 40)
+	local lowRow = inspectUntil(A, function(ui)
+		local row = (ui.partyRows or {})[2]
+		return row ~= nil and (row.health == "40 / 100" or row.health == "41 / 100")
+	end)
+	local lowSecond = (lowRow.partyRows or {})[2] or blankRow
+	check(
+		"M6.2 B at 40 health shows as 40 / 100 or 41 / 100 on A's panel",
+		lowSecond.health == "40 / 100" or lowSecond.health == "41 / 100",
+		`"{lowSecond.health}"`
+	)
+	heal(B)
+
+	--------------------------------------------------------------------------- M6.3 refusals
+	mB = mark(B)
+	fire(B, "partyRequest")
+	expectNote("M6.3 B is not the leader: PARTY_NOT_LEADER", B, mB, "PARTY_NOT_LEADER")
+	-- B stands 3 studs from A. The leader's own party mates are not asked: nobody else is in
+	-- range, so the request finds no one (and never refuses with B "already in a party").
+	put(B, clearSpot(IN_TOWN, 3), IN_TOWN)
+	mA = mark(A)
+	fire(A, "partyRequest")
+	expectNote("M6.3 A asks with only B near: EDICT_NO_TARGET", A, mA, "EDICT_NO_TARGET")
+	check(
+		"M6.3 and no PARTY_TARGET_IN_PARTY names B",
+		noteSince(A, mA, "PARTY_TARGET_IN_PARTY") == nil,
+		codesSince(A, mA)
+	)
+	check("M6.3 the party is unchanged by the request", pairIs(), partyText(A))
+	local hostile = {
+		{ label = "nil", value = nil },
+		{ label = "5", value = 5 },
+		{ label = "{}", value = {} },
+		{ label = "kind steal", value = { kind = "steal" } },
+		{ label = "kick without a user", value = { kind = "kick" } },
+		{ label = "kick a string", value = { kind = "kick", userId = "x" } },
+		{ label = "kick self", value = { kind = "kick", userId = A.UserId } },
+		{ label = "promote NaN", value = { kind = "promote", userId = 0 / 0 } },
+	}
+	for _, entry in hostile do
+		mA = mark(A)
+		fire(A, "party", entry.value)
+		expectNote(`M6.3 A's action ({entry.label}): BAD_REQUEST`, A, mA, "BAD_REQUEST")
+	end
+	mB = mark(B)
+	fire(B, "party", { kind = "kick", userId = A.UserId })
+	expectNote("M6.3 B's kick of A: PARTY_NOT_LEADER", B, mB, "PARTY_NOT_LEADER")
+	check("M6.3 the party is unchanged after all of them", pairIs(), partyText(A))
+
+	--------------------------------------------------------------------------- M6.4 no friendly fire
+	shieldsDown()
+	heal(A)
+	heal(B)
+	standApart(6)
+	task.wait(0.3)
+	local hB0 = health(B)
+	local statusA0 = ProtectionService.status(A, os.clock())
+	local marked0 = if statusA0 ~= nil then statusA0.markedUntil else nil
+	mA = mark(A)
+	strike(A)
+	task.wait(1)
+	local statusA1 = ProtectionService.status(A, os.clock())
+	check(
+		"M6.4 A's Strike at B: B's health has not fallen",
+		health(B) >= hB0,
+		`{fmt(hB0)} -> {fmt(health(B))}`
+	)
+	check(
+		"M6.4 A's Strike at B: A is not Marked",
+		marked0 ~= nil and statusA1 ~= nil and statusA1.markedUntil == marked0,
+		`{tostring(marked0)} -> {tostring(statusA1 and statusA1.markedUntil)}`
+	)
+	check(
+		"M6.4 A's Strike at B: no SAFE_ZONE, TARGET_SHIELDED or MARKED",
+		noteSince(A, mA, "SAFE_ZONE") == nil
+			and noteSince(A, mA, "TARGET_SHIELDED") == nil
+			and noteSince(A, mA, "MARKED") == nil,
+		codesSince(A, mA)
+	)
+	heal(B)
+	hB0 = health(B)
+	local bladeCast = cast(A, 3)
+	task.wait(0.6)
+	check("M6.4 A's Gust Blade was cast", bladeCast)
+	check(
+		"M6.4 A's Gust Blade at B: B's health has not fallen",
+		health(B) >= hB0,
+		`{fmt(hB0)} -> {fmt(health(B))}`
+	)
+	standApart(4)
+	heal(A)
+	heal(B)
+	task.wait(0.3)
+	local hA0 = health(A)
+	local fieldCast = cast(B, 2)
+	local lowest = lowestWalkSpeed(A, 2.5)
+	check("M6.4 B's Sinking Field was cast", fieldCast)
+	check(
+		"M6.4 B's Sinking Field: A's health has not fallen over 2.5 s",
+		health(A) >= hA0,
+		`{fmt(hA0)} -> {fmt(health(A))}`
+	)
+	check("M6.4 B's Sinking Field: A's WalkSpeed stays 16", lowest == 16, fmt(lowest))
+	-- A sleeping Brinehound, A 7 studs from it, B on the line 3.5 studs in front of A.
+	check("M6.4 setup: a sleeping Brinehound", freshCreature(HOUND_1, nil))
+	local houndAt = creatureAt(HOUND_1)
+	local houndSpot = clearSpot(houndAt, 7)
+	local toHound = Vector3.new(houndAt.X - houndSpot.X, 0, houndAt.Z - houndSpot.Z).Unit
+	local inFront = houndSpot + toHound * 3.5
+	put(A, houndSpot, houndAt)
+	put(B, inFront, houndAt)
+	heal(B)
+	hB0 = health(B)
+	strike(A)
+	local houndNow = creatureHealth(HOUND_1)
+	check(
+		"M6.4 A's Strike past B reaches the Brinehound (60 to 40)",
+		math.abs(houndNow - 40) < 0.6,
+		fmt(houndNow)
+	)
+	check("M6.4 and B is unhurt", health(B) >= hB0, `{fmt(hB0)} -> {fmt(health(B))}`)
+	local bladeAgain = cast(A, 3)
+	task.wait(0.4)
+	houndNow = creatureHealth(HOUND_1)
+	check("M6.4 A's Gust Blade was cast again", bladeAgain)
+	check(
+		"M6.4 A's Gust Blade past B reaches the Brinehound (40 to 22)",
+		math.abs(houndNow - 22) < 0.6,
+		fmt(houndNow)
+	)
+	check("M6.4 and B is still unhurt", health(B) >= hB0, `{fmt(hB0)} -> {fmt(health(B))}`)
+
+	--------------------------------------------------------------------------- M6.5 joining mid-fight
+	partySyncs[A], partySyncs[B] = nil, nil
+	mA, mB = mark(A), mark(B)
+	send(A, "party", { kind = "leave" })
+	expectNote("M6.5 A leaves: PARTY_LEFT", A, mA, "PARTY_LEFT")
+	expectNote("M6.5 B hears PARTY_DISBANDED", B, mB, "PARTY_DISBANDED")
+	check(
+		"M6.5 both sync streams are false",
+		waitFor(function()
+			return partySyncs[A] == false and partySyncs[B] == false
+		end, 3),
+		`{tostring(partySyncs[A])}, {tostring(partySyncs[B])}`
+	)
+	local gone = inspectUntil(A, function(ui)
+		return ui.partyVisible == false and #(ui.allyMarkers or {}) == 0
+	end)
+	check(
+		"M6.5 A's panel is hidden and A has no markers",
+		gone.partyVisible == false and #(gone.allyMarkers or {}) == 0,
+		`{tostring(gone.partyVisible)}, markers {table.concat(gone.allyMarkers or {}, "|")}`
+	)
+	check(
+		"M6.5 A and B are no longer allied",
+		not Fighters.allied(A.UserId, B.UserId) and not Fighters.allied(B.UserId, A.UserId)
+	)
+	shieldsDown()
+	heal(A)
+	heal(B)
+	standApart(6)
+	task.wait(0.3)
+	partyInvites[B] = nil
+	mA = mark(A)
+	send(A, "partyRequest")
+	expectNote("M6.5 A invites B: PARTY_INVITE_SENT", A, mA, "PARTY_INVITE_SENT")
+	hB0 = health(B)
+	local boltCast = cast(A, 4)
+	local hHit = health(B)
+	check(
+		"M6.5 A's Cinder Bolt hurts B while the invite is pending",
+		boltCast and hHit < hB0,
+		`accepted={tostring(boltCast)}, {fmt(hB0)} -> {fmt(hHit)}`
+	)
+	local boltAt = os.clock()
+	send(B, "partyReply", true)
+	check("M6.5 B accepts at once and joins", waitFor(pairIs, 3), partyText(A))
+	task.wait(0.3)
+	local h1 = health(B)
+	task.wait(3.5)
+	check(
+		"M6.5 the burn stopped once they were allies",
+		health(B) >= h1,
+		`{fmt(h1)} -> {fmt(health(B))}`
+	)
+	mA, mB = mark(A), mark(B)
+	if os.clock() - boltAt > 14 then
+		log("M6.5 note: more than 14 s since the bolt")
+	end
+	CombatService.environmentDefeat(B)
+	task.wait(2)
+	check(
+		"M6.5 B's fall gives A no claim",
+		noteSince(A, mA, "CLAIM_STARTED") == nil and noteSince(A, mA, "CLAIM_COOLDOWN") == nil,
+		codesSince(A, mA)
+	)
+	check(
+		"M6.5 and B is not told DEFEATED_BY",
+		noteSince(B, mB, "DEFEATED_BY") == nil,
+		codesSince(B, mB)
+	)
+	check("M6.5 B respawns", waitAlive(B))
+	check("M6.5 B is still in A's party", pairIs(), partyText(A))
+
+	--------------------------------------------------------------------------- M6.6 support
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+	equip(B, 2, "rebuke")
+	shieldsDown()
+	heal(A)
+	heal(B)
+	standApart(10)
+	task.wait(0.3)
+	local wardOk = cast(B, 3)
+	local shieldA, shieldB = statusOf(A), statusOf(B)
+	check("M6.6 B's Ward was cast", wardOk)
+	check(
+		"M6.6 Ward with A 10 studs away: A shielded for 30",
+		shieldA.shield == 30 and shieldA.shieldUntil > os.clock(),
+		`shield {shieldA.shield}, left {fmt(shieldA.shieldUntil - os.clock())}`
+	)
+	check(
+		"M6.6 Ward with A 10 studs away: B shielded for 30",
+		shieldB.shield == 30 and shieldB.shieldUntil > os.clock(),
+		`shield {shieldB.shield}, left {fmt(shieldB.shieldUntil - os.clock())}`
+	)
+	standApart(20)
+	task.wait(0.3)
+	local aUntil, bUntil = statusOf(A).shieldUntil, statusOf(B).shieldUntil
+	local wardFar = cast(B, 3)
+	check("M6.6 the next Ward was cast", wardFar)
+	check(
+		"M6.6 Ward with A 20 studs away: B's own shield renewed",
+		statusOf(B).shieldUntil > bUntil,
+		`{fmt(bUntil)} -> {fmt(statusOf(B).shieldUntil)}`
+	)
+	check(
+		"M6.6 Ward with A 20 studs away: A's shield is unchanged",
+		statusOf(A).shieldUntil == aUntil,
+		`{fmt(aUntil)} -> {fmt(statusOf(A).shieldUntil)}`
+	)
+	standApart(10)
+	task.wait(0.3)
+	setHealth(A, 50)
+	setHealth(B, 50)
+	local renewalCast = cast(B, 4)
+	task.wait(0.3)
+	check("M6.6 B's Renewal was cast", renewalCast)
+	check(
+		"M6.6 Renewal with A 10 studs away: both at least 84",
+		health(A) >= 84 and health(B) >= 84,
+		`A {fmt(health(A))}, B {fmt(health(B))}`
+	)
+	-- Siphon on a sleeping Brinehound from 4 studs, A 10 studs from B.
+	check("M6.6 setup: a sleeping Brinehound", freshCreature(HOUND_1, nil))
+	houndAt = creatureAt(HOUND_1)
+	local siphonSpot = clearSpot(houndAt, 4)
+	local helperSpot = clearSpot(siphonSpot, 10)
+	put(B, siphonSpot, houndAt)
+	put(A, helperSpot, houndAt)
+	setHealth(A, 50)
+	local houndBefore = creatureHealth(HOUND_1)
+	local siphonCast = cast(B, 1)
+	task.wait(0.3)
+	local lost = houndBefore - creatureHealth(HOUND_1)
+	check("M6.6 B's Siphon was cast", siphonCast)
+	check(
+		"M6.6 Siphon: the Brinehound loses 14",
+		math.abs(lost - 14) < 0.6,
+		`{fmt(houndBefore)} -> {fmt(creatureHealth(HOUND_1))}`
+	)
+	check("M6.6 Siphon: A, 10 studs away at 50, is at least 63", health(A) >= 63, fmt(health(A)))
+	-- Rebuke is only B's own.
+	standApart(5)
+	task.wait(0.3)
+	local rebukeB, rebukeA = statusOf(B).reflectUntil, statusOf(A).reflectUntil
+	local rebukeCast = cast(B, 2)
+	check("M6.6 B's Rebuke was cast", rebukeCast)
+	check(
+		"M6.6 Rebuke: B reflects, A's reflect is unchanged",
+		statusOf(B).reflectUntil > os.clock()
+			and statusOf(B).reflectUntil > rebukeB
+			and statusOf(A).reflectUntil == rebukeA,
+		`B {fmt(rebukeB)} -> {fmt(statusOf(B).reflectUntil)}, A {fmt(rebukeA)} -> {fmt(
+			statusOf(A).reflectUntil
+		)}`
+	)
+
+	--------------------------------------------------------------------------- M6.6 protected caster
+	standApart(10)
+	task.wait(0.3)
+	ProtectionService.mark(A, os.clock())
+	dataB.shieldEnded = false
+	aUntil = statusOf(A).shieldUntil
+	local protectedWard = cast(B, 3)
+	check("M6.6 setup: B, still under the new-player shield, casts Ward", protectedWard)
+	check(
+		"M6.6 a protected caster's Ward does not reach A, who is fighting",
+		statusOf(A).shieldUntil == aUntil,
+		`{fmt(aUntil)} -> {fmt(statusOf(A).shieldUntil)}`
+	)
+	check(
+		"M6.6 and B's own shield is up (30)",
+		statusOf(B).shield == 30 and statusOf(B).shieldUntil > os.clock(),
+		`shield {statusOf(B).shield}`
+	)
+	dataB.shieldEnded = m6ShieldEnded
+	B:LoadCharacter()
+	check("M6.6 setup: B respawns", waitAlive(B))
+	standApart(10)
+	local respawnStatus = ProtectionService.status(B, os.clock())
+	check(
+		"M6.6 setup: B stands outside with the respawn shield up",
+		respawnStatus ~= nil and respawnStatus.respawnShieldUntil > os.clock(),
+		tostring(respawnStatus and respawnStatus.respawnShieldUntil)
+	)
+	aUntil = statusOf(A).shieldUntil
+	local respawnWard = cast(B, 3)
+	respawnStatus = ProtectionService.status(B, os.clock())
+	check("M6.6 setup: B casts Ward under the respawn shield", respawnWard)
+	check(
+		"M6.6 an unprotected caster's Ward reaches A, who is fighting",
+		statusOf(A).shield == 30 and statusOf(A).shieldUntil > aUntil,
+		`{fmt(aUntil)} -> {fmt(statusOf(A).shieldUntil)}`
+	)
+	check(
+		"M6.6 and reaching A ended B's respawn shield",
+		respawnStatus ~= nil and respawnStatus.respawnShieldUntil == 0,
+		tostring(respawnStatus and respawnStatus.respawnShieldUntil)
+	)
+	ProtectionService.endMark(A)
+
+	--------------------------------------------------------------------------- M6.6 duel stays private
+	shieldsDown()
+	heal(A)
+	heal(B)
+	waitReady(B, 3)
+	realSkip += 400
+	local duelStarted = acceptTrial(A, "tallymans_duel")
+	check("M6.6 setup: A starts the Tallyman's Duel", duelStarted)
+	if duelStarted then
+		put(B, clearSpot(positionOf(A), 8), positionOf(A))
+		heal(A)
+		aUntil = statusOf(A).shieldUntil
+		local duelWard = cast(B, 3)
+		check("M6.6 setup: B casts Ward 8 studs from A", duelWard)
+		check("M6.6 setup: A is alive in the duel", health(A) > 0, fmt(health(A)))
+		check(
+			"M6.6 a Ward never reaches an ally in a duel",
+			statusOf(A).shieldUntil == aUntil,
+			`{fmt(aUntil)} -> {fmt(statusOf(A).shieldUntil)}`
+		)
+		mA = mark(A)
+		clockSkip += 100
+		expectNote("M6.6 the duel runs out: TRIAL_FAILED_TIME", A, mA, "TRIAL_FAILED_TIME", 3)
+		waitFor(function()
+			return TrialService.run(A) == nil
+		end, 3)
+	end
+	heal(A)
+	heal(B)
+
+	--------------------------------------------------------------------------- M6.7 creature assist
+	check("M6.7 setup: a sleeping Shellback at 60 health", freshCreature(SHELLBACK_1, 60))
+	waitReady(B, 3)
+	heal(A)
+	heal(B)
+	strikeCreature(A, SHELLBACK_1)
+	check(
+		"M6.7 A's Strike leaves the Shellback at 40",
+		math.abs(creatureHealth(SHELLBACK_1) - 40) < 0.6,
+		fmt(creatureHealth(SHELLBACK_1))
+	)
+	local shellAt = creatureAt(SHELLBACK_1)
+	local aAt = positionOf(A)
+	local behind = Vector3.new(aAt.X - shellAt.X, 0, aAt.Z - shellAt.Z).Unit
+	local behindSpot = aAt + behind * 6
+	if not Geography.isLand(behindSpot.X, behindSpot.Z) then
+		behindSpot = clearSpot(aAt, 6)
+	end
+	put(B, behindSpot, shellAt)
+	local assistWard = cast(B, 3)
+	check("M6.7 B casts Ward 6 studs behind A", assistWard)
+	local callingB = PathService.get(B).calling
+	local coinB0, mendB0, callingXpB0 = coinOf(B), xpOf(B, "Mend"), xpOf(B, callingB)
+	mA, mB = mark(A), mark(B)
+	local shellHumanoid = creatureBody(SHELLBACK_1)
+	if shellHumanoid ~= nil then
+		shellHumanoid.Health = 15
+	end
+	strikeCreature(A, SHELLBACK_1)
+	waitFor(function()
+		return noteWith(B, mB, "CREATURE_DEFEATED", "coin", "10") ~= nil
+	end, 3)
+	check(
+		"M6.7 A is paid: CREATURE_DEFEATED with 10 Coin",
+		noteWith(A, mA, "CREATURE_DEFEATED", "coin", "10") ~= nil,
+		codesSince(A, mA)
+	)
+	check(
+		"M6.7 B, who only healed, is paid too: CREATURE_DEFEATED with 10 Coin",
+		noteWith(B, mB, "CREATURE_DEFEATED", "coin", "10") ~= nil,
+		codesSince(B, mB)
+	)
+	check("M6.7 B's Coin is up by 10", coinOf(B) == coinB0 + 10, `{coinB0} -> {coinOf(B)}`)
+	check(
+		"M6.7 B's Mend XP is up by 56",
+		xpOf(B, "Mend") == mendB0 + 56,
+		`{mendB0} -> {xpOf(B, "Mend")}`
+	)
+	check(
+		"M6.7 B's Calling XP is unchanged",
+		xpOf(B, callingB) == callingXpB0,
+		`{callingXpB0} -> {xpOf(B, callingB)}`
+	)
+	-- Out of the party, the same help earns nothing.
+	mA, mB = mark(A), mark(B)
+	send(A, "party", { kind = "leave" })
+	expectNote("M6.7 A leaves: PARTY_LEFT", A, mA, "PARTY_LEFT")
+	expectNote("M6.7 B hears PARTY_DISBANDED", B, mB, "PARTY_DISBANDED")
+	check("M6.7 setup: a second sleeping Shellback at 60 health", freshCreature(SHELLBACK_1, 60))
+	waitReady(B, 3)
+	strikeCreature(A, SHELLBACK_1)
+	put(B, clearSpot(positionOf(A), 10), positionOf(A))
+	aUntil = statusOf(A).shieldUntil
+	local strangerWard = cast(B, 3)
+	check("M6.7 B casts Ward 10 studs from A", strangerWard)
+	check(
+		"M6.7 and it does not reach A, who is no longer an ally",
+		statusOf(A).shieldUntil == aUntil,
+		`{fmt(aUntil)} -> {fmt(statusOf(A).shieldUntil)}`
+	)
+	coinB0 = coinOf(B)
+	mA, mB = mark(A), mark(B)
+	shellHumanoid = creatureBody(SHELLBACK_1)
+	if shellHumanoid ~= nil then
+		shellHumanoid.Health = 15
+	end
+	strikeCreature(A, SHELLBACK_1)
+	expectNote("M6.7 A defeats it: CREATURE_DEFEATED", A, mA, "CREATURE_DEFEATED")
+	task.wait(1)
+	check(
+		"M6.7 B gets no CREATURE_DEFEATED and no Coin",
+		noteSince(B, mB, "CREATURE_DEFEATED") == nil and coinOf(B) == coinB0,
+		`{codesSince(B, mB)}, {coinB0} -> {coinOf(B)}`
+	)
+
+	--------------------------------------------------------------------------- M6.8 the lead and removing
+	put(A, IN_TOWN, B_TOWN)
+	put(B, TRADE_B, IN_TOWN)
+	check("M6.8 setup: a new party forms", joinB(), partyText(A))
+	mA, mB = mark(A), mark(B)
+	send(A, "party", { kind = "promote", userId = B.UserId })
+	local leadA = expectNote(
+		"M6.8 A hands over the lead: A hears PARTY_NEW_LEADER",
+		A,
+		mA,
+		"PARTY_NEW_LEADER"
+	)
+	local leadB = expectNote("M6.8 B hears PARTY_NEW_LEADER", B, mB, "PARTY_NEW_LEADER")
+	check("M6.8 both messages name B", names(leadA, B) and names(leadB, B))
+	check("M6.8 B leads the party", partyIs(A, B.UserId, { A.UserId, B.UserId }), partyText(A))
+	mA = mark(A)
+	fire(A, "partyRequest")
+	expectNote("M6.8 A is no longer the leader: PARTY_NOT_LEADER", A, mA, "PARTY_NOT_LEADER")
+	partySyncs[A], partySyncs[B] = nil, nil
+	mA, mB = mark(A), mark(B)
+	send(B, "party", { kind = "kick", userId = A.UserId })
+	local kicked = expectNote("M6.8 B removes A: A hears PARTY_KICKED", A, mA, "PARTY_KICKED")
+	check("M6.8 PARTY_KICKED names B", names(kicked, B))
+	expectNote("M6.8 B hears PARTY_DISBANDED", B, mB, "PARTY_DISBANDED")
+	check(
+		"M6.8 both sync streams are false",
+		waitFor(function()
+			return partySyncs[A] == false and partySyncs[B] == false
+		end, 3),
+		`{tostring(partySyncs[A])}, {tostring(partySyncs[B])}`
+	)
+	check("M6.8 no party is left", noParty())
+
+	--------------------------------------------------------------------------- M6.9 fighting again
+	shieldsDown()
+	heal(A)
+	heal(B)
+	dataB.shieldEnded = true
+	standApart(4)
+	task.wait(0.5)
+	hB0 = health(B)
+	mA = mark(A)
+	for _ = 1, 2 do
+		strike(A)
+		if health(B) < hB0 then
+			break
+		end
+	end
+	check(
+		"M6.9 after leaving, A's Strike lands on B",
+		health(B) < hB0,
+		`{fmt(hB0)} -> {fmt(health(B))}; A got {codesSince(A, mA)}; A at {at(positionOf(A))}, B at {at(
+			positionOf(B)
+		)}`
+	)
+	heal(A)
+	heal(B)
+	waitAlive(A)
+	waitAlive(B)
+	put(A, IN_TOWN, B_TOWN)
+	put(B, B_TOWN, IN_TOWN)
+	check(
+		"M6.9 A and B end alive in Tallyport and in no party",
+		noParty() and health(A) > 0 and health(B) > 0
 	)
 end
 
@@ -3321,6 +4168,26 @@ local function run()
 	ShopService.setRng(math.random)
 	EdictService.setRng(math.random)
 	TrialService.setClocks(os.clock, os.time)
+	waitAlive(A)
+	waitAlive(B)
+
+	--------------------------------------------------------------------------- M6 parties
+	-- In its own protected call, like M4 and M5.
+	local m6Ok, m6Err = xpcall(runM6, debug.traceback, A, B)
+	check("M6 section ran to its end", m6Ok, tostring(m6Err))
+	-- Put back what M6 changed, even when it stopped half way: the clocks, the creature rolls,
+	-- B's new-player shield, and the parties (M2.15 needs A and B in none).
+	TrialService.setClocks(os.clock, os.time)
+	CreatureService.setActive({})
+	CreatureService.setRng(math.random)
+	local dataAfterM6 = DataService.get(B)
+	if dataAfterM6 ~= nil and m6ShieldEnded ~= nil then
+		dataAfterM6.shieldEnded = m6ShieldEnded
+	end
+	send(B, "party", { kind = "leave" })
+	task.wait(0.4)
+	send(A, "party", { kind = "leave" })
+	task.wait(0.4)
 	waitAlive(A)
 	waitAlive(B)
 

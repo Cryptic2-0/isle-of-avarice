@@ -12,18 +12,24 @@ local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
 local CreatureBrain = require(ReplicatedStorage.Shared.Rules.CreatureBrain)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
 local Net = require(ReplicatedStorage.Shared.Net)
+local Party = require(ReplicatedStorage.Shared.Rules.Party)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
+local Protection = require(ReplicatedStorage.Shared.Rules.Protection)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Targeting = require(ReplicatedStorage.Shared.Rules.Targeting)
+local Trials = require(ReplicatedStorage.Shared.Catalog.Trials)
 local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 local CombatService = require(script.Parent.CombatService)
+local CreatureService = require(script.Parent.CreatureService)
 local Fighters = require(script.Parent.Fighters)
 local Fx = require(script.Parent.Fx)
 local LedgerService = require(script.Parent.LedgerService)
 local PathService = require(script.Parent.PathService)
+local ProtectionService = require(script.Parent.ProtectionService)
 local Sight = require(script.Parent.Sight)
 local StatusService = require(script.Parent.StatusService)
+local TrialService = require(script.Parent.TrialService)
 
 type Ability = Types.Ability
 type Fighter = Combat.Fighter
@@ -94,30 +100,73 @@ local function heal(player: Player, amount: number)
 	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + amount)
 end
 
--- Who a support effect reaches: the caster and the caster's allies (in M3 only the caster;
--- parties come later), each alive and, when the ability has an ally radius, within it.
-local function alliesOf(player: Player, ability: Ability): { Player }
+-- Who a support effect (heal, cleanse, shield) reaches: the caster, and when the ability has an
+-- ally radius, the caster's party members within it. Members in a duel are never reached, and a
+-- protected caster does not reach members who are fighting (Party.reach). Reaching a member
+-- who is fighting ends the caster's respawn shield; reaching one outside Tallyport counts the
+-- caster as an assist on every creature that member hit lately. Writes nothing else.
+local function supportTargets(player: Player, ability: Ability, now: number): { Player }
 	local _, casterRoot = living(player)
 	if casterRoot == nil then
 		return {}
 	end
-	local reach = ability.allyRadius
-	local result: { Player } = {}
-	for _, ally in { player } do
-		local _, allyRoot = living(ally)
-		if allyRoot == nil then
-			continue
-		end
-		if
-			ally ~= player
-			and reach ~= nil
-			and not ((allyRoot.Position - casterRoot.Position).Magnitude <= reach)
-		then
-			continue
-		end
-		table.insert(result, ally)
+	local targets: { Player } = { player }
+	local radius = ability.allyRadius
+	if radius == nil then
+		return targets
 	end
-	return result
+	local status = ProtectionService.status(player, now)
+	if status == nil then
+		return targets
+	end
+	local p = casterRoot.Position
+	local helper: Party.Helper = {
+		position = { x = p.X, y = p.Y, z = p.Z },
+		protected = status.newShield
+			or (status.inSafeZone and not Protection.isMarked(status, now)),
+	}
+	local helped: { Party.Helped } = {}
+	local players: { [number]: Player } = {}
+	for _, id in Fighters.allies(player.UserId) do
+		local entry = Fighters.get(id)
+		local ally = if entry ~= nil then entry.player else nil
+		if ally == nil then
+			continue
+		end
+		local allyStatus = ProtectionService.status(ally, now)
+		local _, allyRoot = living(ally)
+		if allyStatus == nil or allyRoot == nil then
+			continue
+		end
+		local q = allyRoot.Position
+		local run = TrialService.run(ally)
+		local trial = if run ~= nil then Trials.byId[run.trialId] else nil
+		table.insert(helped, {
+			id = id,
+			position = { x = q.X, y = q.Y, z = q.Z },
+			inFight = Party.inFight(
+				Protection.isMarked(allyStatus, now),
+				CombatService.lastFightAt(ally),
+				now
+			),
+			inDuel = trial ~= nil and trial.kind == "duel",
+		})
+		players[id] = ally
+	end
+	local reached, joined = Party.reach(helper, helped, radius)
+	if joined then
+		ProtectionService.endRespawnShield(player)
+	end
+	if #reached > 0 and not status.inSafeZone then
+		CreatureService.assist(player.UserId, reached, ability.path)
+	end
+	for _, id in reached do
+		local member = players[id]
+		if member ~= nil then
+			table.insert(targets, member)
+		end
+	end
+	return targets
 end
 
 local function vector(v: Vec3): Vector3
@@ -140,7 +189,8 @@ end
 -- Applies a plan's hits. A hit the caster has no line of sight to is skipped entirely. Every
 -- hit goes through CombatService.damage (a post trains the ability's Path and ignores every
 -- effect); its statuses and its pull or knockback follow only when that returned true.
--- Heal-on-hit heals the caster and allies when any hit landed.
+-- Heal-on-hit heals the caster when any hit landed, and reaches allies (and counts as an
+-- assist) only when a hit landed on a player or a creature, not on a training post alone.
 local function applyHits(
 	player: Player,
 	ability: Ability,
@@ -149,6 +199,7 @@ local function applyHits(
 	others: { Fighter }
 )
 	local connected = false
+	local struckFighter = false
 	for _, hit in plan.hits do
 		local id = hit.targetId
 		if not inSight(caster, others, id) then
@@ -158,6 +209,10 @@ local function applyHits(
 			continue
 		end
 		connected = true
+		local struck = Fighters.get(id)
+		if struck ~= nil and struck.kind ~= "post" then
+			struckFighter = true
+		end
 		StatusService.applyHit(player.UserId, id, ability)
 		-- No ability both pulls and knocks back; each point is for the plan's one target.
 		local destination = plan.pullTo or plan.knockbackTo
@@ -175,43 +230,25 @@ local function applyHits(
 	end
 	local amount = ability.heal
 	if connected and ability.healOnHit == true and amount ~= nil then
-		for _, ally in alliesOf(player, ability) do
-			heal(ally, amount)
+		if struckFighter then
+			for _, ally in supportTargets(player, ability, os.clock()) do
+				heal(ally, amount)
+			end
+		else
+			heal(player, amount)
 		end
 	end
 end
 
--- Heal (unless it is a heal-on-hit), cleanse, shield, immune, empower, reduction and reflect
--- on the caster and allies.
+-- The caster's own effects (immune, empower, reduction, reflect) land on the caster alone. The
+-- support effects (heal unless it is a heal-on-hit, cleanse, shield) also reach the party
+-- members in range.
 local function applySelfEffects(player: Player, ability: Ability)
-	local amount = if ability.healOnHit == true then nil else ability.heal
-	local cleanse = ability.cleanse == true
-	local shield, immune, empower = ability.shield, ability.immune, ability.empower
+	local immune, empower = ability.immune, ability.empower
 	local reduction, reflect = ability.reduction, ability.reflect
-	local anyStatus = cleanse
-		or shield ~= nil
-		or immune ~= nil
-		or empower ~= nil
-		or reduction ~= nil
-		or reflect ~= nil
-	if amount == nil and not anyStatus then
-		return
-	end
-	for _, ally in alliesOf(player, ability) do
-		if amount ~= nil then
-			heal(ally, amount)
-		end
-		if not anyStatus then
-			continue
-		end
-		StatusService.update(ally.UserId, function(status, now)
+	if immune ~= nil or empower ~= nil or reduction ~= nil or reflect ~= nil then
+		StatusService.update(player.UserId, function(status, now)
 			local out = status
-			if cleanse then
-				out = Effects.cleanse(out)
-			end
-			if shield ~= nil then
-				out = Effects.applyShield(out, shield.amount, shield.duration, now)
-			end
 			if immune ~= nil then
 				out = Effects.applyImmune(out, immune, now)
 			end
@@ -226,6 +263,30 @@ local function applySelfEffects(player: Player, ability: Ability)
 			end
 			return out
 		end)
+	end
+
+	local amount = if ability.healOnHit == true then nil else ability.heal
+	local cleanse = ability.cleanse == true
+	local shield = ability.shield
+	if amount == nil and not cleanse and shield == nil then
+		return
+	end
+	for _, ally in supportTargets(player, ability, os.clock()) do
+		if amount ~= nil then
+			heal(ally, amount)
+		end
+		if cleanse or shield ~= nil then
+			StatusService.update(ally.UserId, function(status, now)
+				local out = status
+				if cleanse then
+					out = Effects.cleanse(out)
+				end
+				if shield ~= nil then
+					out = Effects.applyShield(out, shield.amount, shield.duration, now)
+				end
+				return out
+			end)
+		end
 	end
 end
 

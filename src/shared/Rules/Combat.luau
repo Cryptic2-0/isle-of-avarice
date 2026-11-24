@@ -77,13 +77,15 @@ end
 
 -- Who gets the defeat: the last player to hit the victim within the window. With
 -- `creatureLog` (creature hits on players), a creature hit within the window that is at
--- least as recent as the player's makes it a creature defeat: nobody gets it.
+-- least as recent as the player's makes it a creature defeat: nobody gets it. A hitter in
+-- `allies` (the victim's party) never gets it.
 function Combat.creditFor(
 	log: HitLog,
 	victimId: number,
 	now: number,
 	windowSeconds: number,
-	creatureLog: HitLog?
+	creatureLog: HitLog?,
+	allies: { number }?
 ): number?
 	local entry = log[tostring(victimId)]
 	if entry == nil or not (now - entry.at <= windowSeconds) then
@@ -94,6 +96,9 @@ function Combat.creditFor(
 		if bite ~= nil and now - bite.at <= windowSeconds and bite.at >= entry.at then
 			return nil
 		end
+	end
+	if allies ~= nil and table.find(allies, entry.attackerId) ~= nil then
+		return nil
 	end
 	return entry.attackerId
 end

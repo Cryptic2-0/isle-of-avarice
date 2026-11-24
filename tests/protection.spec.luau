@@ -168,3 +168,28 @@ T.test("Edicts do not count towards ending the new-player shield", function()
 		Protection.shouldEndShield({ claimed = { R001 = true }, free = { "R002", "E003", "R002" } })
 	)
 end)
+
+T.test("isAggressor: fighting back covers the attacker's whole party", function()
+	local log = Combat.recordHit({}, 1, 2, 100) -- 2 hit 1 at t=100; 2 and 3 are in one party
+	T.falsy(Protection.isAggressor(log, 1, 3, false, 120, { 2 }), "1 hits 2's ally 3")
+	T.truthy(Protection.isAggressor(log, 1, 3, false, 120, {}), "3 has no allies")
+	T.truthy(Protection.isAggressor(log, 1, 3, false, 120), "no allies given")
+	T.truthy(Protection.isAggressor(log, 1, 3, false, 130.1, { 2 }), "too late")
+	T.falsy(Protection.isAggressor(log, 1, 2, false, 120, { 3 }), "the hitter themself, as before")
+	T.truthy(Protection.isAggressor(log, 4, 3, false, 120, { 2 }), "someone 2 never hit")
+	T.truthy(Protection.isAggressor(log, 1, 3, false, 0 / 0, { 2 }), "a NaN time marks")
+end)
+
+T.test("recordClaims: the hour-long limit starts for the killer's whole party", function()
+	local h = Protection.recordClaims({}, { 1, 5, 7 }, 2, 1000)
+	T.eq(h, { ["1:2"] = 1000, ["5:2"] = 1000, ["7:2"] = 1000 })
+	T.falsy(Protection.canClaim(h, 5, 2, 4599))
+	T.truthy(Protection.canClaim(h, 5, 2, 4600))
+	T.truthy(Protection.canClaim(h, 5, 3, 1001))
+	local before = { ["9:2"] = 10 }
+	local ids = { 1 }
+	T.eq(Protection.recordClaims(before, ids, 2, 1000), { ["9:2"] = 10, ["1:2"] = 1000 })
+	T.eq(before, { ["9:2"] = 10 })
+	T.eq(ids, { 1 })
+	T.eq(Protection.recordClaims(before, {}, 2, 1000), before)
+end)
