@@ -16,6 +16,9 @@ export type Brain = {
 	nextLungeAt: number,
 	nextWanderAt: number,
 	wanderTo: Vec3?,
+	-- Return mode only: when it last made progress towards the den, and its closest distance so far.
+	returnSince: number?,
+	returnBest: number?,
 }
 -- valid: alive, outside the safe zone, no respawn shield (the server decides).
 -- visible: clear line of sight from the creature.
@@ -28,6 +31,8 @@ export type Decision = {
 	faceTo: Vec3?,
 	action: Action?,
 	home: boolean,
+	-- Home because it could not walk there in time: the server moves it to its den.
+	snapHome: boolean,
 }
 
 local CreatureBrain = {}
@@ -38,6 +43,10 @@ CreatureBrain.LEASH = 60
 CreatureBrain.HOME_RADIUS = 3
 CreatureBrain.TOWN_MARGIN = 4
 CreatureBrain.STOP_FRACTION = 0.6
+-- A creature returning for this long without getting closer is sent home.
+CreatureBrain.RETURN_TIMEOUT = 8
+-- How much closer to the den counts as progress.
+CreatureBrain.RETURN_PROGRESS = 0.5
 
 local WANDER_MIN_SECONDS = 3
 local WANDER_EXTRA_SECONDS = 3
@@ -122,14 +131,50 @@ function CreatureBrain.tick(
 			next.targetId = 0
 			next.nextWanderAt = now
 			next.wanderTo = nil
-			return { brain = next, moveTo = nil, faceTo = nil, action = nil, home = true }
+			next.returnSince = nil
+			next.returnBest = nil
+			return {
+				brain = next,
+				moveTo = nil,
+				faceTo = nil,
+				action = nil,
+				home = true,
+				snapHome = false,
+			}
 		end
+		-- Progress restarts the clock; a creature that cannot get closer is sent home.
+		local distance = flat(position, den)
+		local since = next.returnSince or now
+		local best = next.returnBest
+		if best == nil or distance < best - CreatureBrain.RETURN_PROGRESS then
+			best = distance
+			since = now
+		end
+		if now - since >= CreatureBrain.RETURN_TIMEOUT then
+			next.mode = "wander"
+			next.targetId = 0
+			next.nextWanderAt = now
+			next.wanderTo = nil
+			next.returnSince = nil
+			next.returnBest = nil
+			return {
+				brain = next,
+				moveTo = nil,
+				faceTo = nil,
+				action = nil,
+				home = true,
+				snapHome = true,
+			}
+		end
+		next.returnSince = since
+		next.returnBest = best
 		return {
 			brain = next,
 			moveTo = step(position, den),
 			faceTo = nil,
 			action = nil,
 			home = false,
+			snapHome = false,
 		}
 	end
 
@@ -146,6 +191,7 @@ function CreatureBrain.tick(
 				faceTo = nil,
 				action = nil,
 				home = false,
+				snapHome = false,
 			}
 		end
 		-- Only a taunt pulls a chasing creature off its target; a hit from someone else does not.
@@ -188,6 +234,7 @@ function CreatureBrain.tick(
 				faceTo = nil,
 				action = nil,
 				home = false,
+				snapHome = false,
 			}
 		end
 		next.mode = "chase"
@@ -246,6 +293,7 @@ function CreatureBrain.tick(
 		faceTo = goal,
 		action = action,
 		home = false,
+		snapHome = false,
 	}
 end
 

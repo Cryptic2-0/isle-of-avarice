@@ -273,3 +273,71 @@ T.test("tick never changes its arguments", function()
 	B.tick(hound, wander, b, {}, nil, nil, 10, seq(0.3, 0.4, 0.5))
 	T.eq(wander, B.new())
 end)
+
+T.test("a creature that cannot get home is sent home after the return limit", function()
+	T.eq(B.RETURN_TIMEOUT, 8)
+	-- The west bank: the way to this den crosses the Sluice, so every step is blocked.
+	local den = { x = -400, y = 0, z = 30 }
+	local stuck = body(-400, 64, false, den)
+	local brain = B.new()
+	brain.mode = "return"
+	for now = 10, 17 do
+		local d = B.tick(hound, brain, stuck, {}, nil, nil, now, seq())
+		T.eq(
+			{ d.moveTo, d.home, d.snapHome, d.brain.mode },
+			{ nil, false, false, "return" } :: { any },
+			`still trying at {now}`
+		)
+		brain = d.brain
+	end
+	local d = B.tick(hound, brain, stuck, {}, nil, nil, 18, seq())
+	T.eq(
+		{ d.home, d.snapHome, d.brain.mode, d.brain.targetId, d.moveTo, d.action },
+		{ true, true, "wander", 0, nil, nil } :: { any }
+	)
+	T.eq(d.brain.nextWanderAt, 18)
+	T.eq(d.brain.returnSince, nil)
+end)
+
+T.test("a creature that keeps getting closer is never snapped home", function()
+	local brain = B.new()
+	brain.mode = "return"
+	for now = 10, 40 do
+		local d = B.tick(hound, brain, body(100 + (now - 10) * 3, 0), {}, nil, nil, now, seq())
+		T.eq({ d.home, d.snapHome, d.brain.mode }, { false, false, "return" } :: { any })
+		brain = d.brain
+	end
+end)
+
+T.test(
+	"the return limit counts from the last progress, and an ordinary arrival does not snap",
+	function()
+		local brain = B.new()
+		brain.mode = "return"
+		local at = body(100, 0)
+		local d = B.tick(hound, brain, at, {}, nil, nil, 10, seq())
+		-- Stuck for 7 s, then a real step closer: the clock starts again.
+		d = B.tick(hound, d.brain, at, {}, nil, nil, 17, seq())
+		T.eq(d.snapHome, false)
+		d = B.tick(hound, d.brain, body(110, 0), {}, nil, nil, 17.5, seq())
+		d = B.tick(hound, d.brain, body(110, 0), {}, nil, nil, 25, seq())
+		T.eq({ d.home, d.snapHome }, { false, false } :: { any })
+		d = B.tick(hound, d.brain, body(110, 0), {}, nil, nil, 25.5, seq())
+		T.eq({ d.home, d.snapHome }, { true, true } :: { any })
+		local back = B.new()
+		back.mode = "return"
+		local home = B.tick(hound, back, body(201, 0), {}, nil, nil, 30, seq())
+		T.eq({ home.home, home.snapHome }, { true, false } :: { any })
+	end
+)
+
+T.test("the return limit does not change the brain it is given", function()
+	local brain = B.new()
+	brain.mode = "return"
+	brain.returnSince = 1
+	brain.returnBest = 50
+	local before = copy(brain)
+	B.tick(hound, brain, body(100, 0), {}, nil, nil, 30, seq())
+	B.tick(hound, brain, body(100, 0), {}, nil, nil, 3, seq())
+	T.eq(brain, before)
+end)

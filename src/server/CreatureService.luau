@@ -746,6 +746,13 @@ local function think(creature: Creature, players: { Sighted }, now: number)
 			return Effects.applyImmune(current, math.huge, at)
 		end)
 	end
+	if decision.snapHome then
+		-- It could not walk home in time (blocked by water or a wall): put it at its den.
+		local ground = World.groundY + humanoid.HipHeight + root.Size.Y / 2
+		root.CFrame = CFrame.new(creature.den.x, ground, creature.den.z) * root.CFrame.Rotation
+		root.AssemblyLinearVelocity = Vector3.zero
+		here = root.Position
+	end
 	if decision.home then
 		humanoid.Health = humanoid.MaxHealth
 		StatusService.reset(id)
