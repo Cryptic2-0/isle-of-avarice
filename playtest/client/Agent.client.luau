@@ -137,7 +137,36 @@ end
 
 -- Holds a prompt the way the E key would and reports what this client saw: the prompt's state
 -- before the hold, and whether the hold began and the prompt fired here.
+-- A prompt shows only while its part is on screen, and the camera keeps whatever facing earlier
+-- steps left it, so turn the camera to look at the part from behind the character first (as a
+-- player would) and give the prompt a moment to appear.
+local function aimCamera(prompt: ProximityPrompt)
+	local parent = prompt.Parent
+	local camera = workspace.CurrentCamera
+	local character = Players.LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if
+		camera == nil
+		or parent == nil
+		or not parent:IsA("BasePart")
+		or root == nil
+		or not root:IsA("BasePart")
+	then
+		return
+	end
+	local flat =
+		Vector3.new(parent.Position.X - root.Position.X, 0, parent.Position.Z - root.Position.Z)
+	local back = if flat.Magnitude > 0.1 then flat.Unit else Vector3.new(0, 0, 1)
+	local eye = root.Position - back * 10 + Vector3.new(0, 4, 0)
+	camera.CFrame = CFrame.lookAt(eye, parent.Position)
+	local deadline = os.clock() + 1.5
+	while shownPrompts[prompt] ~= true and os.clock() < deadline do
+		task.wait(0.1)
+	end
+end
+
 local function holdPrompt(prompt: ProximityPrompt, label: string)
+	aimCamera(prompt)
 	local before = promptState(prompt)
 	local began, triggered = false, false
 	local beganConnection = prompt.PromptButtonHoldBegan:Connect(function()
