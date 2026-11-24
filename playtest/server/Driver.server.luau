@@ -3920,10 +3920,11 @@ function m8.kit(A: Player, B: Player)
 	local mins = ui.windowMins or {}
 	for _, name in m8.windows do
 		local kind = m8.kinds[name]
-		local least = HudLayout.WINDOW_MIN[kind]
+		-- The kind's minimum, capped to this screen below the top bar.
+		local least = HudLayout.windowMin(kind, l.width, l.height - l.insetY)
 		local got = mins[name]
 		check(
-			`M8.2 the {name} window never gets smaller than the {kind} size`,
+			`M8.2 the {name} window never gets smaller than the {kind} size (capped to the screen)`,
 			type(got) == "table" and got.x == least.width and got.y == least.height,
 			if type(got) == "table" then `{got.x} x {got.y}` else tostring(got)
 		)

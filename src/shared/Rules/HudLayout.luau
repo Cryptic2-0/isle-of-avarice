@@ -35,6 +35,22 @@ HudLayout.WINDOW_MIN = {
 	dialog = { width = 300, height = 140 },
 }
 
+-- A window kind's smallest size on this screen: its minimum, but never more than the area below
+-- the top bar (areaWidth by areaHeight) less a MARGIN on each side, so a small phone (568 x 320)
+-- still shows the whole window.
+function HudLayout.windowMin(
+	kind: "big" | "small" | "dialog",
+	areaWidth: number,
+	areaHeight: number
+): { width: number, height: number }
+	local least = HudLayout.WINDOW_MIN[kind]
+	local margin = HudLayout.MARGIN
+	return {
+		width = math.max(0, math.min(least.width, areaWidth - 2 * margin)),
+		height = math.max(0, math.min(least.height, areaHeight - 2 * margin)),
+	}
+end
+
 local THUMB_WIDTH_PERCENT = 40
 local THUMB_HEIGHT_PERCENT = 45
 local SLOT_MIN, SLOT_MAX = 44, 96

@@ -809,6 +809,9 @@ with a smallest size that fits a 640 by 360 phone under a 58-pixel top bar:
 | Small | 300 by 240 | the trial offer, the Renounce window, the Passage picker, the Edict result |
 | Dialog | 300 by 140 | the "Drop shield?" and "Change your Calling?" questions |
 
+On a smaller screen (such as 568 by 320) the smallest size is capped to the screen
+below the top bar, less 12 pixels on each side, so no window runs off an edge.
+
 A window's Close button is at least 40 by 32. The Calling picker's cards are
 220 pixels tall, so a whole card fits a phone.
 

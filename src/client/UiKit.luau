@@ -191,7 +191,8 @@ function UiKit.screen(name: string, displayOrder: number, ignoreInset: boolean?)
 	return gui
 end
 
--- A hidden, centred, rounded panel that never gets smaller than its kind's minimum.
+-- A hidden, centred, rounded panel that never gets smaller than its kind's minimum, capped to
+-- the screen below the top bar (measured again on every layout change).
 function UiKit.window(name: string, size: UDim2, kind: "big" | "small" | "dialog"): Frame
 	local frame = Instance.new("Frame")
 	frame.Name = name
@@ -202,13 +203,12 @@ function UiKit.window(name: string, size: UDim2, kind: "big" | "small" | "dialog
 	frame.BorderSizePixel = 0
 	frame.Visible = false
 	UiKit.corner(frame, 14)
-	local minimum = if kind == "big"
-		then HudLayout.WINDOW_MIN.big
-		elseif kind == "small" then HudLayout.WINDOW_MIN.small
-		else HudLayout.WINDOW_MIN.dialog
 	local constraint = Instance.new("UISizeConstraint")
-	constraint.MinSize = Vector2.new(minimum.width, minimum.height)
 	constraint.Parent = frame
+	UiKit.onLayout(function()
+		local minimum = HudLayout.windowMin(kind, lastWidth, UiKit.areaHeight())
+		constraint.MinSize = Vector2.new(minimum.width, minimum.height)
+	end)
 	return frame
 end
 
