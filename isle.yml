@@ -20,6 +20,8 @@ globals:
     any: true
   CFrame:
     any: true
+  RaycastParams:
+    any: true
   Color3:
     any: true
   UDim:

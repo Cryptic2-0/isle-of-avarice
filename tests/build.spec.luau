@@ -19,6 +19,9 @@ T.test("built place contains the expected scripts", function()
 	T.eq(game:GetService("ServerScriptService").Server.ProtectionService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.CombatService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ServerScriptService").Server.ClaimService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.PathService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.StatusService.ClassName, "ModuleScript")
+	T.eq(game:GetService("ServerScriptService").Server.AbilityService.ClassName, "ModuleScript")
 	T.eq(game:GetService("ReplicatedStorage").Shared.Net.ClassName, "ModuleScript")
 	T.eq(
 		game:GetService("ServerScriptService").Server.Vendor.ProfileStore.ClassName,
@@ -45,6 +48,15 @@ T.test("built place contains the expected scripts", function()
 	)
 	T.eq(
 		game:GetService("StarterPlayer").StarterPlayerScripts.Client.ClaimUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(game:GetService("ReplicatedStorage").Shared.Rules.PathView.ClassName, "ModuleScript")
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.PathUI.ClassName,
+		"ModuleScript"
+	)
+	T.eq(
+		game:GetService("StarterPlayer").StarterPlayerScripts.Client.AbilityBar.ClassName,
 		"ModuleScript"
 	)
 	T.eq(game:GetService("StarterPlayer").StarterPlayerScripts.Client.Main.ClassName, "LocalScript")

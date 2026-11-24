@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
 local Tiers = require(ReplicatedStorage.Shared.Catalog.Tiers)
+local Types = require(ReplicatedStorage.Shared.Types)
 local World = require(ReplicatedStorage.Shared.Catalog.World)
 
 local WorldBuilder = {}
@@ -12,6 +13,7 @@ local GRASS = Color3.fromRGB(86, 140, 60)
 local SEA = Color3.fromRGB(40, 100, 170)
 local STONE = Color3.fromRGB(150, 146, 140)
 local ROCK = Color3.fromRGB(110, 110, 112)
+local WOOD = Color3.fromRGB(139, 100, 60)
 local WALL = Color3.fromRGB(170, 150, 120)
 
 local function makePart(
@@ -163,6 +165,36 @@ local function buildCache(island: Folder, index: number, cache: any)
 	)
 end
 
+local function buildPost(island: Folder, index: number, position: Types.Vec3)
+	-- 6 tall, standing on the ground.
+	local part = makePart(
+		island,
+		"Post" .. index,
+		Vector3.new(2, 6, 2),
+		Vector3.new(position.x, World.groundY + 3, position.z),
+		WOOD,
+		Enum.Material.Wood
+	)
+	part:SetAttribute("PostId", World.POST_ID_BASE - index)
+	CollectionService:AddTag(part, "TrainingPost")
+
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(140, 30)
+	gui.StudsOffset = Vector3.new(0, 4.5, 0)
+	gui.MaxDistance = 60
+	gui.AlwaysOnTop = true
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = "Training post"
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.5
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Parent = gui
+	gui.Parent = part
+end
+
 function WorldBuilder.build()
 	local island = Instance.new("Folder")
 	island.Name = "Island"
@@ -170,6 +202,9 @@ function WorldBuilder.build()
 	buildTallyport(island)
 	for i, cache in World.caches do
 		buildCache(island, i, cache)
+	end
+	for i, position in World.trainingPosts do
+		buildPost(island, i, position)
 	end
 	island.Parent = workspace
 end

@@ -16,6 +16,13 @@ local BUCKET_REFILL_PER_SECOND = 5
 
 local ClaimService = {}
 
+local startedCallbacks: { (killer: Player, victim: Player) -> () } = {}
+
+-- Registers a callback that runs (each in pcall) right after a claim opens.
+function ClaimService.onClaimStarted(callback: (killer: Player, victim: Player) -> ())
+	table.insert(startedCallbacks, callback)
+end
+
 -- One open claim, made by `killer` on `victim`. Names are kept because either may leave.
 type Session = {
 	killer: Player,
@@ -125,6 +132,12 @@ local function onDefeat(killer: Player, victim: Player)
 	end
 	LedgerService.notify(killer, "CLAIM_STARTED", { player = session.victimName })
 	sendUpdate(session)
+	for _, callback in startedCallbacks do
+		local ok, err = pcall(callback, killer, victim)
+		if not ok then
+			warn(`[IsleOfAvarice] onClaimStarted callback failed: {err}`)
+		end
+	end
 
 	task.delay(BlindClaim.DURATION, close, session)
 end

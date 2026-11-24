@@ -41,6 +41,21 @@ local templates: { [string]: string } = {
 	ALREADY_PICKED = "You already picked that slot.",
 	TIER_LIMIT = "You cannot take any more Relics of that rarity.",
 	BAD_SLOT = "That did not work.",
+	CALLING_CHOSEN = "{path} is now your Calling.",
+	CALLING_CHANGED = "{path} is now your Calling.",
+	CALLING_ALREADY_SET = "You already have a Calling.",
+	CALLING_SAME = "That is already your Calling.",
+	CALLING_COOLDOWN = "You can change your Calling again in {days} days.",
+	NOT_ENOUGH_COIN = "You need {cost} Coin.",
+	NO_CALLING = "Choose a Calling first.",
+	LEVEL_UP = "{path} reached level {level}.",
+	ABILITY_UNLOCKED = "You learned {name}!",
+	LOADOUT_CHANGED = "Abilities updated.",
+	LOADOUT_SAFE_ZONE = "You can change abilities only in Tallyport.",
+	NOT_UNLOCKED = "You have not learned that ability yet.",
+	NO_ABILITY = "Nothing is equipped in that slot.",
+	ON_COOLDOWN = "That ability is not ready yet.",
+	ROOTED = "You are rooted and cannot dash.",
 }
 
 local function format(code: string, args: { [string]: string }?): string
