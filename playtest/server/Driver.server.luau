@@ -5143,6 +5143,9 @@ local function run()
 	expectNote("M2.11 A: CLAIM_LOST after the timer", A, ma, "CLAIM_LOST", 3)
 	check("RF1 A unlocked after the timer", not LedgerService.isLocked(A))
 	check("RF1 no Relic copied or destroyed (timer path)", sameTotals(before, totals({ A, B })))
+	-- A's Mark was cleared for the Vault refusals above, so B's attack on A Marked B; later
+	-- sections (M3.9) need B unmarked, as before that change.
+	ProtectionService.endMark(B)
 
 	--------------------------------------------------------------------------- M2.16 sealed caches
 	check("M2.16 A respawns", waitAlive(A))
