@@ -4,6 +4,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local HudLayout = require(Shared:WaitForChild("Rules"):WaitForChild("HudLayout"))
 local StatusView = require(Shared:WaitForChild("Rules"):WaitForChild("StatusView"))
 local UiKit = require(script.Parent.UiKit)
 
@@ -151,6 +152,9 @@ function StatusHUD.render(lines: { StatusView.Line }, showDropShield: boolean)
 		dropShown = showDropShield
 		list.Position = UDim2.fromOffset(12, if showDropShield then LINES_BELOW_DROP_Y else DROP_Y)
 	end
+	-- On a touch screen the column stops above the thumbstick: the most urgent lines stay.
+	local room = HudLayout.statusLines(UiKit.layout(), UiKit.inset(), showDropShield)
+	lines = StatusView.fit(lines, room)
 	local parts: { string } = {}
 	for _, line in lines do
 		table.insert(parts, line.kind .. ":" .. line.text)

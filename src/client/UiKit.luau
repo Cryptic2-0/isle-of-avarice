@@ -342,6 +342,18 @@ function UiKit.layout(): HudLayout.Layout
 	return currentLayout :: HudLayout.Layout
 end
 
+-- The top bar's height as last measured.
+function UiKit.inset(): number
+	UiKit.layout()
+	return currentInset
+end
+
+-- The height of the screen below the top bar: what a ScreenGui that keeps the inset can use.
+function UiKit.areaHeight(): number
+	UiKit.layout()
+	return lastHeight - currentInset
+end
+
 -- Calls the callback now with the current layout, and again on every change.
 function UiKit.onLayout(callback: (layout: HudLayout.Layout) -> ())
 	table.insert(layoutListeners, callback)

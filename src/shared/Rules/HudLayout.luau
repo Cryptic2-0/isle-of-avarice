@@ -16,6 +16,7 @@ export type Layout = {
 	hudLineHeight: number,
 	partyWidth: number,
 	partyMaxBottom: number,
+	partyRowHeight: number, -- 40 on touch so one row fits beside a 4-line trial HUD, else 48
 }
 
 local HudLayout = {}
@@ -131,7 +132,35 @@ function HudLayout.compute(width: number, height: number, insetTop: number, touc
 		hudLineHeight = lineHeight,
 		partyWidth = partyWidth,
 		partyMaxBottom = partyMaxBottom,
+		partyRowHeight = if touch then 40 else 48,
 	}
+end
+
+local STATUS_LINE_STEP = 32
+-- The Coin line is 28 tall; the status lines start 44 under the top bar, 36 lower while the Drop
+-- shield button shows.
+local STATUS_TOP = 44
+local STATUS_BELOW_DROP = 36
+
+-- How many status lines fit in the top-left column: all of them, except on a touch screen, where
+-- the column must end 6 above the movement thumbstick. insetTop is the top bar's height.
+function HudLayout.statusLines(layout: Layout, insetTop: number, dropShown: boolean): number
+	local thumb = layout.thumb
+	if thumb == nil then
+		return 99
+	end
+	local top = insetTop + STATUS_TOP + (if dropShown then STATUS_BELOW_DROP else 0)
+	local room = thumb.y - HudLayout.GAP - top
+	return math.max(0, (room + 4) // STATUS_LINE_STEP)
+end
+
+-- Top of the party invite banner, in pixels from the top of the usable screen (below the top
+-- bar). The trade invite banner sits at 18% and is 9% tall, at least 44; this one starts 6 below
+-- it, and no higher than 28%.
+function HudLayout.partyBannerTop(areaHeight: number): number
+	local tradeTop = math.floor(areaHeight * 18 / 100)
+	local tradeBottom = tradeTop + math.max(44, math.floor(areaHeight * 9 / 100))
+	return math.max(math.floor(areaHeight * 28 / 100), tradeBottom + 6)
 end
 
 -- Right-aligned under the HUD lines shown (6 below the last one), as tall as wanted but no lower

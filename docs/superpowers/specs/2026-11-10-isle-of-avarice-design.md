@@ -784,9 +784,9 @@ screen. A screen whose shorter side is under 500 pixels is a phone.
 | Free band | touch: from the thumbstick zone + 12 to the jump zone − 12; otherwise the whole width less 12 each side |
 | Ability bar | four square slots, 6 apart, 12 above the bottom, centred in the free band; a slot is a tenth of the screen height, at least 44 and at most 96 pixels |
 | Menu row | Ledger, Paths, Trade, Party, one row 6 above the ability bar, centred in the free band; each button a quarter of the band, at most 120 wide; 32 tall on a phone, 36 otherwise |
-| Drop shield | under the Coin line, top left (12, 44 under the top bar), 150 by 32 |
+| Drop shield | under the Coin line, top left (12, 44 under the top bar), 150 by 32; on a touch screen the status lines under it stop 6 above the thumbstick (the least urgent are dropped, the region first) |
 | Trial HUD | top right, 12 from the edge, room for four lines; phone: 220 wide, lines 22 tall, 8 under the top bar; otherwise 300 wide, lines 28 tall, 16% down |
-| Party panel | top right under the lines the trial HUD shows, 6 below them; 220 wide on a phone, 280 otherwise; it stops 6 above anything below it in its column (the menu row, the ability bar, the jump zone), keeps at least its title row (46 pixels) and scrolls its rows |
+| Party panel | top right under the lines the trial HUD shows, 6 below them; 220 wide on a phone, 280 otherwise; it stops 6 above anything below it in its column (the menu row, the ability bar, the jump zone), keeps at least its title row (46 pixels) and scrolls its rows; its rows are 40 tall on a touch screen (so one fits beside four trial lines on a phone), 48 otherwise |
 
 On a 640 by 360 phone with a 58-pixel top bar this puts the ability bar at
 (301, 304), 194 by 44; the menu row at y 266, four buttons 60 by 32 from x 269;

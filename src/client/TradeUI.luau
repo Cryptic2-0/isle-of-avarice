@@ -389,7 +389,8 @@ local function startTicking()
 	ticking = true
 	task.spawn(function()
 		while current ~= nil do
-			updateConfirm()
+			-- A failing tick must not end the loop with `ticking` still set.
+			pcall(updateConfirm)
 			task.wait(TICK_SECONDS)
 		end
 		ticking = false

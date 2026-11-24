@@ -176,3 +176,60 @@ T.test("odd screen sizes do not error", function()
 		HudLayout.partyPanel(layout, 4, 100)
 	end
 end)
+
+T.test("party rows are 40 px on touch and 48 elsewhere", function()
+	T.eq(HudLayout.compute(640, 360, 58, true).partyRowHeight, 40)
+	T.eq(HudLayout.compute(1280, 720, 36, false).partyRowHeight, 48)
+end)
+
+T.test("a 4-line trial HUD on the phone still leaves one whole party row", function()
+	local layout = HudLayout.compute(640, 360, 58, true)
+	local panel = HudLayout.partyPanel(layout, 4, 1000)
+	T.truthy(panel.height - HudLayout.PARTY_MIN_HEIGHT >= layout.partyRowHeight)
+end)
+
+T.test("the status column stays above the thumbstick on a touch screen", function()
+	for _, size in SCREENS do
+		for _, inset in INSETS do
+			for _, drop in { true, false } do
+				local layout = HudLayout.compute(size[1], size[2], inset, true)
+				local count = HudLayout.statusLines(layout, inset, drop)
+				local top = inset + 44 + (if drop then 36 else 0)
+				local thumb = layout.thumb :: Rect
+				local label = `{size[1]}x{size[2]} inset {inset} drop {drop}`
+				T.truthy(count >= 0, label)
+				if count > 0 then
+					T.truthy(top + count * 32 - 4 <= thumb.y - HudLayout.GAP, label .. ": bottom")
+					-- One more line would not fit.
+					T.truthy(
+						top + (count + 1) * 32 - 4 > thumb.y - HudLayout.GAP,
+						label .. ": full"
+					)
+				end
+			end
+		end
+	end
+end)
+
+T.test("the status column on the 640 x 360 phone holds two lines, one with Drop shield", function()
+	local layout = HudLayout.compute(640, 360, 58, true)
+	T.eq(HudLayout.statusLines(layout, 58, false), 2)
+	T.eq(HudLayout.statusLines(layout, 58, true), 1)
+end)
+
+T.test("the status column is not capped without a touch screen", function()
+	local layout = HudLayout.compute(1280, 720, 36, false)
+	T.truthy(HudLayout.statusLines(layout, 36, true) >= 6)
+end)
+
+T.test("the party invite banner sits below the trade invite banner", function()
+	for _, area in { 200, 302, 500, 684, 1000, 1044 } do
+		local tradeTop = math.floor(area * 18 / 100)
+		local tradeBottom = tradeTop + math.max(44, math.floor(area * 9 / 100))
+		local top = HudLayout.partyBannerTop(area)
+		T.truthy(top >= tradeBottom + 4, `area {area}: no overlap`)
+		T.truthy(top >= math.floor(area * 28 / 100), `area {area}: not above 28%`)
+	end
+	-- The 302-pixel area of a 640 x 360 phone under a 58-pixel top bar.
+	T.eq(HudLayout.partyBannerTop(302), 104)
+end)

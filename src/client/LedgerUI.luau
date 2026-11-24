@@ -83,6 +83,12 @@ local function drawArmed()
 	end
 end
 
+-- A tap on any other control (or closing the book) starts the two-tap count over.
+local function disarm()
+	armed = nil
+	drawArmed()
+end
+
 -- A tap on a risky control: arms it, or (second tap in time) reports that it should go ahead.
 local function pressRisky(key: string): boolean
 	local nextArmed, go = Confirm.press(armed, key, os.clock())
@@ -151,6 +157,7 @@ local function makeSlot(slot: LedgerView.SlotView, order: number): TextButton
 			vault.TextColor3 = UiKit.TEXT_DARK
 		end
 		UiKit.onPress(vault, function()
+			disarm()
 			UiKit.send(slotGuard, function()
 				vaultHandler({
 					kind = if slot.vaulted then "remove" else "add",
@@ -216,6 +223,7 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 		claim.Position = UDim2.new(0.75, 0, 0.5, 0)
 		table.insert(buttons, claim)
 		UiKit.onPress(claim, function()
+			disarm()
 			UiKit.send(rowGuard, function()
 				actionHandler({ kind = "claim", freeIndex = card.index, cardId = card.cardId })
 			end)
@@ -228,6 +236,7 @@ local function makeFreeRow(card: LedgerView.FreeView): Frame
 		use.Position = UDim2.new(0.75, 0, 0.5, 0)
 		table.insert(buttons, use)
 		UiKit.onPress(use, function()
+			disarm()
 			-- It only opens a picker, which may be cancelled with no sync to rebuild the row;
 			-- the guard's one-second re-arm covers that.
 			UiKit.send(rowGuard, function()
@@ -406,6 +415,7 @@ end
 function LedgerUI.toggle()
 	local book = panel
 	if book ~= nil then
+		disarm()
 		book.Visible = not book.Visible
 	end
 end

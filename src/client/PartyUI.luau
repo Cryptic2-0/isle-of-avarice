@@ -19,7 +19,6 @@ local TITLE_COLOR = Color3.fromRGB(255, 215, 90)
 
 local PANEL_PAD = 8
 local TITLE_HEIGHT = 26
-local ROW_HEIGHT = 48
 local ROW_GAP = 4
 local LEAVE_WIDTH = 64
 
@@ -104,8 +103,11 @@ local function buildInvite(gui: ScreenGui)
 	local banner = Instance.new("Frame")
 	banner.Name = "Invite"
 	banner.AnchorPoint = Vector2.new(0.5, 0)
-	-- Below the trade banner (18% to 27%) so both can show.
+	-- Below the trade banner (18% to 27%, at least 44 tall) so both can show.
 	banner.Position = UDim2.fromScale(0.5, 0.28)
+	UiKit.onLayout(function()
+		banner.Position = UDim2.new(0.5, 0, 0, HudLayout.partyBannerTop(UiKit.areaHeight()))
+	end)
 	banner.Size = UDim2.fromScale(0.5, 0.09)
 	banner.BackgroundColor3 = UiKit.PANEL
 	banner.Visible = false
@@ -205,11 +207,21 @@ local function titleOf(userId: number): string
 end
 
 local function buildRow(row: PartyView.Row, index: number, parent: Instance)
+	-- 40 tall on a touch screen (name, then title and buttons, then the bar), else 48.
+	local rowHeight = UiKit.layout().partyRowHeight
+	local compact = rowHeight < 48
+	local nameY = if compact then 2 else 3
+	local lineHeight = if compact then 16 else 18
+	local titleY = if compact then 20 else 22
+	local barY = if compact then 35 else 38
+	local barHeight = if compact then 5 else 6
+	local buttonHeight = if compact then 15 else 16
+	local buttonY = if compact then 19 else 22
 	local frame = Instance.new("Frame")
 	frame.Name = "Row" .. row.userId
 	frame.LayoutOrder = index
 	-- Leaves room for the scroll bar.
-	frame.Size = UDim2.new(1, -6, 0, ROW_HEIGHT)
+	frame.Size = UDim2.new(1, -6, 0, rowHeight)
 	frame.BackgroundColor3 = ROW_COLOR
 	UiKit.corner(frame, 8)
 
@@ -217,8 +229,8 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	local name = UiKit.label(
 		"Name",
 		row.name,
-		UDim2.new(1, -70, 0, 18),
-		UDim2.fromOffset(6, 3),
+		UDim2.new(1, -70, 0, lineHeight),
+		UDim2.fromOffset(6, nameY),
 		{ max = 14, wrap = false }
 	)
 	name.TextScaled = false
@@ -229,8 +241,8 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	local health = UiKit.label(
 		"Health",
 		row.healthText,
-		UDim2.fromOffset(56, 18),
-		UDim2.new(1, -4, 0, 3),
+		UDim2.fromOffset(56, lineHeight),
+		UDim2.new(1, -4, 0, nameY),
 		{ max = 14, align = Enum.TextXAlignment.Right }
 	)
 	health.AnchorPoint = Vector2.new(1, 0)
@@ -243,15 +255,15 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 		"Title",
 		titleOf(row.userId),
 		UDim2.new(1, -(12 + buttonsWidth), 0, 14),
-		UDim2.fromOffset(6, 22),
+		UDim2.fromOffset(6, titleY),
 		{ max = 12, color = TITLE_COLOR }
 	)
 	crowned.Parent = frame
 
 	local bar = Instance.new("Frame")
 	bar.Name = "Bar"
-	bar.Position = UDim2.fromOffset(6, 38)
-	bar.Size = UDim2.new(1, -12, 0, 6)
+	bar.Position = UDim2.fromOffset(6, barY)
+	bar.Size = UDim2.new(1, -12, 0, barHeight)
 	bar.BackgroundColor3 = BAR_BACK_COLOR
 	UiKit.corner(bar, 3)
 	local fill = Instance.new("Frame")
@@ -263,9 +275,9 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 	bar.Parent = frame
 
 	if row.canRemove then
-		local remove = UiKit.button("Remove", "Remove", UDim2.fromOffset(46, 16))
+		local remove = UiKit.button("Remove", "Remove", UDim2.fromOffset(46, buttonHeight))
 		remove.AnchorPoint = Vector2.new(1, 0)
-		remove.Position = UDim2.new(1, -4, 0, 22)
+		remove.Position = UDim2.new(1, -4, 0, buttonY)
 		UiKit.setEnabled(remove, not guard.busy)
 		UiKit.onPress(remove, function()
 			send({ kind = "kick", userId = row.userId })
@@ -273,9 +285,9 @@ local function buildRow(row: PartyView.Row, index: number, parent: Instance)
 		remove.Parent = frame
 	end
 	if row.canLead then
-		local lead = UiKit.button("MakeLeader", "Lead", UDim2.fromOffset(40, 16))
+		local lead = UiKit.button("MakeLeader", "Lead", UDim2.fromOffset(40, buttonHeight))
 		lead.AnchorPoint = Vector2.new(1, 0)
-		lead.Position = UDim2.new(1, -(4 + (if row.canRemove then 50 else 0)), 0, 22)
+		lead.Position = UDim2.new(1, -(4 + (if row.canRemove then 50 else 0)), 0, buttonY)
 		UiKit.setEnabled(lead, not guard.busy)
 		UiKit.onPress(lead, function()
 			send({ kind = "promote", userId = row.userId })
@@ -384,11 +396,12 @@ local function rowsKey(rows: { PartyView.Row }): string
 		table.insert(
 			parts,
 			string.format(
-				"%d|%s|%s|%s",
+				"%d|%s|%s|%s|%d",
 				row.userId,
 				row.name,
 				tostring(row.canRemove),
-				tostring(row.canLead)
+				tostring(row.canLead),
+				UiKit.layout().partyRowHeight
 			)
 		)
 	end
@@ -399,7 +412,7 @@ end
 -- scroll, and the title row with Leave stays on screen).
 local function sizePanel(frame: Frame, rowsHolder: ScrollingFrame, count: number, hudLines: number)
 	local fixed = PANEL_PAD + TITLE_HEIGHT + ROW_GAP + PANEL_PAD
-	local wanted = fixed + count * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
+	local wanted = fixed + count * (UiKit.layout().partyRowHeight + ROW_GAP) - ROW_GAP
 	local rect = HudLayout.partyPanel(UiKit.layout(), hudLines, wanted)
 	UiKit.place(frame, rect)
 	rowsHolder.Size = UDim2.new(1, -2 * PANEL_PAD, 0, math.max(0, rect.height - fixed))
