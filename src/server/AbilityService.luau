@@ -11,6 +11,7 @@ local Casting = require(ReplicatedStorage.Shared.Rules.Casting)
 local Combat = require(ReplicatedStorage.Shared.Rules.Combat)
 local CreatureBrain = require(ReplicatedStorage.Shared.Rules.CreatureBrain)
 local Effects = require(ReplicatedStorage.Shared.Rules.Effects)
+local Geography = require(ReplicatedStorage.Shared.Rules.Geography)
 local Net = require(ReplicatedStorage.Shared.Net)
 local Party = require(ReplicatedStorage.Shared.Rules.Party)
 local Paths = require(ReplicatedStorage.Shared.Catalog.Paths)
@@ -219,10 +220,13 @@ local function applyHits(
 		if destination ~= nil then
 			local humanoid, root = Fighters.body(id)
 			if humanoid ~= nil and root ~= nil then
-				-- No pull or knockback ever lands a creature inside Tallyport.
+				-- No pull or knockback ever lands a creature inside Tallyport or off the land.
 				local entry = Fighters.get(id)
 				if entry ~= nil and entry.kind == "creature" then
 					destination = CreatureBrain.outsideTown(destination)
+					local from = root.Position
+					local x, z = Geography.landPath(from.X, from.Z, destination.x, destination.z)
+					destination = { x = x, y = destination.y, z = z }
 				end
 				Sight.move(humanoid, root, destination)
 			end

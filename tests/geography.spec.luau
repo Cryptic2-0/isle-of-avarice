@@ -233,3 +233,28 @@ T.test("bearingOf never returns 360", function()
 	local b = Geography.bearingOf(-1e-9, -100)
 	T.truthy(b >= 0 and b < 360, tostring(b))
 end)
+
+T.test("landPath cuts a move back to the last land on its way", function()
+	-- All on land: the target comes back as given.
+	local x, z = Geography.landPath(0, -600, 0, -500)
+	T.eq({ x, z }, { 0, -500 })
+	-- Across the west river: it stops on the near bank.
+	x, z = Geography.landPath(-280, 0, -400, 0)
+	T.truthy(Geography.isLand(x, z), `{x}, {z}`)
+	T.truthy(x <= -280 and x > -320, tostring(x))
+	T.falsy(Geography.isLand(x - Geography.LAND_STEP, z))
+	T.eq(z, 0)
+	-- The sea beside the causeway: a move off the side stops on the causeway.
+	x, z = Geography.landPath(0, 1000, 100, 1000)
+	T.truthy(Geography.isLand(x, z) and x < 60, tostring(x))
+	-- Starting in water, or with a bad target, it does not move.
+	x, z = Geography.landPath(-320, 0, -280, 0)
+	T.eq({ x, z }, { -320, 0 })
+	x, z = Geography.landPath(0, -600, 0 / 0, 0)
+	T.eq({ x, z }, { 0, -600 })
+	x, z = Geography.landPath(0, -600, math.huge, 0)
+	T.eq({ x, z }, { 0, -600 })
+	-- No move at all.
+	x, z = Geography.landPath(0, -600, 0, -600)
+	T.eq({ x, z }, { 0, -600 })
+end)
