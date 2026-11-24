@@ -44,4 +44,24 @@ return {
 	TrialSync = "TrialSync",
 	-- server -> one client: (coin: number)
 	CoinSync = "CoinSync",
+	-- client -> server: (request: { freeIndex: number, cardId: string, relicId: string?, targetId: number? })
+	EdictUse = "EdictUse",
+	-- server -> one client: (result: { title: string, lines: { string } }) what a Summons or an Audit found
+	EdictResult = "EdictResult",
+	-- server -> one client: (veilSeconds: number, met: { { userId: number, name: string } })
+	EdictSync = "EdictSync",
+	-- server -> one client: (view: Shop.View)
+	ShopOpen = "ShopOpen",
+	-- client -> server: (request: { kind: "pack" } | { kind: "relic", relicId: string } | { kind: "sell", freeIndex: number, cardId: string })
+	ShopAction = "ShopAction",
+	-- client -> server: () ask the nearest player to trade
+	TradeRequest = "TradeRequest",
+	-- server -> one client: (invite: { from: string, seconds: number }?) nil withdraws it
+	TradeInvite = "TradeInvite",
+	-- client -> server: (accept: boolean)
+	TradeReply = "TradeReply",
+	-- client -> server: (request: { kind: "offer", cards: { string }, coin: number } | { kind: "confirm" } | { kind: "cancel" })
+	TradeAction = "TradeAction",
+	-- server -> one client: (view: Trade.View?) nil closes the window
+	TradeSync = "TradeSync",
 }

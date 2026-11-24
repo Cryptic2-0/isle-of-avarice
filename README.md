@@ -10,6 +10,7 @@ Your Ledger is a book with 30 numbered slots. Each Relic you claim fills one slo
 - **Milestone 2, combat and defeat:** fight other players with a basic Strike. When you defeat someone, you get a short blind claim: you pick numbered slots and take the Relics they hold there. Protections keep this fair: a shield for new players and after each respawn, no fighting in Tallyport, a red "MARKED" tag on whoever starts a fight, one claim per hour on the same player, and a Vault that keeps up to 3 of your Relics safe. If too many copies of a rare Relic are held on one server, its cache is sealed.
 - **Milestone 3, the Six Paths:** choose one of six Paths (Fang, Gale, Ember, Mire, Mend, Bulwark) as your Calling. Every Path levels up on its own, from hits on training posts and from winning fights; your Calling learns fastest and the opposite Path slowest. Each Path teaches 3 abilities, at levels 3, 10 and 18. Equip up to 4 in Tallyport and use them with the keys 1 to 4 or the ability bar. The Paths panel (press P) shows your levels and lets you change your Calling: free the first time, then 500 Coin, with a 7-day wait after each change.
 - **Milestone 4, creatures and trials:** beasts live at dens in the wild regions. They fight back, and defeating one pays Coin, Path XP and sometimes a Relic to everyone who helped. Six Wardens, one at each region's gate, offer timed trials: two courses, a delivery, two hunts and a private duel. Three trials and the Brine Colossus make up a quest, The Unpaid Debt. Relics 13 to 30 come from trials, creatures, the quest and hard-to-reach caches.
+- **Milestone 5, Edicts and trading:** five single-use Edict cards (Summons, Audit, Veil, Passage, Homecoming) live in your free slots. The clerk of the Edict Hall in Tallyport sells packs of Edicts and Copper Relics and buys spare cards. Two players standing close can trade cards and Coin, with a short wait before either can confirm. A defeat destroys a third of the Edicts you hold (never Relics).
 
 ## How to play-test
 
@@ -22,6 +23,7 @@ You need Roblox Studio. It is the free program Roblox provides for making and te
 5. Follow the steps in `docs/playtest/M1-checklist.md` (the Ledger), then `docs/playtest/M2-checklist.md` (combat, which needs two players), then `docs/playtest/M3-checklist.md` (the Six Paths, mostly two players). Each lists what to do and what should happen.
 6. Then follow the steps in `docs/playtest/World-checklist.md` (the nine regions of the wide island and their hazards, partly with two players).
 7. Then follow the steps in `docs/playtest/M4-checklist.md` (creatures and trials, partly with two players).
+8. Then follow the steps in `docs/playtest/M5-checklist.md` (Edicts, the shop and trading, mostly with two players).
 
 If a step fails, see the last line of the checklist.
 
@@ -43,7 +45,7 @@ The rest of this page is for people who write code.
 - Install the tools: `rokit install`
 - Run all checks (format, lint, build, tests): `bash scripts/check.sh`
 - Live-sync into Studio: `rojo serve`
-- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2, M3 and M4 checklists and the world checks, and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
+- Automated two-player play test: `rojo build playtest.project.json -o build/playtest.rbxl`, open that file in Studio, choose Test, then Server & Clients, set 2 players and press Play. The script in `playtest/` drives both players through the M1, M2, M3, M4 and M5 checklists and the world checks, and prints `[PLAYTEST] PASS` or `FAIL` lines to the Output window, ending with a `DONE` summary. This build is for testing only; never copy it to `dist/`.
 
 The playable file in `dist/IsleOfAvarice.rbxlx` is a copy of `build/IsleOfAvarice.rbxlx`. Copy it again after any code change, once the checks pass.
 

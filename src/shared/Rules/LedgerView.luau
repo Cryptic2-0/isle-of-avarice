@@ -1,4 +1,5 @@
 --!strict
+local Cards = require("../Catalog/Cards")
 local Ledger = require("./Ledger")
 local Relics = require("../Catalog/Relics")
 local Vault = require("./Vault")
@@ -20,8 +21,16 @@ export type SlotView = {
 	vaulted: boolean,
 	canVault: boolean,
 }
-export type FreeView =
-	{ index: number, cardId: CardId, name: string, tier: Tier, canClaim: boolean }
+-- `tier` is nil for an Edict. An Edict can be used; only a Relic can be claimed.
+export type FreeView = {
+	index: number,
+	cardId: CardId,
+	name: string,
+	tier: Tier?,
+	kind: "relic" | "edict",
+	canClaim: boolean,
+	canUse: boolean,
+}
 export type View = {
 	progressText: string,
 	freeText: string,
@@ -60,14 +69,17 @@ function LedgerView.build(ledger: Ledger, vault: Vault?): View
 
 	local free: { FreeView } = {}
 	for index, cardId in ledger.free do
-		local relic = Relics.byId[cardId]
-		if relic ~= nil then
+		local card = Cards.info(cardId)
+		if card ~= nil then
+			local isRelic = card.kind == "relic"
 			table.insert(free, {
 				index = index,
 				cardId = cardId,
-				name = relic.name,
-				tier = relic.tier,
-				canClaim = ledger.claimed[cardId] ~= true,
+				name = card.name,
+				tier = card.tier,
+				kind = card.kind,
+				canClaim = isRelic and ledger.claimed[cardId] ~= true,
+				canUse = not isRelic,
 			})
 		end
 	end

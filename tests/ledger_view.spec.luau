@@ -27,7 +27,9 @@ T.test("view of a partly filled Ledger", function()
 		cardId = "R001",
 		name = "Tarnished Tally-Coin",
 		tier = "Copper",
+		kind = "relic",
 		canClaim = true,
+		canUse = false,
 	})
 	T.eq(view.free[2].canClaim, false)
 	T.eq(view.vaultText, "0 / 3")
@@ -59,4 +61,18 @@ T.test("view of an empty Ledger", function()
 	local view = LedgerView.build({ claimed = {}, free = {} })
 	T.eq(view.progressText, "0 / 30")
 	T.eq(view.complete, false)
+end)
+
+T.test("an Edict in a free slot can be used, not claimed", function()
+	local view = LedgerView.build({ claimed = {}, free = { "R001", "E004" } })
+	T.eq(view.free[2], {
+		index = 2,
+		cardId = "E004",
+		name = "Passage",
+		kind = "edict",
+		canClaim = false,
+		canUse = true,
+	})
+	T.eq(view.freeText, "2 / 20")
+	T.eq(view.slots[1].spares, 1)
 end)

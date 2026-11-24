@@ -148,3 +148,49 @@ T.test("sanitize cuts free to the first 20", function()
 	T.eq(#result.free, 20)
 	T.eq(result.free[20], "R001")
 end)
+
+T.test("Edicts live in free slots but are never claimed", function()
+	local withEdict = Ledger.add(Ledger.new(), "E001")
+	T.eq(withEdict, { claimed = {}, free = { "E001" } })
+	T.eq({ Ledger.add(Ledger.new(), "E006") }, { nil, "UNKNOWN_CARD" } :: { any })
+	T.eq(
+		{ Ledger.claim({ claimed = {}, free = { "E001" } }, 1) },
+		{ nil, "NOT_A_RELIC" } :: { any }
+	)
+	T.eq(
+		Ledger.discard({ claimed = {}, free = { "R001", "E002" } }, 2),
+		{ claimed = {}, free = { "R001" } }
+	)
+	T.eq(Ledger.count({ claimed = {}, free = { "E002", "E002", "R001" } }, "E002"), 2)
+	T.eq(
+		Ledger.sanitize({
+			claimed = { E001 = true, R001 = true },
+			free = { "E005", "E006", "R003", "E005" },
+		}),
+		{ claimed = { R001 = true }, free = { "E005", "R003", "E005" } }
+	)
+	T.eq(Ledger.edictCount({ claimed = { R001 = true }, free = { "E005", "R003", "E001" } }), 2)
+	T.eq(Ledger.relicCount({ claimed = { R001 = true }, free = { "E005", "R003", "R003" } }), 3)
+end)
+
+T.test("holdsFree and remove treat the free slots as a multiset", function()
+	local ledger = { claimed = { R009 = true }, free = { "R001", "E002", "R001", "E003" } }
+	T.truthy(Ledger.holdsFree(ledger, {}))
+	T.truthy(Ledger.holdsFree(ledger, { "R001", "R001", "E003" }))
+	T.falsy(Ledger.holdsFree(ledger, { "R001", "R001", "R001" }))
+	T.falsy(Ledger.holdsFree(ledger, { "R009" }), "a claimed Relic is not in a free slot")
+	T.falsy(Ledger.holdsFree(ledger, { "E001" }))
+	T.eq(
+		Ledger.remove(ledger, { "R001", "E003" }),
+		{ claimed = { R009 = true }, free = { "E002", "R001" } }
+	)
+	T.eq(
+		Ledger.remove(ledger, { "E002", "R001", "R001", "E003" }),
+		{ claimed = { R009 = true }, free = {} }
+	)
+	T.eq(Ledger.remove(ledger, { "R001", "R001", "R001" }), nil)
+	T.eq(Ledger.remove(ledger, {}), ledger)
+	T.eq(ledger.free, { "R001", "E002", "R001", "E003" }, "the ledger is not changed in place")
+	T.eq(Ledger.room(ledger), 16)
+	T.eq(Ledger.room({ claimed = {}, free = table.create(25, "R001") }), 0)
+end)

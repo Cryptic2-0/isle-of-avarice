@@ -158,3 +158,13 @@ T.test("hitting a creature: anyone outside the safe zone may", function()
 		{ false, "SAFE_ZONE" } :: { any }
 	)
 end)
+
+T.test("Edicts do not count towards ending the new-player shield", function()
+	T.falsy(Protection.shouldEndShield({ claimed = {}, free = { "E001", "E002", "E003" } }))
+	T.falsy(
+		Protection.shouldEndShield({ claimed = { R001 = true }, free = { "R002", "E003", "E003" } })
+	)
+	T.truthy(
+		Protection.shouldEndShield({ claimed = { R001 = true }, free = { "R002", "E003", "R002" } })
+	)
+end)

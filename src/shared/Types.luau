@@ -49,6 +49,14 @@ export type Ability = {
 	reflect: { factor: number, duration: number }?,
 	allyRadius: number?,
 }
+export type Edict = {
+	id: CardId,
+	key: string,
+	name: string,
+	description: string,
+	weight: number, -- percent chance per pack card
+	needs: string, -- "relic", "player" or ""
+}
 export type Drop = { relicId: CardId, chance: number }
 export type CreatureKind = {
 	id: string,

@@ -1,7 +1,8 @@
 --!strict
 -- Status lines for the HUD. Pure: the client renders this and nothing else.
 
-export type Line = { text: string, kind: "region" | "safe" | "shield" | "marked" | "hazard" }
+export type Line =
+	{ text: string, kind: "region" | "safe" | "shield" | "marked" | "veil" | "hazard" }
 export type Status = { newShield: boolean, respawnShieldSeconds: number, markedSeconds: number }
 
 local StatusView = {}
@@ -16,7 +17,8 @@ end
 function StatusView.build(
 	status: Status?,
 	inSafeZone: boolean,
-	place: { name: string, hazards: { string } }?
+	place: { name: string, hazards: { string } }?,
+	veilSeconds: number?
 ): { Line }
 	local lines: { Line } = {}
 	if place ~= nil then
@@ -38,6 +40,12 @@ function StatusView.build(
 			local text = string.format("MARKED %d:%02d", total // 60, total % 60)
 			table.insert(lines, { text = text, kind = "marked" })
 		end
+	end
+	-- The Veil is an Edict effect, not part of the status, so it has its own input.
+	if veilSeconds ~= nil and running(veilSeconds) then
+		local total = math.ceil(veilSeconds)
+		local text = string.format("Veiled %d:%02d", total // 60, total % 60)
+		table.insert(lines, { text = text, kind = "veil" })
 	end
 	if place ~= nil then
 		for _, name in place.hazards do

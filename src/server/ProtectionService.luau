@@ -242,6 +242,21 @@ function ProtectionService.endRespawnShield(player: Player)
 	sendStatus(player)
 end
 
+-- Play-test seam: ends the player's Mark now. A scheduled unmark that fires later finds
+-- nothing left to do (or a newer Mark, which it leaves alone).
+function ProtectionService.endMark(player: Player)
+	local t = timers[player]
+	if t == nil or t.markedUntil == 0 then
+		return
+	end
+	t.markedUntil = 0
+	local character = player.Character
+	if character ~= nil then
+		removeMarkedTag(character)
+	end
+	sendStatus(player)
+end
+
 function ProtectionService.start()
 	statusSync = LedgerService.makeRemote(Net.StatusSync)
 	local shieldDrop = LedgerService.makeRemote(Net.ShieldDrop)

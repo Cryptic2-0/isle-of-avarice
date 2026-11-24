@@ -1,6 +1,6 @@
 # Isle of Avarice — Game Design
 
-**Date:** 2026-11-10 (revision 6, 2026-11-12: M4 creatures, trials and Relics 013–030 in sections 3.9–3.12)
+**Date:** 2026-11-10 (revision 7, 2026-11-16: M5 Edicts, the shop and trading in section 3.13; revision 6, 2026-11-12: M4 in sections 3.9–3.12)
 **Status:** Draft, waiting for review
 **Platform:** Roblox (3D, multiplayer, open PvP)
 **Research:** see `docs/research/` (four reports)
@@ -188,6 +188,8 @@ the Edict Hall, or found as rewards. They never take cards.
 | **Passage** | Teleport near a player you have met this session |
 | **Homecoming** | Teleport to Tallyport (not while Marked or in combat) |
 
+M5 builds these; section 3.13 has the details and numbers.
+
 Packs are bought with Coin earned in play. If packs are ever sold for
 Robux, Roblox requires the odds to be shown.
 
@@ -346,6 +348,86 @@ Every drop and reward obeys scarcity (3.2): a sealed Relic is not given.
   rise at most 4 studs each; R026's ledge is the island's highest point.
 - The Ledger and the blind claim show the slots of the Relics that exist
   (30 in M4, 50 at launch).
+
+### 3.13 Edicts, the shop and trading (M5 starting values)
+
+Rulings made while planning M5. They fill the gaps in 3.4, 3.6 and 3.7.
+All numbers are starting values for play tests.
+
+**Edicts are cards.** An Edict sits in a free slot like a spare Relic,
+with ids `E001` to `E005`. It can be used, discarded, sold or traded. It
+can never be claimed into a numbered slot, and it does not count towards
+the 3 Relics that end the new-player shield.
+
+| Id | Edict | What using it does |
+|---|---|---|
+| E001 | Summons | You name a Relic. You see every other player on the server who holds it, claimed or spare. |
+| E002 | Audit | You see the Ledger of the nearest other player within 20 studs: claimed Relics (and which are Vaulted) and free-slot cards. They are told you looked. |
+| E003 | Veil | For 10 minutes Summons does not list you and Audit shows nothing. Using it again restarts the 10 minutes. Not saved: it ends when you leave. |
+| E004 | Passage | You appear 8 studs from a player you have met this session. You meet a player by standing within 30 studs of them. |
+| E005 | Homecoming | You appear in Tallyport. |
+
+- An Edict is used up when it works. It is not used up when it is refused
+  (nobody in range, not allowed now, bad request).
+- A Summons that finds nobody is still used up: "nobody" is an answer.
+- An Audit of a Veiled player is used up and shows only that their Ledger
+  is veiled.
+- Passage and Homecoming are refused while you are Marked, within 30
+  seconds of dealing or taking player damage, or during a trial (a
+  delivery or a course would be trivial otherwise).
+- Passage sets you down on land, outside every hazard shape when it can.
+- No Edict can be used while your Ledger is locked by a blind claim, or
+  while you are defeated.
+
+**Defeat costs Edicts.** On any defeat (a player, a creature or the
+island) the victim loses one third, rounded down, of the Edicts they
+hold, chosen at random. They are destroyed. This also answers the Wide
+Isle's open question 3: dying to the island now costs something. Leaving
+during a fight (combat logging) still costs only the blind claim.
+
+**The Edict Hall.** A clerk stands in Tallyport. Talking to them opens the
+shop. Every purchase is checked on the server: within 15 studs of the
+clerk, enough Coin, enough free slots.
+
+| Buy | Price |
+|---|---|
+| Edict pack: 3 Edicts, each drawn on its own | 60 Coin |
+| A Copper Relic of the Counting Fields (R001 to R006) | 40 Coin |
+
+Pack odds per card, shown in the window: Summons 25%, Audit 20%, Veil
+20%, Homecoming 20%, Passage 15%.
+
+| Sell (the card is destroyed) | Coin |
+|---|---|
+| Copper Relic | 1 |
+| Silver Relic | 15 |
+| Gold Relic | 50 |
+| Platinum Relic | 150 |
+| Crown Relic | cannot be sold |
+| Edict | 3 |
+
+Only cards in free slots can be sold. Selling a capped Relic frees a copy
+under the scarcity rule: it is another release valve.
+
+**Trading.** "Trade" asks the nearest other player within 15 studs. They
+have 20 seconds to accept. Then both see one window:
+
+- Each side offers up to 6 cards from their free slots and any amount of
+  their Coin. Claimed Relics must be unclaimed first.
+- Any change to either offer clears both confirmations, and nobody can
+  confirm for 2 seconds after a change, so a last-moment switch cannot be
+  slipped past the other player.
+- When both have confirmed, the server checks everything again (both
+  still hold what they offered, both have room for what they receive,
+  neither Ledger is locked) and swaps everything at once, or nothing.
+- The trade is cancelled if either player cancels, leaves, is defeated,
+  has their Ledger locked by a claim, or moves more than 25 studs away.
+- One-sided trades (gifts) are allowed. Trading never changes how many
+  copies of a Relic the server holds.
+- A trade cannot be asked for, accepted or confirmed while you are Marked or within 30 seconds of dealing or taking player damage, and nothing can be sold to the clerk then either: cards cannot be moved out of reach of a blind claim in the middle of a fight. A trade is cancelled instead of completed if either trader is Marked or in a fight at the moment of the swap.
+
+Not in M5: Edicts as rewards from trials or creatures; shop stock beyond
+the six Copper Relics; a trade history.
 
 ## 4. The Six Paths
 

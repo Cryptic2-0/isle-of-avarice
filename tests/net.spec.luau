@@ -25,4 +25,20 @@ T.test("remote names are fixed", function()
 	T.eq(Net.TrialAccept, "TrialAccept")
 	T.eq(Net.TrialSync, "TrialSync")
 	T.eq(Net.CoinSync, "CoinSync")
+	for _, name in
+		{
+			"EdictUse",
+			"EdictResult",
+			"EdictSync",
+			"ShopOpen",
+			"ShopAction",
+			"TradeRequest",
+			"TradeInvite",
+			"TradeReply",
+			"TradeAction",
+			"TradeSync",
+		}
+	do
+		T.eq((Net :: any)[name], name)
+	end
 end)

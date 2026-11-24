@@ -6,7 +6,7 @@ local Ledger = require(ReplicatedStorage.Shared.Rules.Ledger)
 local LedgerActions = require(ReplicatedStorage.Shared.Rules.LedgerActions)
 local RateLimiter = require(ReplicatedStorage.Shared.Rules.RateLimiter)
 local Net = require(ReplicatedStorage.Shared.Net)
-local Relics = require(ReplicatedStorage.Shared.Catalog.Relics)
+local Cards = require(ReplicatedStorage.Shared.Catalog.Cards)
 local Types = require(ReplicatedStorage.Shared.Types)
 local Vault = require(ReplicatedStorage.Shared.Rules.Vault)
 local DataService = require(script.Parent.DataService)
@@ -179,8 +179,7 @@ local function handleAction(player: Player, request: any)
 		LedgerService.notify(player, "DATA_NOT_LOADED")
 		return
 	end
-	local relic = if cardId ~= nil then Relics.byId[cardId] else nil
-	LedgerService.notify(player, code, { name = if relic ~= nil then relic.name else "" })
+	LedgerService.notify(player, code, { name = Cards.name(cardId) })
 
 	if code == "CLAIMED" and Ledger.isComplete(newLedger) and not completed[player] then
 		completed[player] = true
