@@ -342,10 +342,18 @@ end
 
 -- The fighters a plan may pick from. A single-target melee or shot ability only sees what the
 -- caster has a clear line to, so a target behind a corner never swallows the hit (and an
--- unseen taunter forces nothing). Area abilities keep everyone: applyHits skips unseen hits.
+-- unseen taunter forces nothing). Anyone out of the ability's reach is dropped before any ray.
+-- Area abilities keep everyone: applyHits skips unseen hits.
 local function candidates(ability: Ability, caster: Fighter, others: { Fighter }): { Fighter }
-	if ability.kind == "melee" or ability.kind == "shot" then
-		return Sight.filter(vector(caster.position), others)
+	if ability.kind == "melee" then
+		return Sight.filter(vector(caster.position), others, ability.range or Combat.STRIKE_RANGE)
+	elseif ability.kind == "shot" then
+		-- A shot's reach is its range along the ray, and the ray catches a body this far to the side.
+		return Sight.filter(
+			vector(caster.position),
+			others,
+			(ability.range or 0) + Targeting.SHOT_RADIUS
+		)
 	end
 	return others
 end

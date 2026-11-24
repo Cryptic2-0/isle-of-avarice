@@ -126,3 +126,34 @@ T.test("creditFor: never to a party member of the victim", function()
 	Combat.creditFor(log, 2, 13, 15, nil, allies)
 	T.eq(allies, { 7 })
 end)
+
+T.test("inStrikeReach keeps exactly the fighters pickTarget could choose", function()
+	local crowd = {
+		at(2, 0, 0, -5),
+		at(3, 5, 0, -5),
+		at(4, 0, 0, 5),
+		at(5, 7, 0, -2),
+		at(6, 0, 0, -8.1),
+		at(7, 0, 7, -3),
+		at(8, 0, 0, 0),
+		at(1, 0, 0, -2),
+		at(9, 0 / 0, 0, -2),
+	}
+	local want = { [2] = true, [3] = true, [8] = true }
+	for _, other in crowd do
+		T.eq(Combat.inStrikeReach(me, other), want[other.id] == true, `fighter {other.id}`)
+	end
+	T.eq(Combat.inStrikeReach(me, at(6, 0, 0, -8.1), 9), true, "a longer range")
+	local blind = { id = 1, position = me.position, look = { x = 0, y = 0, z = 0 } }
+	T.eq(Combat.inStrikeReach(blind, at(2, 0, 0, -5)), false, "no look")
+	local kept: { Combat.Fighter } = {}
+	for _, other in crowd do
+		if Combat.inStrikeReach(me, other) then
+			table.insert(kept, other)
+		end
+	end
+	for _, taunter in { 2, 3, 4, 6 } do
+		T.eq(Combat.pickTarget(me, kept, nil, taunter), Combat.pickTarget(me, crowd, nil, taunter))
+	end
+	T.eq(Combat.pickTarget(me, kept), Combat.pickTarget(me, crowd))
+end)
