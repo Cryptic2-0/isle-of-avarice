@@ -15,10 +15,14 @@ local Sources = {}
 Sources.MAX_DISTANCE = 15
 -- Network and frame jitter allowed on a held prompt.
 Sources.HOLD_SLACK = 0.3
+-- How long past its length a hold with no end may still be running.
+Sources.HOLD_RUNNING_SLACK = 2
 
 -- Whether a held cache's prompt was held long enough and the hold was still running at `now` (or
 -- ended within the slack). hold is nil for an ordinary cache; began and ended are the server's
--- own times for the prompt starting and ending. An old, released hold never counts.
+-- own times for the prompt starting and ending. An old, released hold never counts, and a hold
+-- still running (no end seen) counts only up to hold + HOLD_RUNNING_SLACK: a lost HoldEnded must
+-- not leave a stale hold that opens on a tap.
 function Sources.holdOk(hold: number?, began: number?, ended: number?, now: number): boolean
 	if hold == nil then
 		return true
@@ -27,6 +31,9 @@ function Sources.holdOk(hold: number?, began: number?, ended: number?, now: numb
 		return false
 	end
 	if ended ~= nil and not (now - ended <= Sources.HOLD_SLACK) then
+		return false
+	end
+	if ended == nil and not (now - began <= hold + Sources.HOLD_RUNNING_SLACK) then
 		return false
 	end
 	return (ended or now) - began >= hold - Sources.HOLD_SLACK
